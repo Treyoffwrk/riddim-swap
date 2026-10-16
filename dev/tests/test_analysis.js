@@ -46,14 +46,16 @@ console.table(results);
 function motionCase(name,hitTimes,dur,fps,noise,cam){
   const series=[];let dir=0;
   for(let i=0;i<=dur*fps;i++){
-    const t=i/fps;const D=new Float32Array(8);
+    /* like real video: the sample stamped at frame i is the motion between frames i-1 and i, so describe the
+       state in the middle of that interval */
+    const ts=i/fps,t=ts-0.5/fps;const D=new Float32Array(8);
     /* moving in a direction, which stops abruptly at each hit then a new direction starts */
     const lastHit=Math.max(-1,...hitTimes.filter(h=>h<=t));const since=t-lastHit;
     const nextHit=hitTimes.find(h=>h>t);const dir=hitTimes.filter(h=>h<=t).length%8;
     const moving=nextHit!==undefined&&(nextHit-t)<0.35&&since>0.05;
     if(moving)D[dir]=3+(1-(nextHit-t)/0.35)*4;
     for(let k=0;k<8;k++)D[k]+=noise*rnd();
-    series.push({t:t+(rnd()-0.5)*0.004,D,cam:cam||0,mag:D.reduce((a,b)=>a+b,0)});
+    series.push({t:ts+(rnd()-0.5)*0.004,D,cam:cam||0,mag:D.reduce((a,b)=>a+b,0)});
   }
   const m=RA.analyzeMotion(series);const est=m.beats.map(b=>b.t);
   const f=fmeasure(est,hitTimes,0.07);

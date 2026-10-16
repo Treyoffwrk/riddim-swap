@@ -296,15 +296,15 @@ function renderSongCard(){
   const box=$('#songCands'); box.textContent='';
   const all=[{bpm:+an.bpm.toFixed(1)}].concat((an.candidates||[]).filter(c=>Math.abs(c.bpm-an.bpm)/an.bpm>0.05)).slice(0,4);
   all.forEach((c,i)=>{const b=el('button','btn sm cand'+(i===0?' on':''),c.bpm.toFixed(1));b.setAttribute('aria-label','Use '+c.bpm.toFixed(1)+' BPM');
-    b.addEventListener('click',()=>{if(i===0)return;so.forceBpm=c.bpm;so.beatShift=0;S.beatSrc='detected';$('#songDet').textContent='Re-finding the beat…';analyzeSongObj(so,true)});box.append(b)});
+    b.addEventListener('click',()=>{if(i===0)return;so.forceBpm=c.bpm;so.beatShift=0;so.confirmed=false;S.beatSrc='detected';$('#songDet').textContent='Re-finding the beat…';analyzeSongObj(so,true)});box.append(b)});
   const w=$('#songWarn'); w.textContent='';
   const warn=t=>w.append(el('li',null,t));
   if(an.conf<0.35)warn('The tempo is unclear here (weak or irregular kick). Check it with the click, or tap it in the Tempo tab.');
   if(an.contrast<0.6)warn('Beats barely stand out from the rest of the track, so beat positions may be off.');
-  if(an.candidates&&an.candidates.some(c=>Math.abs(c.bpm/an.bpm-4/3)<0.03||Math.abs(c.bpm/an.bpm-3/4)<0.03))warn('A 3-3-2 rhythm (like the dembow) can make a tempo 4/3 off look strong. If the clicks drift against the kick, try the other number.');
+  if(!so.confirmed&&an.candidates&&an.candidates.some(c=>c.score>=0.85&&(Math.abs(c.bpm/an.bpm-4/3)<0.03||Math.abs(c.bpm/an.bpm-3/4)<0.03)))warn('A 3-3-2 rhythm (like the dembow) can make a tempo 4/3 off look strong. If the clicks drift against the kick, try the other number, or Tap to check.');
   if(an.downConf<0.15)warn("Not sure which beat is the 1 of the bar.");
 }
-$('#beatHalf').addEventListener('click',()=>{const so=S.mainSong;if(!so)return;so.beatShift=so.beatShift?0:0.5;S.beatSrc='detected';analyzeSongObj(so,true)});
+$('#beatHalf').addEventListener('click',()=>{const so=S.mainSong;if(!so)return;so.beatShift=so.beatShift?0:0.5;so.confirmed=false;S.beatSrc='detected';analyzeSongObj(so,true)});
 $('#beatUseDet').addEventListener('click',()=>{const so=S.mainSong;if(so&&so.an)applyDetectedBeat(so);renderSongCard();scheduleFit()});
 $('#clickOn').addEventListener('change',e=>{S.clickOn=e.target.checked;if(S.clickOn){const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}});
 /* click track: a short tick each time the song passes a beat (downbeats higher) */
@@ -508,7 +508,7 @@ function syncCheck(){
     syncLog={device:navigator.userAgent,when:new Date().toISOString(),mode:routineOn()?'routine':'clip',correction_ms:Math.round((S.avComp||0)*1000),samples,summary:{median_ms:med,p5_ms:p5,p95_ms:p95,frames:use.length,pass}};
     out.innerHTML='';
     out.append(el('b',null,pass?'In sync on this phone.':'Out of sync on this phone.'));
-    out.append(document.createTextNode(' Typical offset '+(med>0?'+':'')+Math.round(med)+' ms (sound '+(med>=0?'ahead':'behind')+'); 90% of frames between '+Math.round(p5)+' and +'+Math.round(p95)+' ms, from '+use.length+' frames. Limits: sound up to 45 ms early or 125 ms late (ITU-R BT.1359). Doesn’t include Bluetooth or AirPlay delay, which can add 150–250 ms. Recordings are built from the same timeline, so they line up by design. '));
+    out.append(document.createTextNode(' Typical offset '+(med>0?'+':'')+Math.round(med)+' ms (sound '+(med>=0?'ahead':'behind')+'); 90% of frames between '+Math.round(p5)+' and '+(p95>0?'+':'')+Math.round(p95)+' ms, from '+use.length+' frames. Limits: sound up to 45 ms early or 125 ms late (ITU-R BT.1359). Doesn’t include Bluetooth or AirPlay delay, which can add 150–250 ms. Recordings are built from the same timeline, so they line up by design. '));
     if(Math.abs(med)>15){const fx=el('button','btn sm primary','Correct for this phone');
       fx.addEventListener('click',()=>{S.avComp=clamp((S.avComp||0)-med/1000,-0.3,0.3);try{localStorage.setItem('rs-avcomp',String(S.avComp))}catch(e){}
         fx.textContent='Corrected by '+Math.round(-med)+' ms · run the check again to confirm';fx.disabled=true});out.append(fx,document.createTextNode(' '))}
@@ -753,6 +753,224 @@ rep("""now-(S.earlyFix||0)>200){S.earlyFix=now;S.driftEma=0;a.currentTime=e;retu
 rep("""||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;a.currentTime=e}""",
     """||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}""")
 rep("""    if(S.hasV)a.currentTime=e;""", """    if(S.hasV)seekSong(e);""")
+
+# ------------------------------------------------------------------ calm beat display, clear tracking, tap to check
+rep(""".note{font-size:13px;""", """/* beat lights: Off / Calm / Flash */
+body.bv-off #pulses{display:none!important}
+body.bv-calm .beats i{transition:background .35s ease,color .35s ease,border-color .35s ease}
+body.bv-calm .beats.d i.on{background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
+body.bv-calm .beats.s i.on{background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
+.beats.unsure i{border-style:dashed;opacity:.5}
+.beats.unsure b::after{content:" ?"}
+#songCard.cleared .row>:not(#beatFind),#songCard.cleared .warnlist,#songCard.cleared .hint.ear{display:none}
+#songCard:not(.cleared) #beatFind{display:none}
+.okmsg{color:var(--ok)!important}
+.note{font-size:13px;""")
+rep("""      <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
+""", """      <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
+        <div class="field">
+          <div class="subhead"><span class="label">Beat lights</span>
+            <div class="seg" id="bvSeg" role="group" aria-label="Beat lights" style="grid-template-columns:repeat(3,auto)">
+              <button data-bv="off" aria-pressed="false" style="padding:0 12px">Off</button>
+              <button data-bv="calm" aria-pressed="true" style="padding:0 12px">Calm</button>
+              <button data-bv="flash" aria-pressed="false" style="padding:0 12px">Flash</button>
+            </div></div>
+          <p class="hint">Calm shows the count under the video without flashing the frame. When the app isn't sure of a beat, its lights go dim with a "?", and they never flash.</p>
+        </div>
+""")
+rep("""          <button class="btn ghost" id="tClear">Clear both</button>""",
+    """          <div class="row" style="gap:6px"><button class="btn ghost" id="tClear">Clear both</button><button class="btn ghost" id="tAll">Clear all tracking</button></div>""")
+rep("""            <label class="check"><input type="checkbox" id="clickOn"> Click on each beat</label>
+          </div>""", """            <label class="check"><input type="checkbox" id="clickOn"> Click on each beat</label>
+          </div>
+          <div class="row">
+            <button class="btn sm" id="beatCheck">Tap to check</button>
+            <button class="btn sm" id="beatOne">This is the 1</button>
+            <button class="btn ghost sm" id="beatClear">Clear beat</button>
+            <button class="btn sm" id="beatFind">Find the beat again</button>
+          </div>
+          <p class="hint" id="beatCheckMsg"></p>""")
+rep("""          <p class="hint">Turn on the click and play: if the clicks don't sit on the kick""", """          <p class="hint ear">Turn on the click and play: if the clicks don't sit on the kick""")
+rep("""          <ul class="warnlist" id="danceWarn"></ul>
+        </div>""", """          <ul class="warnlist" id="danceWarn"></ul>
+          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>
+          <p class="hint" id="hitCheckMsg"></p>
+        </div>""")
+
+# song meta keeps the dancer's decisions
+rep("""function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.size,forceBpm:so.forceBpm||null,beatShift:so.beatShift||0}:null}""",
+"""function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.size,forceBpm:so.forceBpm||null,beatShift:so.beatShift||0,
+  confirmed:!!so.confirmed,oneAt:so.oneAt??null,cleared:!!so.cleared}:null}""")
+rep("""    forceBpm:meta&&meta.forceBpm||null,beatShift:meta&&meta.beatShift||0,an:null};""",
+"""    forceBpm:meta&&meta.forceBpm||null,beatShift:meta&&meta.beatShift||0,an:null,
+    confirmed:!!(meta&&meta.confirmed),oneAt:meta&&meta.oneAt!=null?meta.oneAt:null,cleared:!!(meta&&meta.cleared)};""")
+# analysis: apply the dancer's "1", don't apply a cleared beat, run follow-ups
+rep("""      so.an=an;
+    }catch(e){so.an=null}
+    if(so===S.mainSong){if(apply)S.beatSrc='detected';if(S.beatSrc!=='tapped')applyDetectedBeat(so)}
+    renderSongCard(); scheduleFit();""", """      setOne(so,an);
+      so.an=an;
+    }catch(e){so.an=null}
+    if(so===S.mainSong&&!so.cleared){if(apply)S.beatSrc='detected';if(S.beatSrc!=='tapped')applyDetectedBeat(so)}
+    renderSongCard(); scheduleFit();
+    if(so._after){const f=so._after;so._after=null;f()}""")
+rep("""  if(so.an&&so.an.beats.length>4)return {beats:so.an.beats,down:so.an.downbeats,bpm:so.an.bpm};
+  return null;""", """  if(so.cleared)return null;
+  if(so.an&&so.an.beats.length>4)return {beats:so.an.beats,down:so.an.downbeats,bpm:so.an.bpm};
+  return null;""")
+rep("""  if(!so||!so.an){card.hidden=!(so&&so.ready&&!so.an&&so.buf);if(!card.hidden){$('#songDet').textContent='Finding the beat…'}return}
+  card.hidden=false; const an=so.an;""", """  if(!so||!so.an){card.hidden=!(so&&so.ready&&!so.an&&so.buf);if(!card.hidden){$('#songDet').textContent='Finding the beat…'}return}
+  card.hidden=false; const an=so.an;
+  card.classList.toggle('cleared',!!so.cleared);
+  if(so.cleared){$('#songDet').textContent='Beat tracking cleared';return}""")
+rep("""  if(an.contrast<0.6)warn('Beats barely stand out from the rest of the track, so beat positions may be off.');""",
+"""  if(!so.confirmed&&an.conf>=0.5&&(an.phaseConf??1)<0.2)warn("Not sure whether the beat is here or half a beat later (the kick doesn't settle it). Tap to check, or listen with the click.");""")
+rep("""  $('#songDet').textContent=an.bpm.toFixed(1)+' BPM · '+Math.round(an.conf*100)+'% sure'+(S.beatSrc==='tapped'?' · using your taps':'');""",
+"""  $('#songDet').textContent=an.bpm.toFixed(1)+' BPM · '+(so.confirmed?'checked by your taps ✓':songSure()?'sure':'not sure')+(S.beatSrc==='tapped'?' · using your taps':'');""")
+rep("""  if(an.downConf<0.15)warn("Not sure which beat is the 1 of the bar.");""",
+"""  if(an.downConf<0.15&&so.oneAt==null)warn('Not sure which beat is the 1 of the bar. Press "This is the 1" on a 1 while it plays.');""")
+# dance card: show check/clear when there are hits
+rep("""  const m=n.motion; info.textContent=m.beats.length+' hits found in '+n.name+' · dance tempo about '+m.bpm.toFixed(0)+' BPM.';""",
+"""  const m=n.motion; info.textContent=m.beats.length+' hits found in '+n.name+' · dance tempo about '+m.bpm.toFixed(0)+' BPM'+(m.confirmed?' · checked by your taps ✓':danceSure()?'':' · not sure')+'.';
+  $('#hitRow').hidden=false;""")
+rep("""  if(!n){info.textContent='Add a dance video first.';return}""", """  $('#hitRow').hidden=true;
+  if(!n){info.textContent='Add a dance video first.';return}""")
+rep("""  if(m.contrast<0.55)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');
+  if(m.cam>0.8)warn('The camera moves a lot. Camera motion is removed, but strong pans can hide hits.');""",
+"""  if(m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');
+  if((m.shake||0)>=0.6)warn('The camera shakes, which makes stops hard to tell from wobble. Hits from this clip are less reliable: prop the phone up if you can.');
+  else if(m.cam>0.8)warn('The camera moves a lot. Camera motion is removed, but strong pans can hide hits.');""")
+# lights: setting + confidence gate
+rep("""  dLights.forEach((l,i)=>l.classList.toggle('on',i===d.idx));
+  sLights.forEach((l,i)=>l.classList.toggle('on',i===s.idx));
+  stage.classList.toggle('pulse-d',d.pulse);
+  stage.classList.toggle('pulse-s',s.pulse);""", """  const bv=S.beatView, sOk=songSure(), dOk=danceSure();
+  dBeatsEl.classList.toggle('unsure',!dOk); sBeatsEl.classList.toggle('unsure',!sOk);
+  dLights.forEach((l,i)=>l.classList.toggle('on',bv!=='off'&&i===d.idx));
+  sLights.forEach((l,i)=>l.classList.toggle('on',bv!=='off'&&i===s.idx));
+  stage.classList.toggle('pulse-d',bv==='flash'&&dOk&&d.pulse);
+  stage.classList.toggle('pulse-s',bv==='flash'&&sOk&&s.pulse);""")
+rep("""const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage');""",
+    """const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');""")
+
+rep("""/* ---------- dance hits (motion beats) ---------- */""", r"""/* ---------- trust, beat lights setting, clearing, tap to check ---------- */
+function songSure(){
+  if(S.beatSrc==='tapped')return true;
+  const so=S.mainSong; if(!so||!so.an||so.cleared)return !!S.sBase;
+  if(so.confirmed)return true;
+  return so.an.conf>=0.5&&(so.an.phaseConf??1)>=0.2;
+}
+function danceSure(){
+  if(S.danceSrc!=='detected')return true;
+  const n=srcById(S.cur), m=n&&n.motion; if(!m)return true;
+  if(m.confirmed)return true;
+  return (m.contrast??1)>=0.6&&(m.shake||0)<0.6;
+}
+function setBeatView(v0,save){
+  S.beatView=v0; document.body.classList.remove('bv-off','bv-calm','bv-flash'); document.body.classList.add('bv-'+v0);
+  $$('#bvSeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bv===v0)));
+  if(save)try{localStorage.setItem('rs-beatview',v0)}catch(e){}
+}
+(()=>{let v0=null;try{v0=localStorage.getItem('rs-beatview')}catch(e){}
+  if(!['off','calm','flash'].includes(v0)){let rm=false;try{rm=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}v0=rm?'off':'calm'}
+  setBeatView(v0,false)})();
+$$('#bvSeg button').forEach(b=>b.addEventListener('click',()=>setBeatView(b.dataset.bv,true)));
+/* the dancer's "1": downbeats are every 4th beat counting from the beat nearest to where they pressed */
+function setOne(so,an){
+  if(!so||!an||so.oneAt==null||!an.beats.length)return;
+  let bi=0;an.beats.forEach((t,i)=>{if(Math.abs(t-so.oneAt)<Math.abs(an.beats[bi]-so.oneAt))bi=i});
+  an.downbeats=an.beats.filter((t,i)=>(i-bi)%4===0); an.downConf=1;
+}
+const bMsg=(t,ok)=>{const m=$('#beatCheckMsg');m.textContent=t||'';m.classList.toggle('okmsg',!!ok)};
+const hMsg=(t,ok)=>{const m=$('#hitCheckMsg');m.textContent=t||'';m.classList.toggle('okmsg',!!ok)};
+function clearBeat(so,quiet){
+  if(!so)return; so.cleared=true; so.confirmed=false; so.oneAt=null;
+  if(so===S.mainSong&&S.beatSrc!=='tapped')clearSong();
+  if(!quiet)bMsg('Beat tracking cleared: no beat grid, lights, click or fit for this song. Tap a tempo in the Tempo tab, or find the beat again.');
+  renderSongCard(); updateMatch(); scheduleFit();
+}
+$('#beatClear').addEventListener('click',()=>clearBeat(S.mainSong));
+$('#beatFind').addEventListener('click',()=>{const so=S.mainSong;if(!so)return;so.cleared=false;bMsg('');analyzeSongObj(so,true)});
+function clearHits(n,quiet){
+  if(!n)return; n.motion=null;
+  if(n.id===S.cur&&S.danceSrc==='detected')clearDance();
+  if(!quiet)hMsg('Hits cleared for this clip. Moves from it no longer count toward the fit or alignment.');
+  renderDance(); renderMoves(); updateMatch(); scheduleFit();
+}
+$('#hitClear').addEventListener('click',()=>clearHits(srcById(S.cur)));
+$('#tAll').addEventListener('click',()=>{
+  [S.mainSong,S.rtSong].forEach(so=>{if(so)clearBeat(so,true)});
+  S.sources.forEach(n=>{n.motion=null});
+  S.seq.forEach(x=>{delete x.warp;delete x.warpR}); if(S.rt)S.rt.alignOn=false;
+  clearDance(); clearSong(); S.beatSrc='detected'; S.danceSrc=null;
+  bMsg('');hMsg('');renderSongCard();renderDance();renderMoves();updateTrim();updateMatch();scheduleFit();
+  const m=$('#verdict'); if(m)m.textContent='Tracking cleared';
+});
+/* collect taps against a media element's clock; resets after a 2 s pause */
+function tapLog(){let t=[];return {add(x){if(t.length&&(x<t[t.length-1]||x-t[t.length-1]>2))t=[];t.push(x);if(t.length>16)t.shift();return t.slice()},reset(){t=[]}}}
+const songTaps=tapLog(), hitTaps=tapLog();
+const circMean=fr=>{let c=0,s2=0;for(const f of fr){c+=Math.cos(2*Math.PI*f);s2+=Math.sin(2*Math.PI*f)}return Math.atan2(s2,c)/(2*Math.PI)};
+function judgeSongTaps(so,T,round){
+  const iv=[];for(let i=1;i<T.length;i++)iv.push(T[i]-T[i-1]); const per=RA.median(iv), tapBpm=60/per;
+  const G=so.an&&!so.cleared?{beats:so.an.beats,bpm:so.an.bpm}:null;
+  const useTaps=why=>{S.beatSrc='tapped';S.sBase=+tapBpm.toFixed(2);S.sAnchor=T[0];$('#sBpm').value=S.sBase.toFixed(1);so.confirmed=false;
+    bMsg(why+' Your tapped tempo ('+tapBpm.toFixed(1)+' BPM) is used instead.',true);renderSongCard();updateMatch();scheduleFit()};
+  if(!G){useTaps('There was no detected beat.');return}
+  const r=tapBpm/G.bpm;
+  if(Math.abs(r-1)<0.06){
+    const p=60/G.bpm, fr=T.map(t=>{let b=G.beats[0];for(const x of G.beats)if(Math.abs(x-t)<Math.abs(b-t))b=x;return (t-b)/p});
+    const ph=circMean(fr), miss=RA.median(fr.map(f=>Math.abs(f-ph)))*p*1000;
+    if(Math.abs(ph)<=0.2){so.confirmed=true;bMsg('✓ Your taps match the beat (typical difference '+Math.round(Math.abs(ph)*p*1000)+' ms, your own spread '+Math.round(miss)+' ms).',true);renderSongCard();scheduleFit();return}
+    if(Math.abs(ph)>=0.3&&round<2){so.beatShift=so.beatShift?0:0.5;so.confirmed=false;S.beatSrc='detected';so._after=()=>{so.confirmed=true;bMsg('Your taps were half a beat away from the detected beat, so the beat moved to where you tapped ✓',true);renderSongCard()};analyzeSongObj(so,true);return}
+    bMsg('Your taps land between the beat and the "and". Try again, tapping on the kick drum.');return;
+  }
+  if(round<2){
+    const near=[G.bpm*2,G.bpm/2].concat((so.an.candidates||[]).map(c=>c.bpm)).filter(b=>Math.abs(b/tapBpm-1)<0.06);
+    if(near.length){so.forceBpm=+near[0].toFixed(2);so.beatShift=0;so.confirmed=false;S.beatSrc='detected';bMsg('Your taps say about '+tapBpm.toFixed(0)+' BPM, so the beat is being found again at that tempo…');
+      so._after=()=>judgeSongTaps(so,T,round+1);analyzeSongObj(so,true);return}
+  }
+  useTaps('The detected tempo ('+G.bpm.toFixed(1)+') doesn\'t match your taps.');
+}
+$('#beatCheck').addEventListener('click',()=>{
+  const so=S.mainSong; if(!so)return;
+  if(!S.hasA||a.paused){songTaps.reset();bMsg('Press play, then tap this button on every beat (on the kick). 6 taps is enough.');return}
+  const T=songTaps.add(a.currentTime);
+  if(T.length<6){bMsg('Keep tapping… '+T.length+' of 6');return}
+  songTaps.reset(); judgeSongTaps(so,T,0);
+});
+$('#beatOne').addEventListener('click',()=>{
+  const so=S.mainSong; if(!so)return;
+  if(!S.hasA||a.paused){bMsg('Press play, then press "This is the 1" right on a 1 (the start of a bar).');return}
+  so.oneAt=a.currentTime;
+  if(so.an&&!so.cleared){setOne(so,so.an);if(S.beatSrc!=='tapped')applyDetectedBeat(so)}
+  else if(S.beatSrc==='tapped')S.sAnchor=a.currentTime;
+  bMsg('The 1 is set ✓',true); renderSongCard(); scheduleFit();
+});
+$('#hitCheck').addEventListener('click',()=>{
+  const n=srcById(S.cur); if(!n||!n.motion)return;
+  if(routineOn()||v.paused){hitTaps.reset();hMsg('Play this clip (Clip mode), then tap this button on each hit. 6 taps is enough.');return}
+  const T=hitTaps.add(v.currentTime);
+  if(T.length<6){hMsg('Keep tapping on the hits… '+T.length+' of 6');return}
+  hitTaps.reset();
+  const H=n.motion.beats.map(b=>b.t), near=T.filter(t=>H.some(h=>Math.abs(h-t)<0.12)).length, fr=near/T.length;
+  if(fr>=0.7){n.motion.confirmed=true;hMsg('✓ '+near+' of '+T.length+' taps landed on a detected hit.',true)}
+  else{n.motion.confirmed=false;hMsg('Only '+near+' of '+T.length+' taps landed near a detected hit, so the hits for this clip may be off. You can clear them, or tap the dance tempo in the Tempo tab instead.')}
+  renderDance(); scheduleFit();
+});
+
+/* ---------- dance hits (motion beats) ---------- */""")
+
+# app analysis now uses the dancer-region detector
+rep("""    let W=80,H=80,prev=null,series=[],done=false,lastT=-1;
+    const finish=()=>{if(done)return;done=true;try{ve.pause()}catch(e){}ve.remove();
+      const res=series.length>10?RA.analyzeMotion(series):null; resolve(res)};""",
+"""    let W=80,H=80,prev=null,series=[],done=false,lastT=-1;
+    const finish=()=>{if(done)return;done=true;try{ve.pause()}catch(e){}ve.remove();
+      let res=null;try{res=series.length>10?RA.analyzeMotionVecs(series,W,H):null}catch(e){res=null}
+      series=[];prev=null;try{ve.removeAttribute('src');ve.load()}catch(e){}   /* free the frames and the decoder before anything else plays */
+      resolve(res)};""")
+rep("""      if(prev){const dg=RA.directogram(RA.flowPyr(prev,g,W,H,8));series.push({t,D:dg.D,cam:dg.cam,mag:dg.mag})}""",
+"""      if(prev){const fv=RA.flowVecs(prev,g,W,H,8),pk=new Float32Array(fv.length*4);fv.forEach((q,i)=>{pk[4*i]=q[0];pk[4*i+1]=q[1];pk[4*i+2]=q[2];pk[4*i+3]=q[3]});series.push({t,p:pk})}""")
 
 P.write_text(s)
 print('patched', len(s))

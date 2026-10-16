@@ -39,7 +39,7 @@ const RA=(function(){
     /* mono, downsampled, padded by half a window so frame f is centred on time f*H */
     const x=new Float32Array(n+pad);
     for(let i=pad;i<n;i++){const j=i-pad;let s=0;for(let c=0;c<chans.length;c++){const ch=chans[c];for(let k=0;k<d;k++)s+=ch[j*d+k]||0}x[i]=s/(d*chans.length)}
-    const fft=makeFFT(N),win=new Float64Array(N);
+        const fft=makeFFT(N),win=new Float64Array(N);
     for(let i=0;i<N;i++)win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
     const frames=Math.max(0,Math.floor((n-N)/H)+1), fps=sr2/H;
     const env=new Float32Array(frames), low=new Float32Array(frames), loud=new Float32Array(frames), lowE=new Float32Array(frames);
@@ -141,17 +141,58 @@ const RA=(function(){
   function analyzeSong(chans,sr,opt){
     const o=onsetEnvelope(chans,sr), tp=tempo(o.env,o.fps,opt,o.low);
     if(opt&&opt.forceBpm)tp.bpm=opt.forceBpm;   /* the dancer picked another tempo candidate */
-    let bt=beats(o.env,o.fps,tp.bpm);
-    /* phase check: the beat sits where the low end (kick + bass) is strongest. If half a beat later is clearly
-       stronger, the tracker locked onto the off-beat, so move the grid. */
-    const per=60/tp.bpm, eAt=t=>{const i=Math.round(t*o.fps);let m=0;for(let k=i-3;k<=i+3;k++)if(k>=0&&k<o.lowE.length)m=Math.max(m,o.lowE[k]);return m};
-    const eOn=median(bt.map(eAt)), eHalf=median(bt.map(t=>eAt(t+per/2)));
-    let shifted=false; if(!(opt&&opt.noPhaseFix)&&eHalf>eOn*1.1){bt=bt.map(t=>t+per/2).filter(t=>t<o.lowE.length/o.fps);shifted=true}
+    opt=opt||{};
+    const peakAt=(a,t,r)=>{const i=Math.round(t*o.fps);let m=0;for(let k=i-r;k<=i+r;k++)if(k>=0&&k<a.length)m=Math.max(m,a[k]);return m};
+    const mean=a=>a.length?a.reduce((p,q)=>p+q,0)/a.length:0;
+    /* kick envelope: rises in low-end energy (the kick is the loudest low event) */
+    const kick=new Float32Array(o.lowE.length);for(let i=1;i<kick.length;i++)kick[i]=Math.max(0,o.lowE[i]-o.lowE[i-1]);
+    let bpm=tp.bpm;
+    /* bar check: the kick pattern repeats every bar. Among strong tempo candidates, prefer one whose 4-beat bar
+       matches the kick's own repetition clearly better (catches 4/3 and 2/3 mistakes on sparse one-drop and dembow). */
+    if(!opt.forceBpm&&!opt.noBarCheck&&tp.candidates&&tp.candidates.length){
+      let kk=0;for(let i=0;i<kick.length;i++)kk+=kick[i]*kick[i];
+      const kac=b=>{const L=Math.round(4*60/b*o.fps);let best=0;for(let l=L-2;l<=L+2;l++){if(l<=0||l>=kick.length)continue;let sum=0;for(let i=0;i+l<kick.length;i++)sum+=kick[i]*kick[i+l];best=Math.max(best,sum)}return kk?best/kk:0};
+      const base=kac(bpm);let pick=null,pv=base;
+      for(const c of tp.candidates){if(c.score<0.6||Math.abs(c.bpm/bpm-1)<0.04||Math.abs(c.bpm/bpm-2)<0.08||Math.abs(c.bpm/bpm-0.5)<0.04)continue;
+        const v=kac(c.bpm);if(v>pv*1.3&&v>base*1.3){pv=v;pick=c}}
+      if(pick){tp.barSwitched={from:bpm,to:pick.bpm};bpm=pick.bpm}
+    }
+    let bt=beats(o.env,o.fps,bpm);
+    /* metrical level: if the points half-way between beats carry as much kick as the beats, the song was
+       read at half its tempo (e.g. Jersey club's kick on every beat) */
+    if(!opt.forceBpm&&!opt.noLevelFix&&bpm<=90){
+      const per0=60/bpm, slotMax=sh=>{const sl=[0,0,0,0],n=[0,0,0,0];bt.forEach((t,i)=>{sl[i%4]+=peakAt(kick,t+sh,2);n[i%4]++});return Math.max(...sl.map((v,k)=>n[k]?v/n[k]:0))};
+      /* kick profile over the beat in 1/16 steps (phase-independent): find the strongest kick position, then
+         look half a beat away from it */
+      const prof=[];for(let k=0;k<16;k++)prof.push(slotMax(k*per0/16));
+      let bi=0;for(let k=1;k<16;k++)if(prof[k]>prof[bi])bi=k;
+      const kOn=prof[bi], kMid=Math.max(prof[(bi+7)%16],prof[(bi+8)%16],prof[(bi+9)%16]);
+      if(kMid>0.8*kOn){bpm*=2;bt=beats(o.env,o.fps,bpm)}
+    }
+    /* phase: the beat sits where the kick is. Averages (not medians) so beats with no kick don't outvote
+       beats with one. If half a beat later is clearly stronger, the tracker locked onto the off-beat chords. */
+    const per=60/bpm;
+    /* Score a grid shift by its strongest bar slot: the kick returns to the same place in every bar, so the slot
+       holding it has a high average, while bass notes and chords spread over all slots. Search shifts in 1/16-beat
+       steps so swung off-beats and pushed bass (one-drop) can't hold the grid off the kick. */
+    const kAt=t=>peakAt(kick,t,1);
+    const slotScore=sh=>{const sl=[0,0,0,0],n=[0,0,0,0];bt.forEach((t,i)=>{sl[i%4]+=kAt(t+sh*per);n[i%4]++});return Math.max(...sl.map((v,k)=>n[k]?v/n[k]:0))};
+    const eOn=slotScore(0);let bestSh=0,eHalf=eOn;
+    for(let k=1;k<16;k++){const sh=k/16,v=slotScore(sh);if(v>eHalf){eHalf=v;bestSh=sh}}
+    let shifted=false; if(!opt.noPhaseFix&&bestSh&&eHalf>eOn*1.15){const d=(bestSh>0.5?bestSh-1:bestSh)*per;bt=bt.map(t=>t+d).filter(t=>t>=0&&t<o.lowE.length/o.fps);shifted=bestSh}
+    /* refine each beat to the sub-frame peak of the onset envelope nearby (frames are ~12 ms) */
+    if(!opt.noRefine)bt=bt.map(t=>{const i=Math.round(t*o.fps);let bi=i,bv=-1;for(let k=i-2;k<=i+2;k++)if(k>0&&k<o.env.length-1&&o.env[k]>bv){bv=o.env[k];bi=k}
+      if(bi<=0||bi>=o.env.length-1||bv<=0)return t;const y0=o.env[bi-1],y1=o.env[bi],y2=o.env[bi+1],den=y0-2*y1+y2;const d=den<0?0.5*(y0-y2)/den:0;return (bi+clamp(d,-0.5,0.5))/o.fps});
+    tp.bpm=bpm;
     const db=downbeats(bt,o.lowE,o.full,o.fps,4);
     /* contrast of the beat: how much stronger onsets are on beats than off them (weak kick -> low) */
     const on=bt.map(t=>o.env[Math.round(t*o.fps)]||0), off=bt.slice(0,-1).map((t,i)=>o.env[Math.round((t+bt[i+1])/2*o.fps)]||0);
     const contrast=median(on)/(median(off)+median(on)+1e-6);
-    return {bpm:tp.bpm,conf:tp.conf,candidates:tp.candidates,beats:bt,downbeats:db.times,downConf:db.conf,phase:db.phase,contrast,fps:o.fps,phaseShifted:shifted,lowOn:eOn,lowHalf:eHalf};
+    /* phase certainty: how clearly the kick sits on the chosen beat positions rather than anywhere else in the beat
+       (compared with half a beat later: the usual mix-up; 0 = can't tell, 1 = clear). Off-beat chords don't lower this; a missing or smeared kick does. */
+    let pOn=slotScore(0),pOther=0;for(let k=7;k<=9;k++)pOther=Math.max(pOther,slotScore(k/16));
+    const phaseConf=pOn>0?clamp(1-pOther/pOn,0,1):0;
+    return {phaseConf,bpm:tp.bpm,conf:tp.conf,candidates:tp.candidates,beats:bt,downbeats:db.times,downConf:db.conf,phase:db.phase,contrast,fps:o.fps,phaseShifted:shifted,lowOn:eOn,lowHalf:eHalf};
   }
 
   /* ---------- dance: optical flow between two small greyscale frames ---------- */
@@ -180,6 +221,7 @@ const RA=(function(){
   function sad(prev,cur,w,h,bx,by,B,dx,dy,limit){
     if(bx+dx<0||by+dy<0||bx+dx+B>w||by+dy+B>h)return Infinity;
     let s=0;for(let y=0;y<B;y++){const r1=(by+y)*w+bx,r0=(by+y+dy)*w+bx+dx;for(let x=0;x<B;x++){const d=cur[r1+x]-prev[r0+x];s+=d<0?-d:d}if(s>=limit)return s}return s}
+  const CFG={subpix:true,subMin:0.1,impWin:3,heatW:true,heatPow:0.5,heatGain:2,camPrior:true,dateFrac:1};
   function flowPyr(prev,cur,w,h,B){
     B=B||8; const P=halve(prev,w,h),C=halve(cur,w,h), cw=P.w,ch=P.h, R=4, cm=new Map();
     for(let by=0;by+B<=ch;by+=B)for(let bx=0;bx+B<=cw;bx+=B){
@@ -188,14 +230,32 @@ const RA=(function(){
       cm.set((by/B)+','+(bx/B),bd);
     }
     const vecs=[];
+    /* camera guess: the whole-frame shift (within 3 px) that best lines up the two frames. The background usually
+       covers most of the frame, so this is the phone's own movement. */
+    let camX=0,camY=0;if(CFG.camPrior){let bt=Infinity;for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){let t=0;
+      for(let by=8;by+B<=h-8&&t<bt;by+=B)for(let bx=8;bx+B<=w-8;bx+=B)t+=sad(prev,cur,w,h,bx,by,B,dx,dy,Infinity);
+      t+=(Math.abs(dx)+Math.abs(dy))*0.5;if(t<bt){bt=t;camX=dx;camY=dy}}}
     for(let by=0;by+B<=h;by+=B)for(let bx=0;bx+B<=w;bx+=B){
       let mn=255,mx=0;for(let y=0;y<B;y+=2)for(let x=0;x<B;x+=2){const v=cur[(by+y)*w+bx+x];if(v<mn)mn=v;if(v>mx)mx=v}
       if(mx-mn<12)continue;
       const g=cm.get(Math.floor(by/2/B)+','+Math.floor(bx/2/B))||[0,0], gx=2*g[0], gy=2*g[1];
-      const zero=sad(prev,cur,w,h,bx,by,B,0,0,Infinity); let best=zero,bdx=0,bdy=0;
+      /* start from the camera's motion (zero if the phone is still): a block only gets its own motion when that
+         clearly matches better, so repeating textures and noise don't produce fake movement under camera shake */
+      let zx=0,zy=0,zero=sad(prev,cur,w,h,bx,by,B,0,0,Infinity);
+      if(CFG.camPrior&&(camX||camY)){let bc=Infinity,bcx=0,bcy=0;for(let dy=camY-1;dy<=camY+1;dy++)for(let dx=camX-1;dx<=camX+1;dx++){const v=sad(prev,cur,w,h,bx,by,B,dx,dy,bc);if(v<bc){bc=v;bcx=dx;bcy=dy}}
+        if(bc<=zero+B*B){zero=bc;zx=bcx;zy=bcy}}
+      let best=zero,bdx=zx,bdy=zy;
       for(let dy=gy-2;dy<=gy+2;dy++)for(let dx=gx-2;dx<=gx+2;dx++){const v=sad(prev,cur,w,h,bx,by,B,dx,dy,best);if(v<best){best=v;bdx=dx;bdy=dy}}
-      if(zero-best<B*B*2){bdx=0;bdy=0}
-      vecs.push([-bdx,-bdy]);
+      if(zero-best<B*B*2){bdx=zx;bdy=zy;best=zero}
+      /* sub-pixel: a parabola through the match cost either side. Most body motion at this size is under
+         1 px per frame, and whole-pixel steps would flicker on and off and look like hits. */
+      let fx=0,fy=0;
+      if(CFG.subpix){const sx0=sad(prev,cur,w,h,bx,by,B,bdx-1,bdy,Infinity),sx2=sad(prev,cur,w,h,bx,by,B,bdx+1,bdy,Infinity),
+        sy0=sad(prev,cur,w,h,bx,by,B,bdx,bdy-1,Infinity),sy2=sad(prev,cur,w,h,bx,by,B,bdx,bdy+1,Infinity);
+        const dx2=sx0-2*best+sx2,dy2=sy0-2*best+sy2;
+        if(dx2>0&&isFinite(dx2))fx=clamp(0.5*(sx0-sx2)/dx2,-0.5,0.5); if(dy2>0&&isFinite(dy2))fy=clamp(0.5*(sy0-sy2)/dy2,-0.5,0.5);
+        if(Math.abs(fx)<CFG.subMin)fx=0; if(Math.abs(fy)<CFG.subMin)fy=0}
+      vecs.push([-(bdx+fx),-(bdy+fy),bx/B,by/B]);   /* vector + block position (for finding where the dancer is) */
     }
     return vecs;
   }
@@ -213,7 +273,14 @@ const RA=(function(){
     const n=series.length; if(n<3)return {env:new Float32Array(0),fps:60,t0:0,cam:0};
     const raw=[];
     /* the stop happened between frame i-1 and frame i, so date it half-way */
-    for(let i=1;i<n;i++){const a=series[i-1].D,b=series[i].D,dt=Math.max(1/120,series[i].t-series[i-1].t);let s=0;for(let k=0;k<8;k++){const d=a[k]-b[k];if(d>0)s+=d}raw.push({t:series[i].t-dt/2,v:s/dt})}
+    /* A hit is motion that stops and stays stopped (or turns). Compare the average motion over a short window
+       before each frame boundary with the window after it, so a single jerky frame (variable frame rate, compression)
+       doesn't look like a hit. */
+    const Wn=Math.max(1,CFG.impWin|0);
+    for(let i=1;i<n;i++){const dt=Math.max(1/120,series[i].t-series[i-1].t);let s=0;
+      for(let k=0;k<8;k++){let A=0,Bv=0,na=0,nb=0;for(let j=i-Wn;j<i;j++)if(j>=0){A+=series[j].D[k];na++}for(let j=i;j<i+Wn;j++)if(j<n){Bv+=series[j].D[k];nb++}
+        const d=(na?A/na:0)-(nb?Bv/nb:0);if(d>0)s+=d}
+      raw.push({t:series[i].t-dt*CFG.dateFrac,v:s/dt})}
     const fps=60,t0=raw[0].t,t1=raw[raw.length-1].t,len=Math.max(1,Math.round((t1-t0)*fps)+1),env=new Float32Array(len);
     let j=0;for(let i=0;i<len;i++){const t=t0+i/fps;while(j<raw.length-2&&raw[j+1].t<=t)j++;const A=raw[j],B=raw[Math.min(raw.length-1,j+1)];
       const u=B.t>A.t?clamp((t-A.t)/(B.t-A.t),0,1):0;env[i]=A.v+(B.v-A.v)*u}
@@ -230,10 +297,52 @@ const RA=(function(){
     for(let i=1;i<n-1;i++){
       const v=env[i]; if(v<ma[i]+k*st.std||v<env[i-1]||v<env[i+1])continue;
       let ok=true;for(let j=Math.max(0,i-gap);j<=Math.min(n-1,i+gap);j++)if(env[j]>v){ok=false;break}
-      if(ok)out.push({t:t0+i/fps,w:v});
+      /* sub-frame timing: fit a parabola through the peak and its neighbours */
+      if(ok){const y0=env[i-1],y2=env[i+1],den=y0-2*v+y2,d=den<0?clamp(0.5*(y0-y2)/den,-0.5,0.5):0;out.push({t:t0+(i+d)/fps,w:v})}
     }
     const mx=Math.max(1e-6,...out.map(p=>p.w));out.forEach(p=>p.w=+(p.w/mx).toFixed(3));
     return out;
+  }
+  /* Where is the dancer? Pass 1 builds a heat map of motion that isn't camera motion; the dancer is the connected
+     region around its hottest spot. Another person moving elsewhere in the frame, or background flicker, falls
+     outside it. Pass 2 builds the directograms from that region only, and measures camera motion from the rest. */
+  function analyzeMotionVecs(frames,W,H,opt){
+    opt=opt||{}; const B=8, gw=Math.floor(W/B), gh=Math.floor(H/B), heat=new Float32Array(gw*gh);
+    /* frames: [{t, v:[[vx,vy,bx,by],...]}] or packed {t, p:Float32Array} (4 numbers per block, saves memory on phones) */
+    const VO=f=>{if(f.v)return f.v;const a=[],p=f.p;for(let i=0;i+3<p.length;i+=4)a.push([p[i],p[i+1],p[i+2],p[i+3]]);return a};
+    for(const f0 of frames){const f={v:VO(f0)};if(!f.v.length)continue;const mx=median(f.v.map(v=>v[0])),my=median(f.v.map(v=>v[1]));
+      for(const v of f.v){const m=Math.hypot(v[0]-mx,v[1]-my);if(m>=1&&v[2]<gw&&v[3]<gh)heat[v[3]*gw+v[2]]+=m}}
+    let roi=null, inR=null;
+    if(!opt.noRoi){
+      const sm=new Float32Array(gw*gh);for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){let a=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<gw&&Y<gh)a+=heat[Y*gw+X]}sm[y*gw+x]=a}
+      let pk=0;for(let i=1;i<sm.length;i++)if(sm[i]>sm[pk])pk=i;
+      const thr=sm[pk]*(opt.roiThr||0.2);
+      if(sm[pk]>0){inR=new Uint8Array(gw*gh);const st=[pk];inR[pk]=1;
+        while(st.length){const i=st.pop(),x=i%gw,y=(i/gw)|0;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const X=x+dx,Y=y+dy,j=Y*gw+X;if(X>=0&&Y>=0&&X<gw&&Y<gh&&!inR[j]&&sm[j]>=thr){inR[j]=1;st.push(j)}}}
+        /* grow by one block so limbs at the edge count */
+        const g=inR.slice();for(let y=0;y<gh;y++)for(let x=0;x<gw;x++)if(inR[y*gw+x])for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<gw&&Y<gh)g[Y*gw+X]=1}
+        inR=g; let x0=gw,y0=gh,x1=0,y1=0,cnt=0;for(let i=0;i<inR.length;i++)if(inR[i]){cnt++;const x=i%gw,y=(i/gw)|0;x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}
+        if(cnt<0.85*gw*gh)roi=[x0*B/W,y0*B/H,(x1+1)*B/W,(y1+1)*B/H];else inR=null;   /* fractions of the frame */
+      }
+    }
+    const hm=Math.max(1e-9,...heat), wB=Float32Array.from(heat,v=>Math.min(1,Math.pow(v/hm,CFG.heatPow||0.5)*CFG.heatGain));
+    const series=frames.map(f0=>{const f={t:f0.t,v:VO(f0)};
+      if(!inR){const dg=directogram(f.v);return {t:f.t,D:dg.D,cam:dg.cam,mag:dg.mag}}
+      const out=f.v.filter(v=>!inR[v[3]*gw+v[2]]), ins=f.v.filter(v=>inR[v[3]*gw+v[2]]);
+      const ref=out.length>=8?out:f.v, mx=median(ref.map(v=>v[0])),my=median(ref.map(v=>v[1]));
+      const D=new Float32Array(8);let mag=0;
+      /* weight blocks by how much they move over the whole clip, so still background inside the box (which only
+         carries camera-shake noise) counts for little */
+      let n=0;for(const v of ins){const wt=CFG.heatW?wB[v[3]*gw+v[2]]:1;n+=wt;const x=v[0]-mx,y=v[1]-my,m=Math.hypot(x,y);if(m<0.5)continue;const b=((Math.round(Math.atan2(y,x)/(Math.PI/4))%8)+8)%8;D[b]+=wt*m;mag+=wt*m}
+      n=Math.max(1e-6,n);for(let b=0;b<8;b++)D[b]/=n;
+      return {t:f.t,D,cam:Math.hypot(mx,my),mag:mag/n,cx:mx,cy:my};
+    });
+    const r=analyzeMotion(series);
+    if(r){r.roi=roi;
+      /* shake: how much the camera's motion changes from one frame to the next (a steady pan scores low) */
+      const jd=[];for(let i=1;i<series.length;i++)if(series[i].cx!=null&&series[i-1].cx!=null)jd.push(Math.hypot(series[i].cx-series[i-1].cx,series[i].cy-series[i-1].cy));
+      r.shake=jd.length?median(jd):0}
+    return r;
   }
   function analyzeMotion(series){
     const vi=visualImpulses(series); if(!vi.env.length)return null;
@@ -241,7 +350,9 @@ const RA=(function(){
     const tp=tempo(vi.env,vi.fps,{min:60,max:200,prior:120});
     /* contrast: how much hits stand out from the background motion */
     const on=peaks.map(p=>vi.env[Math.round((p.t-vi.t0)*vi.fps)]||0);
-    const contrast=peaks.length?median(on)/(median(on)+median(Array.from(vi.env))+1e-6):0;
+    /* contrast: typical hit height against the average motion level (mostly near zero for clean hits) */
+    const envMean=Array.from(vi.env).reduce((a,b)=>a+b,0)/Math.max(1,vi.env.length);
+    const contrast=peaks.length?median(on)/(median(on)+4*envMean+1e-6):0;
     return {beats:peaks.map(p=>({t:+p.t.toFixed(3),w:p.w})),bpm:tp.bpm,conf:tp.conf,contrast,cam:vi.cam,mag:vi.mag};
   }
 
@@ -303,7 +414,7 @@ const RA=(function(){
     for(let i=0;i<bt.length;i++){g.push({t:bt[i],w:ds.has(bt[i].toFixed(3))?1.2:1});if(i<bt.length-1)g.push({t:(bt[i]+bt[i+1])/2,w:0.6})}
     return g;
   }
-  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,analyzeMotion,score,warpMove,grid,nearest,median};
+  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
 })();
 if(typeof module!=='undefined')module.exports=RA;
 /*ANALYSIS-END*/
