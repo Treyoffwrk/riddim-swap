@@ -1,0 +1,1861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Riddim Swap</title>
+<meta name="description" content="Put a dance clip on a different song, cut moves and build routines on the beat.">
+<meta name="theme-color" content="#ECEEF2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101216" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Riddim Swap">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<script src="vendor/mp4-muxer.js"></script>
+<style>
+/* Layout: one-screen mixer. Video + transport pinned at the top; settings in three tabs below (Clip / Song / Tempo), so nothing needs a long scroll. Side by side on wide screens. */
+:root{
+  --bg:#ECEEF2; --surface:#FFFFFF; --sunk:#F4F5F8; --ink:#16181D; --muted:#5A606E; --line:#D4D8E0;
+  --dance:#2B4FD6; --song:#9A5E00; --song-hot:#E39A12;
+  --ok:#1C7F52; --warn:#9A6410; --bad:#B53A33; --stage:#0B0C10; --on-stage:#F2F3F6;
+  --f-display:"Bricolage Grotesque", "Arial Narrow", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101216; --surface:#191C22; --sunk:#14161B; --ink:#ECEEF2; --muted:#9AA0AD; --line:#2B303A;
+  --dance:#8AA2FF; --song:#F2B13A; --song-hot:#F2B13A;
+  --ok:#55C98F; --warn:#E6B24F; --bad:#F27D74; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#101216; --surface:#191C22; --sunk:#14161B; --ink:#ECEEF2; --muted:#9AA0AD; --line:#2B303A;
+  --dance:#8AA2FF; --song:#F2B13A; --song-hot:#F2B13A;
+  --ok:#55C98F; --warn:#E6B24F; --bad:#F27D74; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;padding:12px 16px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:12px}
+header{display:flex;align-items:baseline;gap:12px}
+h1{font-family:var(--f-display);font-weight:800;font-size:26px;letter-spacing:-.02em;line-height:1;margin:0}
+h1 span{color:var(--song-hot)}
+header p{margin:0;color:var(--muted);font-size:13px;min-width:0}
+.grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start}
+.col{display:grid;gap:12px;min-width:0}
+.pin{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:5;display:grid;gap:8px;background:var(--bg);padding-bottom:4px}
+@media (max-width:860px){
+  .grid{grid-template-columns:minmax(0,1fr);gap:12px}
+  header p{display:none}
+  h1{font-size:22px}
+  .pin{top:env(safe-area-inset-top,0px);margin:0 -16px;padding:8px 16px 8px;border-bottom:1px solid var(--line)}
+  .stage{aspect-ratio:auto;height:min(56vw,36vh)}
+  .grid>.col:first-child{display:contents}  /* lets the video stay pinned while the settings scroll */
+}
+
+/* stage */
+.stage{position:relative;background:var(--stage);border-radius:12px;overflow:hidden;aspect-ratio:16/10;max-width:100%;outline:3px solid transparent;transition:outline-color .06s}
+.stage.pulse-s{outline-color:var(--song-hot)}
+.stage::after{content:"";position:absolute;inset:0;border-radius:12px;box-shadow:inset 0 0 0 4px var(--dance);opacity:0;pointer-events:none;transition:opacity .06s;z-index:2}
+.stage.pulse-d::after{opacity:1}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:var(--stage);z-index:1}
+.stage video.off{opacity:0;z-index:0;pointer-events:none}
+.stage .empty{z-index:2}
+.empty{position:absolute;inset:8px;display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;color:var(--on-stage);padding:16px;border:2px dashed #3A3F4C;border-radius:10px}
+.empty strong{font-family:var(--f-display);font-size:20px;font-weight:700}
+.empty small{color:#A8AEBB;max-width:34ch}
+.recdot{position:absolute;left:10px;top:10px;display:flex;align-items:center;gap:6px;font:600 12px var(--f-body);color:#fff;background:rgba(190,30,30,.9);padding:4px 10px;border-radius:999px;pointer-events:none}
+.recdot::before{content:"";width:8px;height:8px;border-radius:50%;background:#fff}
+#recCanvas{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none}
+
+/* transport */
+.transport{display:grid;gap:8px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.time{font:500 13px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.playbtn{width:46px;height:46px;border-radius:50%;border:0;background:var(--ink);color:var(--bg);display:grid;place-items:center;cursor:pointer;flex:none}
+.playbtn svg{width:18px;height:18px;fill:currentColor}
+.playbtn:disabled{opacity:.35;cursor:not-allowed}
+input[type=range]{width:100%;accent-color:var(--ink);margin:0}
+.scrubwrap{flex:1;min-width:0;display:grid;gap:2px}
+.trimbar{position:relative;height:4px;border-radius:2px;background:var(--line)}
+.trimbar i{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--dance)}
+.recrow{display:flex;align-items:center;gap:8px;min-width:0}
+
+/* buttons */
+.btn{font:600 13px var(--f-body);border:1px solid var(--line);background:var(--sunk);color:var(--ink);padding:6px 11px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.primary{background:var(--song-hot);color:#16120A;border-color:transparent}
+.btn.rec{background:var(--bad);color:#fff;border-color:transparent}
+.btn.sm{min-height:32px;padding:4px 9px;font:500 13px var(--f-mono)}
+.btn.sm.ghost,.btn.sm.file,.ed-acts .btn{font-family:var(--f-body);font-weight:600}
+.empty .btn{background:#F2F3F6;color:#111;border-color:transparent}
+:focus-visible{outline:2px solid var(--dance);outline-offset:2px}
+.file{position:relative;overflow:hidden}
+.file input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.file:focus-within{outline:2px solid var(--dance);outline-offset:2px}
+
+/* tabs */
+.tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:4px}
+.tab{font:600 13px var(--f-body);border:0;background:transparent;color:var(--muted);padding:8px 6px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;min-height:38px}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tab .dot{width:9px;height:9px;border-radius:50%}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:14px}
+.filebar{display:flex;align-items:center;gap:10px;min-width:0}
+.fname{font-size:13px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.field{display:grid;gap:6px}
+.field-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.val{font:500 15px var(--f-mono);font-variant-numeric:tabular-nums}
+.clip .val{color:var(--dance)} .song .val{color:var(--song)}
+.clip input[type=range]{accent-color:var(--dance)} .song input[type=range]{accent-color:var(--song-hot)}
+.nudges{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:6px}
+.nudges .btn{padding-inline:4px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:420px){.pair{grid-template-columns:1fr}}
+.point{display:grid;gap:6px;background:var(--sunk);border-radius:10px;padding:10px}
+.point .row{gap:6px}
+.hint{font-size:13px;color:var(--muted);margin:0}
+.err{color:var(--bad)!important;font-weight:600}
+.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.sep{border:0;border-top:1px solid var(--line);margin:0}
+
+/* tempo */
+.bpm{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bpm input{width:88px;font:500 15px var(--f-mono);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);color:var(--ink);min-height:36px}
+.pulses{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.beats{display:flex;gap:4px;align-items:center;font-size:12px;font-weight:600;color:var(--muted)}
+.beats b{font-weight:600;margin-right:2px;min-width:38px}
+.beats i{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:500 11px var(--f-mono);font-style:normal;background:var(--sunk);border:1px solid var(--line);color:var(--muted);transition:background .05s,color .05s}
+.beats.d b{color:var(--dance)} .beats.s b{color:var(--song)}
+.beats.d i.on{background:var(--dance);border-color:var(--dance);color:#fff}
+.beats.s i.on{background:var(--song-hot);border-color:var(--song-hot);color:#16120A}
+.btn.ghost{background:transparent}
+/* moves */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:3px}
+.seg button{font:600 13px var(--f-body);border:0;background:transparent;color:var(--muted);border-radius:6px;min-height:34px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.cutter{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:stretch}
+.cutter .btn{flex-direction:column;gap:0;line-height:1.2;padding:6px 8px}
+.cutter .btn small{font:500 12px var(--f-mono);color:var(--muted)}
+.cutter .btn.set small{color:var(--dance)}
+.list{display:grid;gap:6px;margin:0;padding:0;list-style:none}
+.item{display:grid;grid-template-columns:auto 44px minmax(0,1fr) auto;gap:8px;align-items:center;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:6px}
+.item.nonum{grid-template-columns:44px minmax(0,1fr) auto}
+.item .n{font:500 13px var(--f-mono);color:var(--muted);min-width:18px;text-align:center}
+.item img,.item .ph{width:44px;height:44px;border-radius:6px;object-fit:cover;background:var(--stage);display:block}
+.item .meta{display:grid;min-width:0}
+.item .meta b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .meta span{font:500 12px var(--f-mono);color:var(--muted)}
+.item .acts{display:flex;gap:4px}
+.item .acts .btn{min-height:34px;min-width:34px;padding:0 8px}
+.item.now{border-color:var(--dance)}
+.empty-note{font-size:13px;color:var(--muted);background:var(--sunk);border:1px dashed var(--line);border-radius:10px;padding:12px;text-align:center}
+.subhead{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.subhead h3{font-family:var(--f-display);font-size:16px;font-weight:700;margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip-src{display:inline-flex;align-items:center;border:1px solid var(--line);background:var(--sunk);border-radius:999px;max-width:100%;min-width:0}
+.chip-src button{font:600 13px var(--f-body);border:0;background:transparent;color:var(--ink);cursor:pointer;min-height:34px;padding:0 10px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;min-width:0}
+.chip-src .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.chip-src .x{padding:0 10px 0 2px;color:var(--muted);font-weight:500}
+.chip-src.on{background:var(--dance);border-color:var(--dance)}
+.chip-src.on button{color:#fff}
+.chip-src .num{font:500 12px var(--f-mono);opacity:.75}
+.vtag{display:inline-block;font:600 11px var(--f-body);color:var(--dance);margin-right:4px}
+.seg.mode{margin-left:auto;display:grid;grid-template-columns:auto auto;padding:2px}
+.seg.mode button{min-height:32px;padding:0 10px;font-size:13px}
+#recMsg{margin-top:-2px}
+.tray{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.tcard{flex:none;width:84px;display:grid;gap:3px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:5px;cursor:grab;touch-action:pan-x;user-select:none;-webkit-user-select:none;scroll-snap-align:start;text-align:left;color:var(--ink);font:inherit}
+.tcard img,.tcard .ph{width:100%;height:58px;border-radius:6px;object-fit:cover;background:var(--stage);display:block;pointer-events:none}
+.tcard b{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tcard span{font:500 11px var(--f-mono);color:var(--muted)}
+.tl{position:relative;height:30px;border-radius:8px;overflow:hidden;background:var(--sunk);border:1px solid var(--line)}
+.tl-blocks{display:flex;height:100%}
+.tl-blocks button{flex:1 1 0;min-width:6px;border:0;border-right:2px solid var(--surface);background:var(--dance);color:#fff;font:600 11px var(--f-mono);cursor:pointer;padding:0;overflow:hidden;opacity:.85}
+.tl-blocks button:nth-child(even){opacity:.6}
+.tl-blocks button.sel{background:var(--song-hot);color:#16120A;opacity:1}
+.tl-head{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);left:0;pointer-events:none}
+.item.r{grid-template-columns:28px auto 44px minmax(0,1fr) auto}
+.handle{width:28px;height:44px;display:grid;place-items:center;color:var(--muted);font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:6px}
+.handle:active{background:var(--line)}
+.item .tap{all:unset;display:grid;min-width:0;cursor:pointer}
+.item .tap:focus-visible{outline:2px solid var(--dance);outline-offset:2px;border-radius:4px}
+.item.sel{border-color:var(--song-hot)}
+.item.dragging{opacity:.35}
+.drag-ghost{position:fixed;z-index:50;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:.95;margin:0}
+.drop-line{list-style:none;height:4px;border-radius:2px;background:var(--song-hot);margin:-1px 0}
+.empty-note.drop.over{border-color:var(--song-hot);color:var(--ink)}
+.editor{grid-column:1/-1;display:grid;gap:8px;border-top:1px solid var(--line);padding:8px 2px 2px;margin-top:2px}
+.ed-row{display:grid;gap:4px}
+.ed-top{display:flex;justify-content:space-between;align-items:baseline}
+.ed-nudge{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.ed-acts{display:flex;flex-wrap:wrap;gap:6px}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.savestate{font-size:12px;color:var(--muted);white-space:nowrap}
+.savestate.warn{color:var(--warn)}
+.missbar{display:flex;align-items:center;gap:10px;justify-content:space-between;background:var(--surface);border:1px solid var(--warn);border-radius:10px;padding:8px 10px;font-size:13px}
+.sheet-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60}
+.sheet{position:fixed;z-index:61;left:50%;transform:translateX(-50%);bottom:0;width:min(560px,100%);max-height:86vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;box-shadow:0 -8px 30px rgba(0,0,0,.25)}
+@media (min-width:861px){.sheet{bottom:auto;top:10vh;border-radius:16px}}
+.txt{font:500 16px var(--f-body);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--sunk);color:var(--ink);min-height:40px;width:100%}
+.proj{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.proj .meta b{font-size:14px}
+.proj .meta span{font-size:12px;color:var(--muted)}
+.proj .acts{display:flex;gap:6px}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.miss{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px;min-width:0}
+.miss span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip-src.missing{border-style:dashed;opacity:.7}
+.note{font-size:13px;background:var(--sunk);border-radius:8px;padding:8px 10px;color:var(--ink)}
+.readout{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:var(--sunk);border-radius:10px;padding:10px 12px}
+.readout div{display:grid;gap:2px;min-width:0}
+.readout .num{font:500 20px var(--f-mono);font-variant-numeric:tabular-nums}
+.readout .d .num{color:var(--dance)} .readout .s .num{color:var(--song)} .readout .s{text-align:right}
+.readout .vs{color:var(--muted);font-size:13px}
+.chip{display:inline-flex;align-items:center;font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid currentColor;width:max-content}
+.chip.ok{color:var(--ok)} .chip.warn{color:var(--warn)} .chip.bad{color:var(--bad)} .chip.idle{color:var(--muted)}
+.matchbtns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.matchbtns .btn{flex-direction:column;align-items:flex-start;gap:0;padding:6px 9px;white-space:normal}
+.matchbtns .btn b{font:500 15px var(--f-mono)}
+.matchbtns .btn small{font-weight:500;color:var(--muted);font-size:12px}
+.matchbtns .btn.best{border-color:var(--song-hot)}
+.matchbtns .btn.best small{color:var(--song)}
+
+/* take */
+.take{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:10px}
+.take h2{font-family:var(--f-display);font-size:18px;font-weight:700;margin:0}
+.take video{width:100%;max-height:50vh;background:var(--stage);border-radius:10px;display:block}
+@media (prefers-reduced-motion: reduce){.stage,.beats i{transition:none}}
+</style>
+<style>
+/* standalone app: what the artifact viewer used to provide */
+html{-webkit-text-size-adjust:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;min-height:100vh;overscroll-behavior-y:none}
+img{max-width:100%}
+button,label,input[type=range]{touch-action:manipulation}
+/* keep the status-bar strip solid while content scrolls under it */
+body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:45}
+.install{display:flex;align-items:center;gap:10px;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.install b{font-weight:600}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Riddim <span>Swap</span></h1>
+    <p>Put a dance clip on a different song and change its speed until the moves land on the beat.</p>
+    <div class="hdr-r">
+      <span class="savestate" id="saveState" aria-live="polite"></span>
+      <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>
+    </div>
+  </header>
+  <div class="missbar" id="missBar" hidden>
+    <span id="missText"></span>
+    <button class="btn sm" id="missFix">Re-add files</button>
+  </div>
+
+  <div class="sheet-back" id="sheetBack" hidden></div>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+    <div class="subhead"><h3 id="sheetTitle">Projects</h3><button class="btn sm ghost" id="sheetClose">Done</button></div>
+    <div class="field">
+      <label class="label" for="projName">This project</label>
+      <input type="text" id="projName" class="txt" maxlength="60" placeholder="Name your routine">
+      <p class="hint" id="projInfo">Saves on this phone automatically as you work.</p>
+    </div>
+    <div class="field" id="missWrap" hidden>
+      <span class="label">Files to re-add</span>
+      <ul class="list" id="missList"></ul>
+      <p class="hint">Your moves and settings are saved, but these files aren't on this phone. Pick the same files again and everything reconnects.</p>
+    </div>
+    <div class="row">
+      <button class="btn" id="projNew">New project</button>
+      <button class="btn" id="projHeal">Fix playback</button>
+      <button class="btn" id="projExport">Save backup file</button>
+      <label class="btn file">Open backup file<input type="file" id="projImport" accept=".json,application/json"></label>
+    </div>
+    <p class="hint" id="projMsg" hidden></p>
+    <div class="field">
+      <span class="label">Saved projects</span>
+      <ul class="list" id="projList"></ul>
+      <div class="empty-note" id="projEmpty">Nothing else saved yet.</div>
+    </div>
+    <p class="hint">Projects stay in this app on this phone. The backup file keeps moves, trims and settings, but not the videos or songs themselves.</p>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <div class="pin">
+        <div class="stage" id="stage">
+          <video id="vid" playsinline muted preload="auto"></video>
+          <div class="empty" id="empty">
+            <strong>Add a dance clip</strong>
+            <small>MP4, MOV or WebM. It stays on your phone.</small>
+            <label class="btn file">Choose dance video<input type="file" id="vidFile" accept="video/*"></label>
+          </div>
+          <div class="recdot" id="recDot" hidden>Recording</div>
+        </div>
+        <div class="transport">
+          <div class="row" style="flex-wrap:nowrap">
+            <button class="playbtn" id="play" aria-label="Play" disabled>
+              <svg id="icoPlay" viewBox="0 0 20 20"><path d="M5 3l12 7-12 7z"/></svg>
+              <svg id="icoPause" viewBox="0 0 20 20" hidden><path d="M4 3h4v14H4zM12 3h4v14h-4z"/></svg>
+            </button>
+            <div class="scrubwrap">
+              <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Clip position" disabled>
+              <div class="trimbar" aria-hidden="true"><i id="trimFill" style="left:0;right:0"></i></div>
+            </div>
+            <span class="time" id="time">0:00.0</span>
+          </div>
+          <div class="pulses" id="pulses" hidden>
+            <div class="beats d" id="dBeats" hidden aria-hidden="true"><b>Dance</b><i>1</i><i>2</i><i>3</i><i>4</i></div>
+            <div class="beats s" id="sBeats" hidden aria-hidden="true"><b>Song</b><i>1</i><i>2</i><i>3</i><i>4</i></div>
+          </div>
+          <div class="recrow">
+            <button class="btn" id="repeat" aria-pressed="false" disabled>Repeat</button>
+            <button class="btn rec" id="recBtn" disabled>Record</button>
+            <div class="seg mode" id="modeSeg" role="group" aria-label="What plays" hidden>
+              <button id="modeClip" aria-pressed="true">Clip</button>
+              <button id="modeSeq" aria-pressed="false">Routine</button>
+            </div>
+          </div>
+          <p class="hint" id="recMsg" hidden></p>
+        </div>
+      </div>
+
+      <section class="take" id="take" hidden aria-labelledby="h-take">
+        <div class="row"><h2 id="h-take">Your take</h2><span class="hint" id="takeInfo" style="margin-left:auto"></span></div>
+        <video id="takeVid" playsinline controls></video>
+        <div class="row">
+          <button class="btn primary" id="saveBtn">Save video</button>
+          <button class="btn" id="discardBtn">Discard</button>
+          <span class="hint" id="saveMsg"></span>
+        </div>
+      </section>
+      <canvas id="recCanvas" aria-hidden="true"></canvas>
+    </div>
+
+    <div class="col">
+      <div class="tabs" role="tablist" aria-label="Settings">
+        <button class="tab" role="tab" id="t-clip" aria-controls="p-clip" aria-selected="true"><span class="dot" style="background:var(--dance)"></span>Clip</button>
+        <button class="tab" role="tab" id="t-song" aria-controls="p-song" aria-selected="false" tabindex="-1"><span class="dot" style="background:var(--song-hot)"></span>Song</button>
+        <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1">Tempo</button>
+        <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1">Moves</button>
+        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
+      </div>
+
+      <!-- CLIP -->
+      <section class="panel clip" id="p-clip" role="tabpanel" aria-labelledby="t-clip">
+        <div class="field">
+          <span class="label">Videos</span>
+          <div class="chips srcChips" id="srcChips"></div>
+          <p class="hint" id="vidName">Add one or more dance videos. Moves from any of them can go in one routine.</p>
+        </div>
+        <p class="note" id="clipNote" hidden>Routine is on, so the start and end below are paused. Switch to "Clip" under the video to use them.</p>
+        <div class="field">
+          <div class="field-top"><label class="label" for="inRange">Clip starts at</label><span class="val" id="inVal">0:00.00</span></div>
+          <input type="range" id="inRange" min="0" max="1" step="0.01" value="0" disabled>
+          <div class="nudges">
+            <button class="btn sm" data-in="-1" disabled>−1s</button><button class="btn sm" data-in="-0.1" disabled>−0.1</button><button class="btn sm" data-in="-0.02" disabled>−0.02</button>
+            <button class="btn sm" data-in="0.02" disabled>+0.02</button><button class="btn sm" data-in="0.1" disabled>+0.1</button><button class="btn sm" data-in="1" disabled>+1s</button>
+          </div>
+          <p class="hint">Drag to the moment the dance should begin. The video shows that frame as you drag, and the song lines up from here.</p>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span class="label">Ends at <span class="val" id="outVal" style="margin-left:6px">End</span></span>
+          <div class="row" style="gap:6px">
+            <button class="btn sm" id="setOut" disabled>Set to current</button>
+            <button class="btn sm" id="clearOut" disabled>Full clip</button>
+          </div>
+        </div>
+        <hr class="sep">
+        <div class="field">
+          <div class="field-top"><label class="label" for="vRate">Clip speed</label><span class="val" id="vRateOut">×1.00</span></div>
+          <input type="range" id="vRate" min="0.25" max="2.5" step="0.01" value="1">
+          <div class="nudges">
+            <button class="btn sm" data-v="-0.05">−5%</button><button class="btn sm" data-v="-0.01">−1%</button>
+            <button class="btn sm" data-v="0">×1</button>
+            <button class="btn sm" data-v="0.01">+1%</button><button class="btn sm" data-v="0.05">+5%</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>
+      </section>
+
+      <!-- SONG -->
+      <section class="panel song" id="p-song" role="tabpanel" aria-labelledby="t-song" hidden>
+        <div class="filebar">
+          <span class="fname" id="audName">No song yet</span>
+          <label class="btn file primary">Add song or video<input type="file" id="audFile"></label>
+        </div>
+        <audio id="aud" preload="auto"></audio>
+        <p class="hint" id="songMsg">MP3, M4A or a video. For a video, only its sound is used.</p>
+        <div class="field">
+          <div class="field-top"><label class="label" for="offset">Song starts at</label><span class="val" id="offOut">0:00.00</span></div>
+          <input type="range" id="offset" min="0" max="180" step="0.01" value="0">
+          <div class="nudges">
+            <button class="btn sm" data-o="-1">−1s</button><button class="btn sm" data-o="-0.1">−0.1</button><button class="btn sm" data-o="-0.02">−0.02</button>
+            <button class="btn sm" data-o="0.02">+0.02</button><button class="btn sm" data-o="0.1">+0.1</button><button class="btn sm" data-o="1">+1s</button>
+          </div>
+          <p class="hint">The part of the song that plays when the dance starts. Nudge until the hits land on the beat.</p>
+        </div>
+        <hr class="sep">
+        <div class="field">
+          <div class="field-top"><label class="label" for="aRate">Song speed</label><span class="val" id="aRateOut">×1.00</span></div>
+          <input type="range" id="aRate" min="0.5" max="1.5" step="0.01" value="1">
+          <p class="hint">Also changes the pitch. Usually only the clip speed needs changing.</p>
+        </div>
+      </section>
+
+      <!-- TEMPO -->
+      <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
+        <div class="pair">
+          <div class="field">
+            <label class="label" for="dBpm">Dance BPM</label>
+            <div class="bpm"><input type="number" id="dBpm" min="40" max="250" step="0.1" placeholder="—" inputmode="decimal"><button class="btn" id="dTap">Tap steps</button><button class="btn ghost" id="dClear">Clear</button></div>
+          </div>
+          <div class="field">
+            <label class="label" for="sBpm">Song BPM</label>
+            <div class="bpm"><input type="number" id="sBpm" min="40" max="250" step="0.1" placeholder="—" inputmode="decimal"><button class="btn" id="sTap">Tap beat</button><button class="btn ghost" id="sClear">Clear</button></div>
+          </div>
+        </div>
+        <div class="row" style="justify-content:space-between">
+          <span class="chip idle" id="verdict">Needs both tempos</span>
+          <button class="btn ghost" id="tClear">Clear both</button>
+        </div>
+        <div class="readout">
+          <div class="d"><span class="label">Dance now</span><span class="num" id="dEff">—</span></div>
+          <span class="vs">BPM</span>
+          <div class="s"><span class="label">Song now</span><span class="num" id="sEff">—</span></div>
+        </div>
+        <div class="matchbtns">
+          <button class="btn" data-m="0.5" disabled><span>Half-time</span><b>—</b><small>&nbsp;</small></button>
+          <button class="btn" data-m="1" disabled><span>Beat for beat</span><b>—</b><small>&nbsp;</small></button>
+          <button class="btn" data-m="2" disabled><span>Double-time</span><b>—</b><small>&nbsp;</small></button>
+        </div>
+        <p class="hint">Tap along while it plays: steps on the dance, beat on the song (start on a 1). Your last tap sets where the count starts. The blue (dance) and orange (song) beats show under the video. Pick a match to set the clip speed. Jersey club usually sits around 130–145 BPM.</p>
+      </section>
+
+      <!-- MOVES -->
+      <section class="panel" id="p-moves" role="tabpanel" aria-labelledby="t-moves" hidden>
+        <div class="field">
+          <div class="subhead"><h3>Cut a move</h3><button class="btn ghost sm" id="cutReset" disabled>Reset</button></div>
+          <div class="chips srcChips" aria-label="Video to cut from"></div>
+          <div class="cutter">
+            <button class="btn" id="markIn" disabled>Start here<small id="markInVal">—</small></button>
+            <button class="btn" id="markOut" disabled>End here<small id="markOutVal">—</small></button>
+            <button class="btn primary" id="saveMove" disabled>Save</button>
+          </div>
+          <p class="hint">Scrub or play the clip, tap "Start here" at the first step and "End here" at the last, then save.</p>
+        </div>
+        <div class="field">
+          <div class="subhead"><h3>Your moves</h3></div>
+          <ul class="list" id="moveList"></ul>
+          <div class="empty-note" id="moveEmpty">Saved moves show here. Tap + to add one to the routine, then arrange it in the Routine tab.</div>
+        </div>
+      </section>
+
+      <!-- ROUTINE -->
+      <section class="panel" id="p-routine" role="tabpanel" aria-labelledby="t-routine" hidden>
+        <div class="field">
+          <div class="subhead"><h3>Your moves</h3><span class="hint">Tap to add · drag down to place</span></div>
+          <div class="tray" id="tray"></div>
+          <div class="empty-note" id="trayEmpty">Cut some moves in the Moves tab first.</div>
+        </div>
+        <div class="field" id="seqWrap">
+          <div class="subhead"><h3>Routine <span class="hint" id="seqLen" style="font-family:var(--f-body)"></span></h3><div class="row" style="gap:4px"><button class="btn ghost sm" id="fitAll" disabled>Fit all to beat</button><button class="btn ghost sm" id="seqClear" disabled>Clear</button></div></div>
+          <p class="hint" id="fitHint" hidden>Set the song BPM in the Tempo tab to fit moves to the beat.</p>
+          <div class="tl" id="seqBar" hidden><div class="tl-blocks" id="seqBlocks"></div><i class="tl-head" id="seqHead"></i></div>
+          <ol class="list" id="seqList"></ol>
+          <div class="empty-note drop" id="seqEmpty">Drop moves here, or tap them above. Use them in any order, as many times as you like.</div>
+          <p class="hint" id="seqHint" hidden>Drag ⠿ to reorder. Tap a move to trim it for this spot. Moves always play back to back with no gap.</p>
+        </div>
+        <hr class="sep">
+        <div class="field song">
+          <div class="subhead"><h3>Routine music</h3><button class="btn ghost sm" id="rCopy">Copy from Song tab</button></div>
+          <div class="filebar">
+            <span class="fname" id="rSongName">Same song as the Song tab</span>
+            <button class="btn ghost sm" id="rSongReset" hidden>Use Song tab's</button>
+            <label class="btn file sm">Other song<input type="file" id="rSongFile"></label>
+          </div>
+          <p class="hint" id="rSongMsg" hidden></p>
+        </div>
+        <div class="field song">
+          <div class="field-top"><label class="label" for="rOffset">Song starts at</label><span class="val" id="rOffOut">0:00.00</span></div>
+          <input type="range" id="rOffset" min="0" max="180" step="0.01" value="0">
+          <div class="nudges">
+            <button class="btn sm" data-ro="-1">−1s</button><button class="btn sm" data-ro="-0.1">−0.1</button><button class="btn sm" data-ro="-0.02">−0.02</button>
+            <button class="btn sm" data-ro="0.02">+0.02</button><button class="btn sm" data-ro="0.1">+0.1</button><button class="btn sm" data-ro="1">+1s</button>
+          </div>
+        </div>
+        <div class="field song">
+          <div class="field-top"><label class="label" for="rARate">Song speed</label><span class="val" id="rARateOut">×1.00</span></div>
+          <input type="range" id="rARate" min="0.5" max="1.5" step="0.01" value="1">
+        </div>
+        <div class="field clip">
+          <span class="label">Moves speed</span>
+          <div class="seg" role="group" aria-label="How move speed is set">
+            <button id="spdAll" aria-pressed="true">All together</button>
+            <button id="spdEach" aria-pressed="false">Each move</button>
+          </div>
+          <div class="field" id="spdAllBox">
+            <div class="field-top"><label class="label" for="rVRate">All moves</label><span class="val" id="rVRateOut">×1.00</span></div>
+            <input type="range" id="rVRate" min="0.25" max="2.5" step="0.01" value="1">
+            <div class="nudges">
+              <button class="btn sm" data-rv="-0.05">−5%</button><button class="btn sm" data-rv="-0.01">−1%</button>
+              <button class="btn sm" data-rv="0">×1</button>
+              <button class="btn sm" data-rv="0.01">+1%</button><button class="btn sm" data-rv="0.05">+5%</button>
+            </div>
+          </div>
+          <p class="hint" id="spdEachHint" hidden>Tap a move in the routine to set its speed. Each move shows its speed next to its length.</p>
+        </div>
+        <label class="check"><input type="checkbox" id="rFade" checked> Fade the song out at the end of a recording</label>
+        <p class="hint">These only apply to the routine, so the sound stays the same however you tweak single clips.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+let v=$('#vid'); const a=$('#aud'), cv=$('#recCanvas'), cx=cv.getContext('2d');
+const S={vr:1,ar:1,offset:0,dBase:null,sBase:null,dAnchor:null,sAnchor:null,cIn:0,cOut:null,loop:false,
+  playing:false,hasV:false,hasA:false,stalled:false,rec:null,
+  sources:[],cur:null,markSrc:null,
+  moves:[],seq:[],useSeq:false,segIdx:0,switchPending:false,markIn:null,markOut:null,markThumb:'',preview:null,
+  main:{offset:0,ar:1,vr:1}, rt:{offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'},
+  mainSong:null, rtSong:null, liveSong:null, sel:null, stopAtT:null, primed:null, lastFix:0};
+let uidCount=0;
+let srcCount=0,aUrl=null,ctx=null,buf=null,loadIds={main:0,rt:0},take=null,downloads=null,moveCount=0;
+let recDest=null,recSrc=null,recT=0,recPos=0;
+
+/* iPhone: play through the silent switch like a music app */
+try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+a.preservesPitch=false; a.webkitPreservesPitch=false;
+
+const fmt=t=>{if(!isFinite(t))t=0;const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1)};
+const fmt2=t=>{const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2)};
+const clamp=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
+function getCtx(){if(!ctx){const C=window.AudioContext||window.webkitAudioContext;ctx=new C()}return ctx}
+function songDur(){return buf?buf.duration:(a.duration||0)}
+function songMsg(t,err){const m=$('#songMsg');m.textContent=t;m.classList.toggle('err',!!err)}
+function recMsg(t,err){const m=$('#recMsg');m.textContent=t||'';m.hidden=!t;m.classList.toggle('err',!!err)}
+function songFail(err){
+  if(!err||err.name==='AbortError')return;
+  if(err.name==='NotAllowedError')songMsg('The phone blocked the song. Tap play again.',true);
+  else songMsg("This file's sound can't play here. Try an MP3, M4A or MP4.",true);
+}
+
+/* ---------- play order ----------
+   Everything plays as a list of pieces of the dance video ("segments").
+   Whole clip = one piece (start point to end point). Routine = the saved moves in order.
+   Each piece has its own speed r. T = position in that list in playback seconds; the song follows T. */
+function clipEnd(){return S.cOut!=null?S.cOut:(v.duration||0)}
+function moveById(id){return S.moves.find(m=>m.id===id)}
+function routineOn(){return S.useSeq&&S.seq.length>0&&!S.preview}
+function segs(){
+  if(S.preview)return [S.preview];
+  if(routineOn())return S.seq.map(x=>{const m=moveById(x.id);return m?{src:m.src,s:x.s,e:x.e,r:rateOf(x)}:null}).filter(Boolean);
+  return [{src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}];
+}
+/* speed of one routine move: shared, or its own when "Each move" is on */
+function rateOf(x){return S.rt.spMode==='each'?(x.sp||1):S.rt.vr}
+function segR(g){return g&&g.r||S.vr||1}
+function curRate(){const g=segs()[S.segIdx];return segR(g)}
+function srcById(id){return S.sources.find(x=>x.id===id)}
+/* Make one video the visible, playing one. Each video keeps its own start/end points. */
+function activate(id){
+  const n=srcById(id); if(!n||n.id===S.cur)return;
+  const old=srcById(S.cur); if(old){old.cIn=S.cIn;old.cOut=S.cOut}
+  const prevEl=v; S.cur=n.id; v=n.el;
+  S.cIn=n.cIn||0; S.cOut=n.cOut??null;
+  v.playbackRate=S.vr; v.muted=!$('#origAudio').checked;
+  showOnly(n.el);
+  if(prevEl!==v){try{prevEl.pause()}catch(e){}}
+  if(S.rec&&S.rec.mode==='codecs')watchFrames(v);
+  $('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');
+  renderSources(); updateTrim();
+}
+/* Each video can have a second, hidden copy. The next move is loaded into it ahead of time,
+   so the cut is an instant swap instead of a seek (seeking is what caused the stutter). */
+function allEls(){const out=[];S.sources.forEach(x=>{out.push(x.el);if(x.el2)out.push(x.el2)});return out}
+function showOnly(e){allEls().forEach(x=>{x.hidden=false;x.classList.toggle('off',x!==e)})}
+function ensureEl2(n){
+  if(!n.el2){const e=document.createElement('video');e.setAttribute('playsinline','');e.muted=true;e.preload='auto';e.classList.add('off');e.src=n.url;$('#stage').insertBefore(e,$('#empty'));wire(e);n.el2=e}
+  return n.el2;
+}
+function swapTo(e,srcId){
+  const n=srcById(srcId), prev=v;
+  if(S.cur!==srcId){const old=srcById(S.cur);if(old){old.cIn=S.cIn;old.cOut=S.cOut}S.cIn=n.cIn||0;S.cOut=n.cOut??null;S.cur=srcId;$('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');renderSources()}
+  v=e; e.playbackRate=segR(segs()[S.segIdx]); e.muted=!$('#origAudio').checked;
+  showOnly(e);
+  if(S.playing||S.rec)e.play().catch(()=>{});
+  if(prev!==e){try{prev.pause()}catch(_){}}
+  if(S.rec&&S.rec.mode==='codecs')watchFrames(e);
+}
+function primeNext(){
+  S.primed=null;
+  if(!routineOn()||!(S.playing||S.rec))return;
+  const L=segs(); let i=S.segIdx+1;
+  if(i>=L.length){if(S.loop&&!S.rec)i=0;else return}
+  if(S.stopAtT!=null&&segStart(i,L)>=S.stopAtT-0.02)return;
+  const g=L[i], n=srcById(g.src); if(!n)return;
+  let e=n.el; if(e===v)e=ensureEl2(n); if(e===v)return;
+  e.playbackRate=segR(g); e.muted=true;
+  if(e.readyState<2){
+    const p=e.play(); if(p)p.then(()=>{if(e!==v){e.pause();e.currentTime=g.s}}).catch(()=>{});
+  } else {
+    try{e.pause()}catch(_){}
+    if(Math.abs(e.currentTime-g.s)>0.03)e.currentTime=g.s;
+  }
+  S.primed={i,el:e};
+}
+function segStart(i,L){let t=0;for(let k=0;k<i;k++)t+=(L[k].e-L[k].s)/segR(L[k]);return t}
+function tPos(){const L=segs(),i=Math.min(S.segIdx,L.length-1),g=L[i];if(!g)return 0;return segStart(i,L)+clamp(v.currentTime-g.s,0,g.e-g.s)/segR(g)}
+function expected(){return S.offset+tPos()*S.ar}
+function gotoSeg(i){
+  const g=segs()[i]; S.segIdx=i; if(!g)return;
+  const P=S.primed; S.primed=null;
+  if(P&&P.i===i&&P.el!==v&&(S.playing||S.rec)&&P.el.readyState>=2&&!P.el.seeking&&Math.abs(P.el.currentTime-g.s)<0.06){
+    swapTo(P.el,g.src); S.switchPending=false; primeNext(); return;
+  }
+  gotoSegSeek(i,g); primeNext();
+}
+function gotoSegSeek(i,g){
+  if(g.src&&g.src!==S.cur){
+    const live=S.playing||S.rec;
+    activate(g.src); v.playbackRate=segR(g); S.switchPending=true; v.currentTime=g.s;
+    if(live){v.play().catch(()=>{})}
+    return;
+  }
+  v.playbackRate=segR(g);
+  if(Math.abs(v.currentTime-g.s)>0.04){S.switchPending=true;v.currentTime=g.s}else S.switchPending=false;
+}
+function toStart(){gotoSeg(0)}
+function seekT(T){
+  const L=segs(); let i=0;
+  while(i<L.length-1&&T>=segStart(i+1,L))i++;
+  S.segIdx=i; S.switchPending=false; if(L[i].src&&L[i].src!==S.cur)activate(L[i].src);
+  v.playbackRate=segR(L[i]);
+  v.currentTime=L[i].s+clamp((T-segStart(i,L))*segR(L[i]),0,L[i].e-L[i].s);
+  primeNext();
+}
+function atSegEnd(){
+  const L=segs();
+  if(S.segIdx<L.length-1){gotoSeg(S.segIdx+1);return}
+  if(S.rec){stopRecording();return}
+  if(S.preview){S.preview=null;pause();toStart();renderMoves();return}
+  if(S.loop){toStart();if(v.paused)v.play().catch(()=>{});syncSong(true)}
+  else{pause();toStart()}
+}
+
+/* ---------- two sets of settings ----------
+   Whole clip uses the Song/Clip tabs. The routine has its own song, song start and speeds,
+   so tuning single clips never changes how the finished routine sounds. */
+function slot(){return routineOn()?S.rt:S.main}
+function liveSongWanted(){return (routineOn()&&S.rtSong)?S.rtSong:S.mainSong}
+function useSong(so){
+  S.liveSong=so; buf=so&&so.buf||null; S.hasA=!!(so&&so.ready); S.sAnchor=null;
+  if(so&&so.blob)setSongSrc(so.blob); else {a.removeAttribute('src');try{a.load()}catch(e){}}
+  enable(); prepRec();
+}
+function syncSlot(){
+  const want=liveSongWanted(); if(want!==S.liveSong)useSong(want);
+  const P=slot();
+  if(P.offset!==S.offset||P.ar!==S.ar||P.vr!==S.vr){S.offset=P.offset;S.ar=P.ar;S.vr=P.vr;applyRates()}
+  showSlots();
+}
+function setP(P,key,val){
+  P[key]=val; if(P===S.rt)S.rt.set=true;
+  if(P===slot()){S[key]=val; if(key==='offset'){syncSong(true);recSync(true)} else applyRates()}
+  showSlots(); if(key==='vr')updateSeqStats();
+}
+function sDur(so){return so?(so.buf?so.buf.duration:(so.dur||0)):0}
+function showSlots(){
+  const m=S.main, r=S.rt, md=sDur(S.mainSong), rd=sDur(S.rtSong||S.mainSong);
+  const set=(id,val)=>{const e=$(id);if(document.activeElement!==e)e.value=val};
+  $('#offset').max=Math.max(1,md); set('#offset',m.offset); $('#offOut').textContent=fmt2(m.offset);
+  set('#aRate',m.ar); $('#aRateOut').textContent='×'+m.ar.toFixed(2);
+  set('#vRate',m.vr); $('#vRateOut').textContent='×'+m.vr.toFixed(2);
+  $('#rOffset').max=Math.max(1,rd); set('#rOffset',r.offset); $('#rOffOut').textContent=fmt2(r.offset);
+  set('#rARate',r.ar); $('#rARateOut').textContent='×'+r.ar.toFixed(2);
+  set('#rVRate',r.vr); $('#rVRateOut').textContent='×'+r.vr.toFixed(2);
+  $('#rFade').checked=!!r.fade;
+  const miss=so=>so&&so.missing?' · needs re-adding':'';
+  $('#audName').textContent=S.mainSong?S.mainSong.name+(md?' · '+fmt(md):'')+miss(S.mainSong):'No song yet';
+  $('#rSongName').textContent=S.rtSong?S.rtSong.name+(sDur(S.rtSong)?' · '+fmt(sDur(S.rtSong)):'')+miss(S.rtSong):(S.mainSong?'Same song as the Song tab':'No song yet');
+  $('#rSongReset').hidden=!S.rtSong;
+}
+
+/* ---------- playback: the song plays through a normal audio player (reliable on iPhone) ---------- */
+function setRate(r){if(Math.abs(a.playbackRate-r)>0.002)a.playbackRate=r}
+function syncSong(force){
+  if(!S.hasA||!S.hasV)return;
+  const e=expected(), d=songDur(), live=S.playing&&!v.paused&&!S.stalled;
+  if(!live||e<0||e>=d){
+    if(!a.paused)a.pause();
+    if(!live&&e>=0&&e<d&&Math.abs(a.currentTime-e)>0.03)a.currentTime=e;
+    return;
+  }
+  if(a.paused){a.currentTime=e;setRate(S.ar);a.play().catch(songFail);return}
+  setRate(S.ar);
+  const drift=a.currentTime-e;
+  if(routineOn()&&!force){
+    /* routine: leave the music alone through cuts and brief stalls; only fix it when it's clearly out */
+    const now=performance.now();
+    if(Math.abs(drift)>0.35&&!S.switchPending&&!v.seeking&&!a.seeking&&now-S.lastFix>1500){S.lastFix=now;a.currentTime=e}
+    return;
+  }
+  if(force||Math.abs(drift)>0.25){S.lastFix=performance.now();a.currentTime=e}
+}
+/* The song's play() has to happen inside the tap, or the phone keeps it silent. */
+function unlockSong(){
+  if(!S.hasA)return;
+  const e=S.hasV?expected():a.currentTime;
+  if(!S.hasV||(e>=0&&e<songDur())){
+    if(S.hasV)a.currentTime=e;
+    setRate(S.ar); a.play().catch(songFail);
+  } else {
+    a.muted=true; const p=a.play();
+    if(p)p.then(()=>{if(!(S.playing&&expected()>=0))a.pause();a.muted=false}).catch(()=>{a.muted=false});
+  }
+}
+function setPlaying(p){
+  S.playing=p;
+  $('#icoPlay').hidden=p; $('#icoPause').hidden=!p;
+  $('#play').setAttribute('aria-label',p?'Pause':'Play');
+}
+function play(){
+  if(S.hasV&&broken(v)){healMedia(false);recMsg('Reloading the video… tap play again.');return}
+  if(routineOn()){const gone=S.seq.map(x=>moveById(x.id)).filter(m=>m&&srcById(m.src)&&srcById(m.src).missing);
+    if(gone.length){recMsg('Re-add "'+srcById(gone[0].src).name+'" first. Tap Projects.',true);return}}
+  if(S.hasV&&!S.rec){
+    const g=segs()[S.segIdx];
+    if(!g||(g.src&&g.src!==S.cur)||v.currentTime<g.s-0.05||v.currentTime>=g.e-0.05)toStart();
+  }
+  setPlaying(true);
+  if(S.hasA&&!S.hasV&&a.ended)a.currentTime=0;
+  unlockSong();
+  if(S.hasV)v.play().then(()=>{S.stalled=false;syncSong(true);recSync(true);primeNext()}).catch(err=>{setPlaying(false);a.pause();
+    if(!err||err.name!=='AbortError'){if(healMedia(false))recMsg('Reloaded the video. Tap play again.')}});
+}
+function pause(){S.stopAtT=null;setPlaying(false);v.pause();a.pause();recStopSong()}
+function toggle(){if(S.rec){stopRecording();return}S.playing?pause():play()}
+
+function enable(){
+  const hv=S.hasV;
+  $('#play').disabled=!(hv||S.hasA);
+  ['#scrub','#inRange','#setOut','#clearOut','#repeat','#markIn','#markOut'].forEach(id=>$(id).disabled=!hv);
+  $$('[data-in]').forEach(b=>b.disabled=!hv);
+  $('#recBtn').disabled=!(hv&&S.hasA&&buf);
+  updateCutter();
+}
+
+function applyRates(){
+  v.playbackRate=curRate();
+  if(S.hasV){syncSong(true);recSync(true)} else setRate(S.ar);
+  updateMatch();
+}
+
+/* ---------- dance videos (several can be loaded; moves can come from any of them) ---------- */
+function wire(el){
+  const me=()=>el===v;
+  el.addEventListener('loadedmetadata',()=>{
+    const n=S.sources.find(x=>x.el===el||x.el2===el); if(n)n.dur=el.duration;
+    if(n&&n.el2===el)return;
+    try{el.currentTime=Math.max(0.001,n&&n.cIn||0)}catch(e){}   /* makes iPhone draw the first frame */
+    if(!me())return;
+    v.playbackRate=curRate(); prepRec();
+    if(n)$('#vidName').textContent=n.name+' · '+fmt(n.dur);
+    renderSources(); updateTrim(); applyRates();
+  });
+  el.addEventListener('error',()=>{
+    const n=S.sources.find(x=>x.el===el||x.el2===el);
+    if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
+    if(me())$('#vidName').textContent="This video can't play here";
+  });
+  el.addEventListener('seeked',()=>{if(me()){syncSong(!routineOn());recSync(true)}});
+  el.addEventListener('waiting',()=>{if(!me()||S.switchPending||routineOn())return;S.stalled=true;a.pause();recStopSong()});  /* routine: the song keeps going */
+  el.addEventListener('playing',()=>{if(me()){S.stalled=false;syncSong(false);recSync(true)}});
+  el.addEventListener('pause',()=>{if(me()&&S.playing&&!el.ended&&!S.rec&&!S.switchPending)pause()});
+  el.addEventListener('ended',()=>{if(!me()||!(S.playing||S.rec))return;atSegEnd();if((S.playing||S.rec)&&v.paused)v.play().catch(()=>{})});
+}
+wire(v);
+function mediaKey(f){return f.name+'|'+f.size+'|'+(f.lastModified||0)}
+/* make a video slot; f can be null when restoring a project whose file isn't on this phone */
+function createSource(f,meta){
+  meta=meta||{};
+  const vid=$('#vid'); let ve;
+  if(!S.sources.some(x=>x.el===vid))ve=vid;
+  else{ve=document.createElement('video');ve.setAttribute('playsinline','');ve.muted=true;ve.preload='auto';ve.classList.add('off');$('#stage').insertBefore(ve,$('#empty'));wire(ve)}
+  const num=meta.num||++srcCount; if(num>srcCount)srcCount=num;
+  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,
+    name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
+    key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0};
+  if(f){n.url=URL.createObjectURL(f);ve.src=n.url;ve.load()}
+  S.sources.push(n); return n;
+}
+function relinkSource(id,f){
+  const n=srcById(id); if(!n)return;
+  Object.assign(n,{missing:false,fname:f.name,size:f.size,key:mediaKey(f),blob:f,errs:0});
+  if(n.url)URL.revokeObjectURL(n.url); n.url=URL.createObjectURL(f);
+  n.el.src=n.url; n.el.load(); if(n.el2){n.el2.src=n.url;n.el2.load()}
+  saveMedia(n.key,f);
+  S.hasV=true; $('#empty').hidden=true;
+  const c=srcById(S.cur); if(!c||c.missing){if(S.cur===id){v=n.el;showOnly(n.el)}else activate(id)}
+  enable(); renderSources(); renderMoves(); updateTrim(); updateMissing();
+}
+function addVideo(f){
+  if(!f)return; if(S.rec)stopRecording(); pause();
+  const miss=S.sources.find(x=>x.missing&&x.fname===f.name&&x.size===f.size);
+  if(miss){relinkSource(miss.id,f);return}
+  const n=createSource(f); saveMedia(n.key,f);
+  S.hasV=true; $('#empty').hidden=true;
+  S.preview=null; S.useSeq=false; S.segIdx=0; resetCut();
+  const c=srcById(S.cur);
+  if(!c||c.missing){S.cur=n.id;v=n.el;showOnly(n.el);S.cIn=0;S.cOut=null;v.muted=!$('#origAudio').checked}
+  else activate(n.id);
+  enable(); renderSources(); renderMoves(); updateTrim(); updateMissing();
+}
+function removeVideo(id){
+  if(S.rec)return; pause();
+  const n=srcById(id); if(!n)return;
+  const gone=new Set(S.moves.filter(m=>m.src===id).map(m=>m.id));
+  S.moves=S.moves.filter(m=>m.src!==id); S.seq=S.seq.filter(x=>!gone.has(x.id)); if(!S.seq.length)S.useSeq=false;
+  S.sources=S.sources.filter(x=>x!==n); URL.revokeObjectURL(n.url);
+  if(S.markSrc===id)resetCut();
+  if(S.cur===id){
+    S.cur=null;
+    if(S.sources.length){const nx=S.sources[0];S.cur=nx.id;v=nx.el;showOnly(nx.el);S.cIn=nx.cIn||0;S.cOut=nx.cOut??null;$('#vidName').textContent=nx.name+(nx.dur?' · '+fmt(nx.dur):'')}
+  }
+  if(n.el.id==='vid'&&S.sources.length){n.el.removeAttribute('src');n.el.load();n.el.classList.add('off')}
+  else if(n.el.id==='vid'){n.el.removeAttribute('src');n.el.load()}
+  else n.el.remove();
+  if(n.el2)n.el2.remove();
+  updateMissing();
+  if(!S.sources.length){S.hasV=false;v=$('#vid');v.classList.remove('off');$('#empty').hidden=false;$('#vidName').textContent='Add one or more dance videos. Moves from any of them can go in one routine.'}
+  S.preview=null; S.segIdx=0; if(S.hasV)toStart();
+  enable(); renderSources(); renderMoves(); updateTrim();
+}
+function renderSources(){$$('.srcChips').forEach(renderChips)}
+function renderChips(box){
+  box.textContent='';
+  S.sources.forEach(n=>{
+    const c=el('span','chip-src'+(n.id===S.cur&&!routineOn()?' on':'')+(n.missing?' missing':''));
+    const b=el('button'); b.append(el('span','num',String(n.num)),el('span','nm',n.name));
+    b.setAttribute('aria-label','Show '+n.name); b.addEventListener('click',()=>{if(S.rec)return;if(n.missing){openSheet();return}pause();S.preview=null;S.useSeq=false;activate(n.id);S.segIdx=0;renderMoves();updateTrim()});
+    const x=el('button','x','✕'); x.setAttribute('aria-label','Remove '+n.name+' and its moves'); x.addEventListener('click',()=>removeVideo(n.id));
+    c.append(b,x); box.append(c);
+  });
+  const add=el('label','btn file sm'); add.append(document.createTextNode(S.sources.length?'+ Add video':'Choose video'));
+  const inp=el('input'); inp.type='file'; inp.accept='video/*'; inp.addEventListener('change',e=>{addVideo(e.target.files[0]);e.target.value=''});
+  add.append(inp); box.append(add);
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden){if(S.rec)stopRecording();else if(S.playing)pause()}});
+
+/* ---------- song: audio file or video, sound only ---------- */
+function encodeWav(b){
+  const ch=Math.min(2,b.numberOfChannels), sr=b.sampleRate, n=b.length, bytes=n*ch*2;
+  const ab=new ArrayBuffer(44+bytes), dv=new DataView(ab);
+  const w=(o,t)=>{for(let i=0;i<t.length;i++)dv.setUint8(o+i,t.charCodeAt(i))};
+  w(0,'RIFF');dv.setUint32(4,36+bytes,true);w(8,'WAVE');w(12,'fmt ');dv.setUint32(16,16,true);
+  dv.setUint16(20,1,true);dv.setUint16(22,ch,true);dv.setUint32(24,sr,true);dv.setUint32(28,sr*ch*2,true);
+  dv.setUint16(32,ch*2,true);dv.setUint16(34,16,true);w(36,'data');dv.setUint32(40,bytes,true);
+  const chans=[];for(let c=0;c<ch;c++)chans.push(b.getChannelData(c));
+  const out=new Int16Array(ab,44,n*ch);
+  for(let i=0,k=0;i<n;i++)for(let c=0;c<ch;c++){let x=chans[c][i];x=x<-1?-1:x>1?1:x;out[k++]=x<0?x*0x8000:x*0x7FFF}
+  return new Blob([ab],{type:'audio/wav'});
+}
+function setSongSrc(blob){if(aUrl)URL.revokeObjectURL(aUrl);aUrl=URL.createObjectURL(blob);a.src=aUrl;a.load()}
+function loadSong(f,which,restoring){
+  if(!f)return; if(S.rec)stopRecording(); pause();
+  const rt=which==='rt', slotKey=rt?'rt':'main', id=++loadIds[slotKey], isVideo=(f.type||'').startsWith('video/')||/\.(mp4|mov|m4v|webm)$/i.test(f.name);
+  const msg=(t,err)=>{if(rt){const m=$('#rSongMsg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('err',!!err)}else songMsg(t,err)};
+  const so={name:f.name.replace(/\.[^.]+$/,'')||f.name,blob:null,buf:null,dur:0,ready:false,key:mediaKey(f),fname:f.name,size:f.size};
+  if(!restoring)saveMedia(so.key,f);
+  msg('Reading the sound…');
+  const place=()=>{if(rt)S.rtSong=so;else S.mainSong=so;S.liveSong=undefined;syncSlot();syncSong(true);updateMissing()};
+  f.arrayBuffer()
+    .then(ab=>new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej)))
+    .then(b=>{
+      if(id!==loadIds[slotKey])return;
+      so.buf=b; so.dur=b.duration; so.blob=encodeWav(b); so.ready=true; place();
+      msg(isVideo?'Using the sound from this video. Its picture is ignored.':(rt?'':'Song ready.'));
+    })
+    .catch(()=>{
+      if(id!==loadIds[slotKey])return;
+      if(isVideo){msg("Couldn't read any sound from this video. Check it has audio.",true);return}
+      so.blob=f; so.ready=true; place();   /* let the audio player try it directly */
+      a.addEventListener('loadedmetadata',()=>{so.dur=a.duration;showSlots()},{once:true});
+      msg('Song ready. Recording needs an MP3, M4A or WAV.');
+    });
+}
+a.addEventListener('error',()=>{if(a.src)songMsg("This file's sound can't play here. Try an MP3, M4A or MP4.",true)});
+a.addEventListener('ended',()=>{if(!S.hasV)setPlaying(false)});
+
+$('#vidFile').addEventListener('change',e=>{addVideo(e.target.files[0]);e.target.value=''});
+$('#audFile').addEventListener('change',e=>{loadSong(e.target.files[0],'main');e.target.value=''});
+$('#rSongFile').addEventListener('change',e=>{loadSong(e.target.files[0],'rt');e.target.value=''});
+$('#rSongReset').addEventListener('click',()=>{pause();S.rtSong=null;$('#rSongMsg').hidden=true;syncSlot()});
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('drop',e=>{
+  e.preventDefault();
+  [...(e.dataTransfer?.files||[])].forEach(f=>{
+    if(f.type.startsWith('video/')&&!S.hasV)addVideo(f);
+    else if(f.type.startsWith('video/')||f.type.startsWith('audio/'))loadSong(f,'main');
+  });
+});
+
+$('#play').addEventListener('click',toggle);
+document.addEventListener('keydown',e=>{
+  if(e.code!=='Space'||e.target.matches('input[type=number],input[type=text],button,label'))return;
+  e.preventDefault(); if(!$('#play').disabled)toggle();
+});
+$('#scrub').addEventListener('input',e=>{const x=+e.target.value; if(routineOn())seekT(x); else v.currentTime=x});
+$('#origAudio').addEventListener('change',e=>{v.muted=!e.target.checked});
+
+/* speeds */
+$('#vRate').addEventListener('input',e=>setP(S.main,'vr',+e.target.value));
+$('#aRate').addEventListener('input',e=>setP(S.main,'ar',+e.target.value));
+$$('[data-v]').forEach(b=>b.addEventListener('click',()=>{
+  const d=+b.dataset.v; setP(S.main,'vr',d===0?1:clamp(+(S.main.vr*(1+d)).toFixed(3),0.25,2.5));
+}));
+$('#rVRate').addEventListener('input',e=>setP(S.rt,'vr',+e.target.value));
+$$('[data-rv]').forEach(b=>b.addEventListener('click',()=>{const d=+b.dataset.rv;setP(S.rt,'vr',d===0?1:clamp(+(S.rt.vr*(1+d)).toFixed(3),0.25,2.5))}));
+function setSpeedMode(mode){
+  if(S.rt.spMode===mode)return;
+  /* switching to "Each move": moves without their own speed start from the shared one */
+  if(mode==='each')S.seq.forEach(x=>{if(x.sp==null)x.sp=S.rt.vr});
+  S.rt.spMode=mode; S.rt.set=true;
+  if(S.playing)pause();
+  renderMoves(); updateTrim(); applyRates();
+}
+$('#spdAll').addEventListener('click',()=>setSpeedMode('all'));
+$('#spdEach').addEventListener('click',()=>setSpeedMode('each'));
+$('#rARate').addEventListener('input',e=>setP(S.rt,'ar',+e.target.value));
+$('#rFade').addEventListener('change',e=>{S.rt.fade=e.target.checked});
+$('#rCopy').addEventListener('click',()=>{S.rt.offset=S.main.offset;S.rt.ar=S.main.ar;S.rt.vr=S.main.vr;S.rt.set=true;syncSlot();updateSeqStats()});
+
+/* song start */
+function setOffset(x){setP(S.main,'offset',+clamp(x,0,Math.max(0,sDur(S.mainSong)-0.05)||180).toFixed(3))}
+function setROffset(x){setP(S.rt,'offset',+clamp(x,0,Math.max(0,sDur(S.rtSong||S.mainSong)-0.05)||180).toFixed(3))}
+$('#offset').addEventListener('input',e=>setOffset(+e.target.value));
+$$('[data-o]').forEach(b=>b.addEventListener('click',()=>setOffset(S.main.offset+ +b.dataset.o)));
+$('#rOffset').addEventListener('input',e=>setROffset(+e.target.value));
+$$('[data-ro]').forEach(b=>b.addEventListener('click',()=>setROffset(S.rt.offset+ +b.dataset.ro)));
+
+/* clip start / end points */
+function updateTrim(){
+  const d=v.duration||0, e=clipEnd(), ro=routineOn();
+  $('#inVal').textContent=fmt2(S.cIn);
+  const ir=$('#inRange'); ir.max=d||1; if(document.activeElement!==ir)ir.value=S.cIn;
+  $('#outVal').textContent=S.cOut!=null?fmt(S.cOut):(d?'End · '+fmt(d):'End');
+  $('#clipNote').hidden=!ro;
+  const f=$('#trimFill');
+  if(ro||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
+  $('#scrub').max=ro?Math.max(0.01,segStart(segs().length,segs())):(d||1);
+  const r=$('#repeat'); r.classList.toggle('on',S.loop); r.setAttribute('aria-pressed',S.loop);
+  $('#modeSeg').hidden=!S.seq.length;
+  $('#modeClip').setAttribute('aria-pressed',!ro); $('#modeSeq').setAttribute('aria-pressed',ro);
+  syncSlot();
+}
+function setIn(t){
+  S.cIn=+clamp(t,0,Math.max(0,clipEnd()-0.2)).toFixed(2);
+  if(!S.playing&&!routineOn()){S.segIdx=0;v.currentTime=S.cIn}
+  updateTrim(); syncSong(true);
+}
+function setOut(t){
+  const d=v.duration||0; t=clamp(t,S.cIn+0.2,d);
+  S.cOut=t>=d-0.05?null:+t.toFixed(2); updateTrim();
+}
+$('#inRange').addEventListener('input',e=>{if(S.playing)pause();setIn(+e.target.value)});
+$('#setOut').addEventListener('click',()=>setOut(v.currentTime));
+$('#clearOut').addEventListener('click',()=>{S.cOut=null;updateTrim()});
+$$('[data-in]').forEach(b=>b.addEventListener('click',()=>{if(S.playing)pause();setIn(S.cIn+ +b.dataset.in)}));
+$('#repeat').addEventListener('click',()=>{S.loop=!S.loop;updateTrim()});
+
+/* ---------- moves ---------- */
+function grabThumb(){
+  try{const h=88,w=Math.max(1,Math.round(h*(v.videoWidth||9)/(v.videoHeight||16)));
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(v,0,0,w,h);return c.toDataURL('image/jpeg',0.6)}
+  catch(e){return ''}
+}
+function setMode(seq){
+  if(S.rec)return;
+  pause(); S.preview=null; S.useSeq=!!seq&&S.seq.length>0; toStart();
+  updateTrim(); renderMoves(); renderSources();
+}
+function resetCut(){S.markIn=S.markOut=null;S.markThumb='';S.markSrc=null;updateCutter()}
+function updateCutter(){
+  const mi=$('#markIn'), mo=$('#markOut');
+  $('#markInVal').textContent=S.markIn!=null?fmt2(S.markIn):'—';
+  $('#markOutVal').textContent=S.markOut!=null?fmt2(S.markOut):'—';
+  mi.classList.toggle('set',S.markIn!=null); mo.classList.toggle('set',S.markOut!=null);
+  $('#saveMove').disabled=!(S.markIn!=null&&S.markOut!=null&&S.markOut>S.markIn+0.05);
+  $('#cutReset').disabled=S.markIn==null&&S.markOut==null;
+}
+function needWhole(){if(routineOn()||S.preview){S.preview=null;S.useSeq=false;S.segIdx=0;updateTrim();renderMoves();renderSources()}}
+$('#markIn').addEventListener('click',()=>{
+  needWhole(); S.markSrc=S.cur; S.markIn=+v.currentTime.toFixed(2); S.markThumb=grabThumb();
+  if(S.markOut!=null&&S.markOut<=S.markIn+0.05)S.markOut=null; updateCutter();
+});
+$('#markOut').addEventListener('click',()=>{
+  needWhole(); const t=+v.currentTime.toFixed(2);
+  if(S.markIn==null||S.markSrc!==S.cur){S.markIn=0;S.markThumb='';S.markSrc=S.cur}
+  if(t>S.markIn+0.05)S.markOut=t; else {S.markOut=S.markIn;S.markIn=Math.max(0,t)}
+  updateCutter();
+});
+$('#cutReset').addEventListener('click',resetCut);
+$('#saveMove').addEventListener('click',()=>{
+  if($('#saveMove').disabled)return;
+  const m={id:'m'+(++moveCount),name:'Move '+moveCount,src:S.markSrc||S.cur,s:S.markIn,e:S.markOut,thumb:S.markThumb};
+  if(!m.thumb){const t=v.currentTime;m.thumb='';v.currentTime=m.s;v.addEventListener('seeked',()=>{m.thumb=grabThumb();renderMoves();v.currentTime=t},{once:true})}
+  S.moves.push(m); resetCut(); renderMoves();
+});
+function newEntry(id){const m=moveById(id);return {uid:'e'+(++uidCount),id,s:m.s,e:m.e,sp:S.rt.spMode==='each'?S.rt.vr:null}}
+function seqChanged(goStart){
+  if(!S.seq.length){S.useSeq=false;S.sel=null}
+  if(goStart&&routineOn()&&!S.playing)toStart();
+  updateTrim(); renderMoves(); renderSources();
+}
+function addToSeq(id,at){
+  if(S.rec||!moveById(id))return;
+  if(!S.seq.length&&!S.rt.set){S.rt.offset=S.main.offset;S.rt.ar=S.main.ar;S.rt.vr=S.main.vr;S.rt.set=true}  /* routine starts with your current song settings */
+  const e=newEntry(id); if(at==null||at>S.seq.length)at=S.seq.length;
+  S.seq.splice(at,0,e); if(S.seq.length===1)S.useSeq=true;
+  if(S.playing)pause(); seqChanged(true);
+}
+function previewMove(m){
+  if(S.rec)return; pause(); S.preview={src:m.src,s:m.s,e:m.e,id:m.id}; S.segIdx=0; activate(m.src); v.currentTime=m.s; updateTrim(); renderMoves(); play();
+}
+function deleteMove(id){
+  if(S.rec)return; pause();
+  S.moves=S.moves.filter(m=>m.id!==id); S.seq=S.seq.filter(x=>x.id!==id);
+  S.preview=null; S.segIdx=0; seqChanged(false); if(S.hasV)toStart();
+}
+function reorder(from,to){
+  if(S.rec||from===to)return; pause();
+  const [x]=S.seq.splice(from,1); if(to>from)to--; S.seq.splice(to,0,x); seqChanged(true);
+}
+function removeSeq(i){
+  if(S.rec)return; pause(); const [x]=S.seq.splice(i,1); if(x&&S.sel===x.uid)S.sel=null; seqChanged(true);
+}
+function dupSeq(i){
+  if(S.rec)return; pause(); const x=S.seq[i]; S.seq.splice(i+1,0,{uid:'e'+(++uidCount),id:x.id,s:x.s,e:x.e,sp:x.sp}); seqChanged(true);
+}
+/* play part of the routine: from T, stopping at stopT */
+function playRange(T,stopT){
+  if(S.rec)return; pause(); S.preview=null; S.useSeq=true; updateTrim();
+  seekT(Math.max(0,T)); S.stopAtT=stopT; play(); S.stopAtT=stopT;
+}
+/* show a frame while trimming */
+function showFrame(src,t){if(S.playing)pause();activate(src);v.currentTime=Math.max(0,t)}
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function iconBtn(label,text,fn){const b=el('button','btn sm',text);b.setAttribute('aria-label',label);b.addEventListener('click',fn);return b}
+function thumbEl(m){if(m.thumb){const i=el('img');i.src=m.thumb;i.alt='';return i}return el('div','ph')}
+function vtag(m){return S.sources.length>1?(()=>{const n=srcById(m.src);return el('span','vtag','V'+(n?n.num:'?'))})():null}
+function nameEl(m){const b=el('b');const t=vtag(m);if(t)b.append(t);b.append(document.createTextNode(m.name));return b}
+/* one beat of the routine song, measured in clip seconds */
+/* one beat of the routine song, in clip seconds, for a move playing at rate r */
+function beatLen(r){return S.sBase?60*(r||S.rt.vr)/(S.sBase*S.rt.ar):null}
+function fitEntry(x){
+  const b=beatLen(rateOf(x)), m=moveById(x.id); if(!b||!m)return false;
+  const n=srcById(m.src), max=n&&n.dur?n.dur:x.e+10;
+  let k=Math.max(1,Math.round((x.e-x.s)/b)); while(k>1&&x.s+k*b>max)k--;
+  x.e=+Math.min(max,x.s+k*b).toFixed(3); return true;
+}
+function beatsText(x){const b=beatLen(rateOf(x));if(!b)return '';const k=(x.e-x.s)/b, r=Math.round(k);return Math.abs(k-r)<0.04?' · '+r+(r===1?' beat':' beats'):' · '+k.toFixed(1)+' beats'}
+function playLen(x){return (x.e-x.s)/rateOf(x)}
+function seqTotal(){return S.seq.reduce((t,x)=>t+playLen(x),0)}
+function updateSeqStats(){
+  $('#seqLen').textContent=S.seq.length?'· '+S.seq.length+' moves · '+fmt(seqTotal()):'';
+  const tot=seqTotal()||1;
+  [...$('#seqBlocks').children].forEach((b,i)=>{const x=S.seq[i];if(x)b.style.flexGrow=String(playLen(x)/tot*100)});
+  const each=S.rt.spMode==='each';
+  $('#spdAll').setAttribute('aria-pressed',!each); $('#spdEach').setAttribute('aria-pressed',each);
+  $('#spdAllBox').hidden=each; $('#spdEachHint').hidden=!each;
+}
+function renderMoves(){
+  /* Moves tab: the library */
+  const ml=$('#moveList'); ml.textContent='';
+  S.moves.forEach(m=>{
+    const li=el('li','item nonum'); if(S.preview&&S.preview.id===m.id)li.classList.add('now');
+    const meta=el('div','meta'); meta.append(nameEl(m),el('span',null,fmt(m.s)+' – '+fmt(m.e)+' · '+(m.e-m.s).toFixed(1)+'s'));
+    const acts=el('div','acts');
+    acts.append(iconBtn('Play '+m.name,'▶',()=>previewMove(m)),iconBtn('Add '+m.name+' to routine','+',()=>addToSeq(m.id)),iconBtn('Delete '+m.name,'✕',()=>deleteMove(m.id)));
+    li.append(thumbEl(m),meta,acts); ml.append(li);
+  });
+  $('#moveEmpty').hidden=S.moves.length>0;
+
+  /* Routine tab: tray of moves */
+  const tray=$('#tray'); tray.textContent='';
+  S.moves.forEach(m=>{
+    const c=el('button','tcard'); c.type='button'; c.setAttribute('aria-label','Add '+m.name+' to the routine');
+    c.append(thumbEl(m),nameEl(m),el('span',null,(m.e-m.s).toFixed(1)+'s'));
+    dragSource(c,{kind:'tray',id:m.id},()=>addToSeq(m.id));
+    tray.append(c);
+  });
+  $('#trayEmpty').hidden=S.moves.length>0; tray.hidden=!S.moves.length;
+
+  /* Routine tab: the routine */
+  const sl=$('#seqList'); sl.textContent='';
+  const ro=routineOn(), cur=ro&&S.playing?S.segIdx:-1;
+  S.seq.forEach((x,i)=>{
+    const m=moveById(x.id); if(!m)return;
+    const li=el('li','item r'); li.dataset.i=i; if(i===cur)li.classList.add('now'); if(S.sel===x.uid)li.classList.add('sel');
+    const h=el('span','handle','⠿'); h.setAttribute('aria-hidden','true'); dragSource(h,{kind:'seq',i},null,li);
+    const tap=el('button','tap'); tap.type='button'; tap.setAttribute('aria-expanded',S.sel===x.uid);
+    tap.append(nameEl(m),el('span','len',lenText(x,m)));
+    tap.addEventListener('click',()=>{S.sel=S.sel===x.uid?null:x.uid;renderMoves();if(S.sel)showFrame(m.src,x.s)});
+    const meta=el('div','meta'); meta.append(tap);
+    const acts=el('div','acts');
+    acts.append(iconBtn('Play from here','▶',()=>playRange(segStart(i,segsFor()),segStart(i+1,segsFor()))),iconBtn('Remove from routine','✕',()=>removeSeq(i)));
+    li.append(h,el('span','n',String(i+1)),thumbEl(m),meta,acts);
+    if(S.sel===x.uid)li.append(editor(x,m,i,li));
+    sl.append(li);
+  });
+  $('#seqEmpty').hidden=S.seq.length>0; $('#seqHint').hidden=!S.seq.length; $('#seqBar').hidden=!S.seq.length;
+  $('#seqClear').disabled=!S.seq.length;
+  $('#fitAll').disabled=!S.seq.length||!beatLen(); $('#fitHint').hidden=!S.seq.length||!!beatLen();
+  /* timeline strip */
+  const bl=$('#seqBlocks'); bl.textContent='';
+  S.seq.forEach((x,i)=>{
+    const b=el('button',S.sel===x.uid?'sel':'',String(i+1)); b.type='button'; b.setAttribute('aria-label','Go to move '+(i+1));
+    b.addEventListener('click',()=>{S.sel=x.uid;if(S.playing)pause();S.useSeq=true;S.preview=null;updateTrim();seekT(segStart(i,segsFor()));renderMoves()});
+    bl.append(b);
+  });
+  updateSeqStats();
+}
+function lenText(x,m){
+  const sp=S.rt.spMode==='each'&&Math.abs((x.sp||1)-1)>0.004?' · ×'+(x.sp||1).toFixed(2):'';
+  return playLen(x).toFixed(2)+'s'+sp+beatsText(x)+((Math.abs(x.s-m.s)>0.005||Math.abs(x.e-m.e)>0.005)?' · trimmed':'');
+}
+function segsFor(){return S.seq.map(x=>({s:x.s,e:x.e,r:rateOf(x)}))}
+
+/* trimming one spot in the routine (doesn't change the saved move) */
+function editor(x,m,i,li){
+  const box=el('div','editor');
+  const n=srcById(m.src), dur=n&&n.dur||m.e+3;
+  const lo=Math.max(0,m.s-3), hi=Math.min(dur,m.e+3);
+  const mk=(label,key)=>{
+    const row=el('div','ed-row'), top=el('div','ed-top'), val=el('span','val',fmt2(x[key]));
+    top.append(el('span','label',label),val);
+    const r=el('input'); r.type='range'; r.min=lo; r.max=hi; r.step=0.01; r.value=x[key]; r.setAttribute('aria-label',label);
+    const nud=el('div','ed-nudge');
+    const apply=(t,fin)=>{
+      if(key==='s')x.s=+clamp(t,lo,x.e-0.1).toFixed(2); else x.e=+clamp(t,x.s+0.1,hi).toFixed(2);
+      val.textContent=fmt2(x[key]); if(document.activeElement!==r)r.value=x[key];
+      li.querySelector('.len').textContent=lenText(x,m);
+      updateSeqStats(); updateTrim(); showFrame(m.src,key==='s'?x.s:x.e-0.03);
+    };
+    r.addEventListener('input',()=>apply(+r.value));
+    [-0.1,-0.02,0.02,0.1].forEach(d=>nud.append(iconBtn(label+' '+(d>0?'+':'')+d,(d>0?'+':'−')+Math.abs(d),()=>apply(x[key]+d))));
+    row.append(top,r,nud); return row;
+  };
+  const acts=el('div','ed-acts');
+  const L=()=>segsFor();
+  const pj=el('button','btn sm','▶ Join'); pj.setAttribute('aria-label','Play the end of the move before, then this one'); pj.disabled=i===0;
+  pj.addEventListener('click',()=>playRange(segStart(i,L())-1.5,segStart(i+1,L())));
+  const pt=el('button','btn sm','▶ This'); pt.addEventListener('click',()=>playRange(segStart(i,L()),segStart(i+1,L())));
+  const rs=el('button','btn sm','Reset'); rs.addEventListener('click',()=>{x.s=m.s;x.e=m.e;renderMoves();updateTrim()});
+  const du=el('button','btn sm','Duplicate'); du.addEventListener('click',()=>dupSeq(i));
+  const fb=el('button','btn sm','Fit to beat'); fb.disabled=!beatLen(); fb.title=beatLen()?'Trim the end so this move lasts a whole number of beats':'Set the song BPM in the Tempo tab first';
+  fb.addEventListener('click',()=>{if(fitEntry(x)){renderMoves();updateTrim();showFrame(m.src,x.e-0.03)}});
+  acts.append(pj,pt,fb,rs,du);
+  box.append(mk('Start','s'),mk('End','e'));
+  if(S.rt.spMode==='each'){
+    const row=el('div','ed-row'), top=el('div','ed-top'), val=el('span','val','×'+(x.sp||1).toFixed(2));
+    top.append(el('span','label','Speed'),val);
+    const r=el('input'); r.type='range'; r.min=0.25; r.max=2.5; r.step=0.01; r.value=x.sp||1; r.setAttribute('aria-label','Speed of this move');
+    const setSp=t=>{
+      x.sp=+clamp(t,0.25,2.5).toFixed(3); val.textContent='×'+x.sp.toFixed(2); if(document.activeElement!==r)r.value=x.sp;
+      li.querySelector('.len').textContent=lenText(x,m); updateSeqStats(); updateTrim();
+      if(routineOn())v.playbackRate=curRate();
+    };
+    r.addEventListener('input',()=>setSp(+r.value));
+    const nud=el('div','ed-nudge'); nud.style.gridTemplateColumns='repeat(5,1fr)';
+    [['−5%',-0.05],['−1%',-0.01],['×1',0],['+1%',0.01],['+5%',0.05]].forEach(([t,d])=>nud.append(iconBtn('Speed '+t,t,()=>setSp(d===0?1:(x.sp||1)*(1+d)))));
+    const all=el('button','btn sm','Use this speed for every move');
+    all.addEventListener('click',()=>{S.seq.forEach(y=>y.sp=x.sp);renderMoves();updateTrim()});
+    row.append(top,r,nud,all); box.append(row);
+  }
+  box.append(acts);
+  return box;
+}
+
+/* ---------- dragging (touch and mouse) ---------- */
+function dragSource(node,info,onTap,rowEl){
+  node.addEventListener('pointerdown',ev=>{
+    if(S.rec||(ev.pointerType==='mouse'&&ev.button!==0))return;
+    const sx=ev.clientX, sy=ev.clientY, pid=ev.pointerId; let dragging=false, D=null;
+    const isHandle=info.kind==='seq';
+    if(isHandle)ev.preventDefault();
+    const move=e=>{
+      if(e.pointerId!==pid)return;
+      const dx=e.clientX-sx, dy=e.clientY-sy;
+      if(!dragging){
+        /* tray cards scroll sideways; a downward pull starts the drag */
+        if(isHandle?Math.hypot(dx,dy)>3:(dy>8&&Math.abs(dy)>Math.abs(dx))||(e.pointerType==='mouse'&&Math.hypot(dx,dy)>6)){dragging=true;D=beginDrag(info,rowEl||node,e);try{node.setPointerCapture(pid)}catch(_){}}
+        else if(!isHandle&&Math.abs(dx)>10){cleanup();return}
+        else return;
+      }
+      e.preventDefault(); dragMove(D,e);
+    };
+    const up=e=>{
+      if(e.pointerId!==pid)return; cleanup();
+      if(dragging)endDrag(D,e.type!=='pointercancel'); else if(onTap&&e.type==='pointerup')onTap();
+    };
+    const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up)};
+    window.addEventListener('pointermove',move,{passive:false}); window.addEventListener('pointerup',up); window.addEventListener('pointercancel',up);
+  });
+  if(onTap)node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onTap()}});
+  node.addEventListener('click',e=>e.preventDefault());
+}
+function beginDrag(info,src,e){
+  const r=src.getBoundingClientRect(), g=src.cloneNode(true);
+  g.classList.add('drag-ghost'); g.style.width=r.width+'px'; g.style.left=r.left+'px'; g.style.top=r.top+'px';
+  document.body.append(g); if(info.kind==='seq')src.classList.add('dragging');
+  const D={info,src,ghost:g,offY:e.clientY-r.top,offX:e.clientX-r.left,line:el('li','drop-line'),at:null,y:e.clientY,x:e.clientX,raf:0};
+  /* scroll when held near the top (under the pinned video) or bottom edge, and keep the drop spot in step */
+  const scroll=()=>{
+    const pinB=$('.pin').getBoundingClientRect().bottom, H=innerHeight, z=36;
+    let dy=0; if(D.y<pinB+z)dy=-Math.ceil((pinB+z-D.y)/4); else if(D.y>H-z)dy=Math.ceil((D.y-(H-z))/4);
+    if(dy){const before=scrollY;window.scrollBy(0,clamp(dy,-14,14));if(scrollY!==before)dragMove(D,{clientX:D.x,clientY:D.y})}
+    D.raf=requestAnimationFrame(scroll);
+  };
+  D.raf=requestAnimationFrame(scroll);
+  dragMove(D,e); return D;
+}
+function dragMove(D,e){
+  D.y=e.clientY; D.x=e.clientX;
+  D.ghost.style.top=(e.clientY-D.offY)+'px'; if(D.info.kind==='tray')D.ghost.style.left=(e.clientX-D.offX)+'px';
+  const wrap=$('#seqWrap').getBoundingClientRect(), list=$('#seqList'), empty=$('#seqEmpty');
+  const inside=e.clientY>wrap.top-30&&e.clientY<wrap.bottom+40;
+  D.line.remove(); empty.classList.remove('over'); D.at=null;
+  if(!inside&&D.info.kind==='tray')return;
+  if(!S.seq.length){empty.classList.add('over');D.at=0;return}
+  const rows=[...list.children].filter(c=>c.classList.contains('item'));
+  let at=rows.length;
+  for(let k=0;k<rows.length;k++){const rr=rows[k].getBoundingClientRect();if(e.clientY<rr.top+rr.height/2){at=k;break}}
+  D.at=at; list.insertBefore(D.line,rows[at]||null);
+}
+function endDrag(D,ok){
+  cancelAnimationFrame(D.raf); D.ghost.remove(); D.line.remove(); D.src.classList.remove('dragging'); $('#seqEmpty').classList.remove('over');
+  if(!ok||D.at==null)return;
+  if(D.info.kind==='tray')addToSeq(D.info.id,D.at); else reorder(D.info.i,D.at);
+}
+$('#modeClip').addEventListener('click',()=>setMode(false));
+$('#modeSeq').addEventListener('click',()=>setMode(true));
+$('#fitAll').addEventListener('click',()=>{if(S.rec)return;pause();S.seq.forEach(fitEntry);seqChanged(true)});
+$('#seqClear').addEventListener('click',()=>{if(S.rec)return;pause();S.seq=[];seqChanged(false);if(S.hasV)toStart()});
+
+/* tabs */
+const tabs=$$('[role=tab]');
+function showTab(t,focus){
+  tabs.forEach(x=>{const on=x===t;x.setAttribute('aria-selected',on);x.tabIndex=on?0:-1;$('#'+x.getAttribute('aria-controls')).hidden=!on});
+  if(focus)t.focus();
+  try{localStorage.setItem('rs-tab',t.id)}catch(e){}
+}
+tabs.forEach((t,i)=>{
+  t.addEventListener('click',()=>showTab(t));
+  t.addEventListener('keydown',e=>{const d=e.key==='ArrowRight'?1:e.key==='ArrowLeft'?-1:0;if(d){e.preventDefault();showTab(tabs[(i+d+tabs.length)%tabs.length],true)}});
+});
+try{const k=localStorage.getItem('rs-tab');const t=k&&document.getElementById(k);if(t)showTab(t)}catch(e){}
+
+/* ---------- tempo ---------- */
+function tapper(btn,label,onBpm){
+  let t=[];
+  btn.addEventListener('click',()=>{
+    const n=performance.now();
+    if(t.length&&n-t[t.length-1]>2000)t=[];
+    t.push(n); if(t.length>9)t.shift();
+    if(t.length>=3)onBpm(60000/((t[t.length-1]-t[0])/(t.length-1)));
+    btn.textContent=label+' ('+t.length+')';
+    clearTimeout(btn._r); btn._r=setTimeout(()=>{btn.textContent=label},2200);
+  });
+  return {reset(){t=[];clearTimeout(btn._r);btn.textContent=label}};
+}
+const dTap=tapper($('#dTap'),'Tap steps',bpm=>{S.dBase=bpm/S.vr;S.dAnchor=v.currentTime;$('#dBpm').value=S.dBase.toFixed(1);updateMatch()});
+const sTap=tapper($('#sTap'),'Tap beat',bpm=>{
+  S.sBase=bpm/S.ar;$('#sBpm').value=S.sBase.toFixed(1);
+  if(!a.paused)S.sAnchor=a.currentTime;
+  updateMatch();
+});
+$('#dBpm').addEventListener('input',e=>{const x=+e.target.value;S.dBase=x>0?x:null;updateMatch()});
+$('#sBpm').addEventListener('input',e=>{const x=+e.target.value;S.sBase=x>0?x:null;updateMatch()});
+function clearDance(){S.dBase=null;S.dAnchor=null;$('#dBpm').value='';dTap.reset()}
+function clearSong(){S.sBase=null;S.sAnchor=null;$('#sBpm').value='';sTap.reset()}
+$('#dClear').addEventListener('click',()=>{clearDance();updateMatch()});
+$('#sClear').addEventListener('click',()=>{clearSong();updateMatch()});
+$('#tClear').addEventListener('click',()=>{clearDance();clearSong();updateMatch()});
+
+function updateMatch(){
+  if($('#seqList').children.length)renderMoves();
+  $('#dBeats').hidden=!S.dBase; $('#sBeats').hidden=!S.sBase; $('#pulses').hidden=!S.dBase&&!S.sBase;
+  const dE=S.dBase?S.dBase*S.vr:null, sE=S.sBase?S.sBase*S.ar:null;
+  $('#dEff').textContent=dE?dE.toFixed(1):'—';
+  $('#sEff').textContent=sE?sE.toFixed(1):'—';
+  const ch=$('#verdict'), btns=$$('[data-m]');
+  if(!dE||!sE){
+    ch.className='chip idle';ch.textContent='Needs both tempos';
+    btns.forEach(b=>{b.disabled=true;b.querySelector('b').textContent='—';b.querySelector('small').innerHTML='&nbsp;';b.classList.remove('best')});
+    return;
+  }
+  const r=dE/sE; let err=Infinity;
+  [0.5,1,2].forEach(m=>{err=Math.min(err,Math.abs(r/m-1))});
+  if(err<0.015){ch.className='chip ok';ch.textContent='On the beat'}
+  else if(err<0.05){ch.className='chip warn';ch.textContent='Drifts '+(err*100).toFixed(1)+'%'}
+  else{ch.className='chip bad';ch.textContent='Off tempo'}
+  let best=null,bestD=Infinity;
+  btns.forEach(b=>{
+    const m=+b.dataset.m, need=sE*m/S.dBase, ok=need>=0.25&&need<=2.5;
+    b.dataset.need=need; b.disabled=!ok;
+    b.querySelector('b').textContent='×'+need.toFixed(2);
+    b.querySelector('small').textContent=ok?(need>1?'faster':'slower')+' clip':'out of range';
+    b.classList.remove('best');
+    if(ok&&Math.abs(Math.log(need))<bestD){bestD=Math.abs(Math.log(need));best=b}
+  });
+  if(best){best.classList.add('best');best.querySelector('small').textContent='least change'}
+}
+$$('[data-m]').forEach(b=>b.addEventListener('click',()=>setP(slot(),'vr',+(+b.dataset.need).toFixed(3))));
+
+/* ---------- recording ----------
+   Main path: the clip's frames are captured while it plays and encoded to MP4 on the phone,
+   and the song is mixed in straight from the decoded file, so it lines up exactly even across cuts.
+   Fallback: the browser's screen-style recorder. */
+let vCfg=null,aCfg=null;
+const canCodecs=()=>!!(window.VideoEncoder&&window.AudioEncoder&&window.VideoFrame&&window.AudioData&&window.Mp4Muxer);
+function recSize(){
+  const vw=v.videoWidth||720, vh=v.videoHeight||1280, sc=Math.min(1,1280/Math.max(vw,vh));
+  return [Math.max(2,Math.round(vw*sc/2)*2),Math.max(2,Math.round(vh*sc/2)*2)];
+}
+async function prepRec(){
+  if(!canCodecs())return;
+  try{
+    if(S.hasV&&v.videoWidth){
+      const [w,h]=recSize(); vCfg=null;
+      for(const codec of ['avc1.640028','avc1.4d0028','avc1.42002a','avc1.42001f']){
+        const cfg={codec,width:w,height:h,bitrate:5000000,framerate:30,avc:{format:'avc'}};
+        const r=await VideoEncoder.isConfigSupported(cfg).catch(()=>null);
+        if(r&&r.supported){vCfg=cfg;break}
+      }
+    }
+    if(buf){
+      aCfg=null; const ch=Math.min(2,buf.numberOfChannels);
+      for(const sr of [buf.sampleRate,48000,44100]){
+        const cfg={codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:ch,bitrate:160000};
+        const r=await AudioEncoder.isConfigSupported(cfg).catch(()=>null);
+        if(r&&r.supported){aCfg=cfg;break}
+      }
+    }
+  }catch(e){}
+}
+function captureFrame(mediaTime){
+  const R=S.rec; if(!R||R.mode!=='codecs'||R.failed)return;
+  const L=R.segs, i=S.segIdx, g=L[i]; if(!g)return;
+  if(S.switchPending){ if(mediaTime>=g.s-0.002&&mediaTime<=g.s+0.5)S.switchPending=false; else return; }
+  if(mediaTime<g.s-0.002||mediaTime>g.e+0.002)return;
+  const T=segStart(i,L)+Math.max(0,mediaTime-g.s)/segR(g);
+  const ts=Math.round(T*1e6);
+  if(ts<=R.lastTs||R.ve.encodeQueueSize>8)return;
+  try{
+    drawFit(v);
+    const f=new VideoFrame(cv,{timestamp:ts,duration:33333});
+    const key=R.frames===0||ts-R.lastKey>=2000000; if(key)R.lastKey=ts;
+    R.ve.encode(f,{keyFrame:key}); f.close();
+    R.lastTs=ts; R.frames++;
+  }catch(e){R.failed=e}
+}
+function drawFit(el){
+  const W=cv.width,H=cv.height,vw=el.videoWidth||W,vh=el.videoHeight||H,k=Math.min(W/vw,H/vh),w=vw*k,h=vh*k;
+  if(Math.abs(w-W)>1||Math.abs(h-H)>1){cx.fillStyle='#000';cx.fillRect(0,0,W,H)}
+  cx.drawImage(el,(W-w)/2,(H-h)/2,w,h);
+}
+function watchFrames(el){
+  if(!el.requestVideoFrameCallback||el._watching)return; el._watching=true;
+  const cb=(now,meta)=>{
+    if(!S.rec||S.rec.mode!=='codecs'){el._watching=false;return}
+    if(el===v)captureFrame(meta&&meta.mediaTime!=null?meta.mediaTime:el.currentTime);
+    el.requestVideoFrameCallback(cb);
+  };
+  el.requestVideoFrameCallback(cb);
+}
+/* iPhone's encoder leaves chunk durations blank, so supply them ourselves */
+function rawChunk(c){const d=new Uint8Array(c.byteLength);c.copyTo(d);return d}
+const okDur=x=>typeof x==='number'&&isFinite(x)&&x>=0;
+function startCodecRec(){
+  cv.width=vCfg.width; cv.height=vCfg.height;
+  const target=new Mp4Muxer.ArrayBufferTarget();
+  const muxer=new Mp4Muxer.Muxer({target,fastStart:'in-memory',firstTimestampBehavior:'offset',
+    video:{codec:'avc',width:vCfg.width,height:vCfg.height},
+    audio:{codec:'aac',numberOfChannels:aCfg.numberOfChannels,sampleRate:aCfg.sampleRate}});
+  const R={mode:'codecs',segs:segs().map(g=>({src:g.src,s:g.s,e:g.e,r:segR(g)})),fade:routineOn()&&S.rt.fade,muxer,target,vr:S.vr,ar:S.ar,offset:S.offset,lastTs:-1,lastKey:0,frames:0,failed:null};
+  R.ve=new VideoEncoder({output:(c,m)=>{try{muxer.addVideoChunkRaw(rawChunk(c),c.type,c.timestamp,okDur(c.duration)?c.duration:33333,m)}catch(e){R.failed=e}},error:e=>{R.failed=e}});
+  R.ve.configure(vCfg);
+  return R;
+}
+function stripAdts(d){
+  if(d.length>7&&d[0]===0xFF&&(d[1]&0xF6)===0xF0){const h=(d[1]&1)?7:9;return d.subarray(h)}
+  return d;
+}
+/* Encode the song from its start point, for the length of the recorded video. */
+async function encodeSong(R,interleaved){
+  const out=[], aDur=Math.round(1024/aCfg.sampleRate*1e6); let err=null;
+  const ae=new AudioEncoder({output:c=>{out.push({data:stripAdts(rawChunk(c)),type:c.type||'key',ts:c.timestamp,dur:okDur(c.duration)?c.duration:aDur})},error:e=>{err=e}});
+  try{
+    ae.configure(aCfg);
+    const sr=aCfg.sampleRate, ch=aCfg.numberOfChannels, total=Math.ceil((R.lastTs/1e6+1/30)*sr);
+    const src=[];for(let c=0;c<ch;c++)src.push(buf.getChannelData(Math.min(c,buf.numberOfChannels-1)));
+    const step=R.ar*buf.sampleRate/sr, p0=R.offset*buf.sampleRate, N=4096;
+    const fin=Math.round(0.03*sr), fout=R.fade?Math.min(Math.round(1.5*sr),Math.floor(total/3)):0;
+    const gain=i=>{let g=1;if(i<fin)g=i/fin;if(fout&&i>total-fout)g=Math.min(g,(total-i)/fout);return g};
+    for(let i0=0;i0<total&&!err;i0+=N){
+      const n=Math.min(N,total-i0), data=new Float32Array(n*ch);
+      for(let c=0;c<ch;c++){
+        const s=src[c];
+        for(let i=0;i<n;i++){
+          const p=p0+(i0+i)*step, k=Math.floor(p);
+          const x=(k<0||k+1>=s.length)?0:s[k]+(s[k+1]-s[k])*(p-k);
+          data[interleaved?i*ch+c:c*n+i]=x*gain(i0+i);
+        }
+      }
+      const ad=new AudioData({format:interleaved?'f32':'f32-planar',sampleRate:sr,numberOfFrames:n,numberOfChannels:ch,timestamp:Math.round(i0/sr*1e6),data});
+      ae.encode(ad); ad.close();
+      if(ae.encodeQueueSize>16)await new Promise(r=>setTimeout(r,0));
+    }
+    await ae.flush();
+  }catch(e){err=e}
+  try{ae.close()}catch(e){}
+  return err?[]:out;
+}
+async function finishCodecRec(R){
+  recMsg('Mixing in the song…');
+  try{
+    await R.ve.flush();
+    if(R.failed)throw R.failed;
+    if(!R.frames)throw new Error('no video frames were captured');
+    let chunks=await encodeSong(R,false);
+    if(!chunks.length)chunks=await encodeSong(R,true);   /* some encoders only take interleaved samples */
+    if(!chunks.length)throw new Error("the phone produced no sound data");
+    for(const c of chunks)R.muxer.addAudioChunkRaw(c.data,c.type,c.ts,c.dur);  /* muxer writes its own AAC header */
+    if(R.failed)throw R.failed;
+    R.muxer.finalize();
+    finishRecording(new Blob([R.target.buffer],{type:'video/mp4'}));
+  }catch(e){recMsg("Couldn't finish the video ("+((e&&e.message)||e)+").",true)}
+  finally{try{R.ve.close()}catch(e){}}
+}
+
+/* fallback recorder */
+function recSongPos(){return recPos+(ctx.currentTime-recT)*S.ar}
+function recStopSong(){if(!recSrc)return;const s=recSrc;recSrc=null;try{s.stop()}catch(e){}s.disconnect()}
+function recStartSong(pos){
+  recStopSong(); if(!buf||!recDest||pos>=buf.duration)return;
+  const s=ctx.createBufferSource(); s.buffer=buf; s.playbackRate.value=S.ar; s.connect(recDest);
+  const now=ctx.currentTime+0.02;
+  if(pos<0){recT=now+(-pos)/S.ar;recPos=0;s.start(recT,0)} else {recT=now;recPos=pos;s.start(now,pos)}
+  recSrc=s;
+}
+function recSync(force){
+  if(!S.rec||S.rec.mode!=='mr')return;
+  if(!S.playing||v.paused||S.stalled){recStopSong();return}
+  const e=expected();
+  if(!recSrc){if(force)recStartSong(e);return}
+  if(force||Math.abs(recSongPos()-e)>0.12)recStartSong(e);
+}
+function pickMime(){
+  const t=['video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  return t.find(x=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(x))||'';
+}
+function drawFrame(){if(v.readyState>=2)drawFit(v)}
+function startMrRec(){
+  const c=getCtx(); c.resume().catch(()=>{});
+  if(!recDest)recDest=c.createMediaStreamDestination();
+  const [w,h]=recSize(); cv.width=w; cv.height=h; drawFrame();
+  const stream=new MediaStream([...cv.captureStream(30).getVideoTracks(),...recDest.stream.getAudioTracks()]);
+  const mime=pickMime();
+  const mr=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:5000000}:undefined);
+  const R={mode:'mr',mr,chunks:[],done:false};
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)R.chunks.push(e.data)};
+  mr.onstop=()=>{if(R.done)return;R.done=true;finishRecording(new Blob(R.chunks,{type:mr.mimeType||mime||'video/mp4'}))};
+  mr.start(500);
+  return R;
+}
+
+function startRecording(){
+  const useCodecs=!!(vCfg&&aCfg&&buf&&canCodecs());
+  if(!useCodecs&&!(window.MediaRecorder&&cv.captureStream)){recMsg("This browser can't record video.",true);return}
+  pause(); S.preview=null; S.segIdx=0; recMsg(''); updateTrim();
+  const L=segs(), len=segStart(L.length,L);
+  try{S.rec=useCodecs?startCodecRec():startMrRec()}
+  catch(e){S.rec=null;recMsg("Couldn't start recording on this device.",true);return}
+  toStart(); if(useCodecs)S.switchPending=true;
+  play();
+  if(useCodecs)watchFrames(v);
+  $('#recBtn').textContent='Stop'; $('#recDot').hidden=false;
+  recMsg('Recording '+(routineOn()?'the routine':'the clip')+' · '+fmt(len));
+}
+function stopRecording(){
+  const R=S.rec; if(!R)return; S.rec=null;
+  pause();
+  $('#recBtn').textContent='Record'; $('#recDot').hidden=true;
+  if(R.mode==='codecs'){finishCodecRec(R);return}
+  recStopSong(); recMsg('Finishing the video…');
+  try{if(R.mr.state!=='inactive'){R.mr.requestData&&R.mr.requestData();R.mr.stop()}}catch(e){}
+  setTimeout(()=>{if(R.done)return;R.done=true;
+    if(R.chunks.length)finishRecording(new Blob(R.chunks,{type:R.mr.mimeType||'video/mp4'}));
+    else recMsg("Recording didn't finish on this device. Try again in Safari.",true)},5000);
+}
+function finishRecording(blob){
+  if(!blob.size){recMsg('Nothing was recorded. Try again with the clip playing.',true);return}
+  if(take)URL.revokeObjectURL(take.url);
+  const ext=/webm/.test(blob.type)?'webm':'mp4';
+  take={blob,url:URL.createObjectURL(blob),ext};
+  $('#takeVid').src=take.url;
+  $('#takeInfo').textContent=(blob.size/1048576).toFixed(1)+' MB · '+ext.toUpperCase();
+  $('#saveMsg').textContent=''; $('#take').hidden=false;
+  recMsg('Take ready.');
+  $('#take').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+$('#recBtn').addEventListener('click',()=>{S.rec?stopRecording():startRecording()});
+$('#discardBtn').addEventListener('click',()=>{if(take){URL.revokeObjectURL(take.url);take=null}$('#takeVid').removeAttribute('src');$('#take').hidden=true;recMsg('')});
+
+function saveMsg(t,err){const m=$('#saveMsg');m.textContent=t;m.classList.toggle('err',!!err)}
+async function getDownloads(){
+  if(downloads)return downloads;
+  try{if(window.claude&&window.claude.use)downloads=await window.claude.use('downloads')}catch(e){}
+  return downloads;
+}
+/* Save a file: inside Claude via its save prompt; as an installed app via the share sheet
+   (iPhone: "Save Video" puts it in Photos, "Save to Files" for anything); otherwise a normal download. */
+async function saveFile(name,data,mime){
+  const dl=window.claude?await getDownloads():null;
+  if(dl){try{await dl.save({filename:name,data});return 'saved'}catch(e){const c=e&&e.code;return c==='declined'?'declined':c==='too_large'?'too_large':c==='rate_limited'?'busy':'failed'}}
+  const blob=data instanceof Blob?data:new Blob([data],{type:mime||'application/octet-stream'});
+  let file=null; try{file=new File([blob],name,{type:mime||blob.type})}catch(e){}
+  if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+    try{await navigator.share({files:[file]});return 'shared'}
+    catch(e){if(e&&e.name==='AbortError')return 'declined'}
+  }
+  try{const u=URL.createObjectURL(blob),ln=document.createElement('a');ln.href=u;ln.download=name;document.body.append(ln);ln.click();ln.remove();setTimeout(()=>URL.revokeObjectURL(u),60000);return 'downloaded'}
+  catch(e){return 'failed'}
+}
+const saveWords={saved:'Saved.',shared:'Done.',downloaded:'Downloaded.',declined:'Not saved.',too_large:'Too large to save. Make it shorter.',busy:'A save prompt is already open.',failed:"Couldn't save here."};
+$('#saveBtn').addEventListener('click',async()=>{
+  if(!take)return;
+  const name='riddim-swap-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.'+take.ext;
+  const r=await saveFile(name,take.blob,take.blob.type||'video/mp4');
+  saveMsg(saveWords[r],r==='failed'||r==='too_large'||r==='busy');
+});
+getDownloads();
+
+/* ---------- saving ----------
+   Everything saves automatically on this phone (in the browser's storage for this app):
+   the video and song files once, plus the moves, routine and settings every few seconds.
+   Several routines can be kept as separate projects. A backup file holds everything except the media. */
+let dbP=null;
+function idb(){
+  if(!dbP)dbP=new Promise((res,rej)=>{
+    try{const r=indexedDB.open('riddim-swap',1);
+      r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('media'))d.createObjectStore('media');if(!d.objectStoreNames.contains('projects'))d.createObjectStore('projects',{keyPath:'id'})};
+      r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);}catch(e){rej(e)}
+  });
+  return dbP;
+}
+function idbDo(store,mode,make){
+  return idb().then(d=>new Promise((res,rej)=>{
+    const t=d.transaction(store,mode), r=make(t.objectStore(store));
+    t.oncomplete=()=>res(r&&r.result); t.onerror=()=>rej(t.error||new Error('storage')); t.onabort=()=>rej(t.error||new Error('storage full'));
+  }));
+}
+const mediaPut=(k,f)=>idbDo('media','readwrite',st=>st.put(f,k));
+const mediaGet=k=>k?idbDo('media','readonly',st=>st.get(k)).catch(()=>null):Promise.resolve(null);
+const mediaDel=k=>idbDo('media','readwrite',st=>st.delete(k)).catch(()=>{});
+const projPut=p=>idbDo('projects','readwrite',st=>st.put(p));
+const projGet=id=>idbDo('projects','readonly',st=>st.get(id)).catch(()=>null);
+const projAll=()=>idbDo('projects','readonly',st=>st.getAll()).catch(()=>[]);
+const projDel=id=>idbDo('projects','readwrite',st=>st.delete(id));
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+const PJ={id:null,name:'',busy:false,last:'',mediaFail:false,ok:true};
+let saveTimer=0;
+function saveState(t,warn){const e=$('#saveState');e.textContent=t;e.classList.toggle('warn',!!warn)}
+function saveMedia(key,f){
+  if(!key||!f)return;
+  mediaPut(key,f).catch(()=>{PJ.mediaFail=true;saveState("Videos not kept: storage full",true)});
+}
+function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.size}:null}
+function snapshot(){
+  return {v:1,
+    sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
+      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut})),
+    cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.loop, useSeq:S.useSeq,
+    dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
+    mainSong:songMeta(S.mainSong), rtSong:songMeta(S.rtSong),
+    counts:{src:srcCount,move:moveCount,uid:uidCount}};
+}
+function hasContent(){return S.sources.length||S.mainSong||S.moves.length}
+function summary(d){
+  const nv=(d.sources||[]).length, nm=(d.moves||[]).length, nr=(d.seq||[]).length;
+  return nv+(nv===1?' video':' videos')+' · '+nm+(nm===1?' move':' moves')+(nr?' · routine of '+nr:'');
+}
+async function autosave(force){
+  if(PJ.busy)return;
+  if(!PJ.id&&!hasContent())return;
+  const data=JSON.stringify(snapshot());
+  if(!force&&data===PJ.last)return;
+  if(!PJ.id){
+    const all=await projAll(); PJ.id='p'+Date.now().toString(36);
+    if(!PJ.name)PJ.name='Routine '+(all.length+1); $('#projName').value=PJ.name; LS.set('rs-proj',PJ.id);
+  }
+  try{await projPut({id:PJ.id,name:PJ.name,updated:Date.now(),data});PJ.last=data;PJ.ok=true;
+    if(!PJ.mediaFail)saveState('Saved')}
+  catch(e){PJ.ok=false;saveState("Couldn't save",true)}
+}
+setInterval(()=>autosave(false),2500);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)autosave(false)});
+window.addEventListener('pagehide',()=>autosave(false));
+
+/* A file read back from storage is copied into memory: iPhone often refuses to play media
+   straight out of storage, even though the file is there. */
+async function toMemory(f){
+  if(!f)return null;
+  try{const buf=await f.arrayBuffer();return new File([buf],f.name||'media',{type:f.type||'',lastModified:f.lastModified||0})}
+  catch(e){return f}
+}
+/* rebuild a video's players from its file (after the phone dropped them, or an error) */
+function refreshSource(n){
+  if(!n||!n.blob)return;
+  const old=n.url; n.url=URL.createObjectURL(n.blob);
+  [n.el,n.el2].forEach(e=>{if(e){e.src=n.url;e.load()}});
+  if(old)setTimeout(()=>URL.revokeObjectURL(old),4000);
+  if(S.primed&&(S.primed.el===n.el||S.primed.el===n.el2))S.primed=null;
+}
+function refreshSong(){const so=S.liveSong;if(so&&so.blob){const t=a.currentTime;setSongSrc(so.blob);a.addEventListener('loadedmetadata',()=>{try{a.currentTime=t}catch(e){}},{once:true})}}
+function broken(e){return !!(e&&e.getAttribute('src')&&(e.error||(e.readyState===0&&e.networkState===3)))}
+/* check every player; force=true rebuilds them all */
+function healMedia(force){
+  let n=0;
+  S.sources.forEach(x=>{if(x.missing||!x.blob)return;if(force||broken(x.el)||broken(x.el2)){x.errs=0;refreshSource(x);n++}});
+  if(S.liveSong&&S.liveSong.blob&&(force||broken(a))){refreshSong();n++}
+  if(ctx&&ctx.state!=='running')ctx.resume().catch(()=>{});
+  S.primed=null; return n;
+}
+let hiddenAt=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){hiddenAt=Date.now();return}
+  /* back in the app: if it was away a while, the phone may have shut the players down without saying so */
+  const away=hiddenAt?Date.now()-hiddenAt:0; hiddenAt=0;
+  if(S.rec)return;
+  const n=healMedia(away>30000);
+  if(n)recMsg('');
+});
+window.addEventListener('pageshow',e=>{if(e.persisted)healMedia(true)});
+$('#projHeal').addEventListener('click',()=>{if(S.rec)return;pause();const n=healMedia(true);sheetMsg(n?'Reloaded the videos and song. Try playing again.':'Nothing to reload yet.')});
+
+/* wipe the workspace back to empty */
+function resetAll(){
+  if(S.rec)stopRecording(); pause();
+  S.sources.forEach(n=>{if(n.url)URL.revokeObjectURL(n.url);if(n.el2)n.el2.remove();if(n.el.id!=='vid')n.el.remove()});
+  const vid=$('#vid'); vid.removeAttribute('src'); try{vid.load()}catch(e){} vid.classList.remove('off'); v=vid;
+  Object.assign(S,{sources:[],cur:null,hasV:false,cIn:0,cOut:null,moves:[],seq:[],useSeq:false,segIdx:0,preview:null,sel:null,
+    primed:null,stopAtT:null,mainSong:null,rtSong:null,liveSong:undefined,loop:false,dBase:null,sBase:null,dAnchor:null,sAnchor:null,
+    main:{offset:0,ar:1,vr:1},rt:{offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'}});
+  srcCount=0;moveCount=0;uidCount=0; resetCut();
+  $('#dBpm').value='';$('#sBpm').value='';$('#origAudio').checked=false;
+  $('#empty').hidden=false; songMsg('MP3, M4A or a video. For a video, only its sound is used.'); $('#rSongMsg').hidden=true;
+  if(take){URL.revokeObjectURL(take.url);take=null} $('#take').hidden=true; recMsg('');
+  useSong(null); S.liveSong=null;
+  enable(); renderSources(); renderMoves(); updateTrim(); updateMatch(); updateMissing();
+}
+async function restore(rec){
+  PJ.busy=true;
+  try{
+    const d=JSON.parse(rec.data);
+    resetAll();
+    PJ.id=rec.id; PJ.name=rec.name; $('#projName').value=rec.name; LS.set('rs-proj',rec.id);
+    const nv=(d.sources||[]).length; let k=0;
+    for(const m of d.sources||[]){saveState('Loading videos '+(++k)+'/'+nv+'…');const f=await toMemory(await mediaGet(m.key));createSource(f,m)}
+    const c=d.counts||{}; srcCount=Math.max(srcCount,c.src||0); moveCount=c.move||0; uidCount=c.uid||0;
+    S.moves=d.moves||[]; S.seq=d.seq||[]; S.loop=!!d.loop;
+    S.main=Object.assign({offset:0,ar:1,vr:1},d.main); S.rt=Object.assign({offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'},d.rt);
+    S.dBase=d.dBase||null; S.sBase=d.sBase||null;
+    $('#dBpm').value=S.dBase?S.dBase.toFixed(1):''; $('#sBpm').value=S.sBase?S.sBase.toFixed(1):'';
+    $('#origAudio').checked=!!d.origAudio;
+    S.hasV=S.sources.some(n=>!n.missing);
+    const first=srcById(d.cur)&&!srcById(d.cur).missing?srcById(d.cur):S.sources.find(n=>!n.missing)||S.sources[0];
+    if(first){S.cur=first.id;v=first.el;showOnly(first.el);S.cIn=first.cIn||0;S.cOut=first.cOut??null;v.muted=!$('#origAudio').checked}
+    $('#empty').hidden=S.hasV;
+    for(const [slot,meta] of [['main',d.mainSong],['rt',d.rtSong]]){
+      if(!meta)continue;
+      saveState('Loading songs…');
+      const f=await toMemory(await mediaGet(meta.key));
+      if(f)loadSong(f,slot,true);
+      else{const so=Object.assign({blob:null,buf:null,dur:0,ready:false,missing:true},meta);if(slot==='rt')S.rtSong=so;else S.mainSong=so}
+    }
+    S.useSeq=!!d.useSeq&&S.seq.length>0; S.liveSong=undefined;
+    enable(); renderSources(); renderMoves(); updateTrim(); updateMatch(); updateMissing();
+    PJ.last=JSON.stringify(snapshot()); saveState('Saved');
+    return true;
+  }catch(e){saveState("Couldn't open project",true);return false}
+  finally{PJ.busy=false}
+}
+function missingItems(){
+  const out=S.sources.filter(n=>n.missing).map(n=>({kind:'video',id:n.id,name:n.fname||n.name}));
+  if(S.mainSong&&S.mainSong.missing)out.push({kind:'main',name:S.mainSong.fname||S.mainSong.name});
+  if(S.rtSong&&S.rtSong.missing)out.push({kind:'rt',name:S.rtSong.fname||S.rtSong.name});
+  return out;
+}
+function updateMissing(){
+  const items=missingItems();
+  $('#missBar').hidden=!items.length;
+  $('#missText').textContent=items.length?items.length+(items.length===1?' file needs':' files need')+' re-adding on this phone':'';
+  $('#missWrap').hidden=!items.length;
+  const ul=$('#missList'); ul.textContent='';
+  items.forEach(it=>{
+    const li=el('li','miss'); li.append(el('span',null,(it.kind==='video'?'Video: ':'Song: ')+it.name));
+    const lab=el('label','btn sm file','Find file'); const inp=el('input'); inp.type='file'; inp.accept=it.kind==='video'?'video/*':'';
+    inp.addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+      if(it.kind==='video')relinkSource(it.id,f); else loadSong(f,it.kind)});
+    lab.append(inp); li.append(lab); ul.append(li);
+  });
+}
+async function renderProjects(){
+  const all=(await projAll()).sort((x,y)=>y.updated-x.updated);
+  const ul=$('#projList'); ul.textContent='';
+  const others=all.filter(p=>p.id!==PJ.id);
+  others.forEach(p=>{
+    let d={}; try{d=JSON.parse(p.data)}catch(e){}
+    const li=el('li','proj'), meta=el('div','meta');
+    meta.append(el('b',null,p.name),el('span',null,summary(d)+' · '+new Date(p.updated).toLocaleDateString(undefined,{day:'numeric',month:'short'})));
+    const acts=el('div','acts');
+    const open=el('button','btn sm','Open'); open.addEventListener('click',async()=>{await autosave(true);await restore(p);renderProjects();sheetMsg('Opened "'+p.name+'".')});
+    const del=el('button','btn sm danger','Delete'); let armed=false;
+    del.addEventListener('click',async()=>{
+      if(!armed){armed=true;del.textContent='Tap again';setTimeout(()=>{armed=false;del.textContent='Delete'},3000);return}
+      await projDel(p.id); await cleanMedia(); renderProjects(); sheetMsg('Deleted "'+p.name+'".');
+    });
+    acts.append(open,del); li.append(meta,acts); ul.append(li);
+  });
+  $('#projEmpty').hidden=others.length>0;
+  const cur=all.find(p=>p.id===PJ.id);
+  $('#projInfo').textContent=cur?'Saved on this phone · '+summary(JSON.parse(cur.data)):'Saves on this phone automatically once you add a video or song.';
+}
+/* remove stored media that no project uses any more */
+async function cleanMedia(){
+  try{
+    const keep=new Set(); S.sources.forEach(n=>n.key&&keep.add(n.key)); [S.mainSong,S.rtSong].forEach(so=>so&&so.key&&keep.add(so.key));
+    (await projAll()).forEach(p=>{try{const d=JSON.parse(p.data);(d.sources||[]).forEach(m=>keep.add(m.key));[d.mainSong,d.rtSong].forEach(m=>m&&keep.add(m.key))}catch(e){}});
+    const keys=await idbDo('media','readonly',st=>st.getAllKeys());
+    for(const k of keys||[])if(!keep.has(k))await mediaDel(k);
+  }catch(e){}
+}
+function sheetMsg(t,err){const m=$('#projMsg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('err',!!err)}
+let sheetFrom=null;
+function openSheet(){sheetFrom=document.activeElement;$('#sheet').hidden=false;$('#sheetBack').hidden=false;sheetMsg('');$('#projName').value=PJ.name||'';renderProjects();updateMissing();$('#sheetClose').focus()}
+function closeSheet(){$('#sheet').hidden=true;$('#sheetBack').hidden=true;if(sheetFrom&&sheetFrom.focus)sheetFrom.focus()}
+$('#projBtn').addEventListener('click',openSheet);
+$('#missFix').addEventListener('click',openSheet);
+$('#sheetClose').addEventListener('click',closeSheet);
+$('#sheetBack').addEventListener('click',closeSheet);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#sheet').hidden)closeSheet()});
+$('#projName').addEventListener('input',e=>{PJ.name=e.target.value.trim()||'Untitled routine';if(PJ.id)autosave(true)});
+$('#projNew').addEventListener('click',async()=>{
+  await autosave(true); resetAll(); PJ.id=null; PJ.name=''; PJ.last=''; $('#projName').value=''; LS.set('rs-proj','');
+  saveState(''); renderProjects(); sheetMsg('New project started. Your last one is saved below.');
+});
+$('#projExport').addEventListener('click',async()=>{
+  if(!hasContent()){sheetMsg('Add a video or some moves first.',true);return}
+  autosave(true);   /* not awaited: the share sheet must open straight from the tap */
+  const body=JSON.stringify({app:'riddim-swap',name:PJ.name||'Routine',saved:new Date().toISOString(),data:snapshot()});
+  const safe=(PJ.name||'routine').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')||'routine';
+  const r=await saveFile(safe+'.riddim.json',body,'application/json');
+  sheetMsg(r==='saved'||r==='shared'||r==='downloaded'?'Backup saved.':saveWords[r],r==='failed'||r==='busy');
+});
+$('#projImport').addEventListener('change',async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f)return;
+  try{
+    const j=JSON.parse(await f.text()); if(j.app!=='riddim-swap'||!j.data)throw new Error('not ours');
+    await autosave(true);
+    const rec={id:'p'+Date.now().toString(36),name:(j.name||'Imported routine'),updated:Date.now(),data:JSON.stringify(j.data)};
+    await projPut(rec); await restore(rec); renderProjects();
+    const n=missingItems().length;
+    sheetMsg('Opened "'+rec.name+'".'+(n?' Re-add the '+n+' file'+(n===1?'':'s')+' listed above.':''));
+  }catch(err){sheetMsg("That file isn't a Riddim Swap backup.",true)}
+});
+(async()=>{
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{})}catch(e){}
+  const id=LS.get('rs-proj'); if(!id)return;
+  const rec=await projGet(id);
+  if(rec&&await restore(rec)){const n=missingItems().length;saveState(n?'Restored · files missing':'Restored',!!n)}
+})();
+
+/* ---------- frame loop ---------- */
+const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage');
+let lastSeg=-1;
+function beat(pos,anchor,bpm){const bp=(pos-(anchor??0))*bpm/60, fl=Math.floor(bp);return {idx:((fl%4)+4)%4,pulse:(bp-fl)<0.14}}
+function tick(){
+  if(S.hasV){
+    const ro=routineOn();
+    if(document.activeElement!==$('#scrub'))$('#scrub').value=ro?tPos():v.currentTime;
+    $('#time').textContent=ro?fmt(tPos())+' / '+fmt(segStart(segs().length,segs())):fmt(v.currentTime);
+    if(S.rec||S.playing){
+      const g=segs()[S.segIdx];
+      /* a cut has finished seeking: carry on (while recording, the frame grabber confirms it, with a safety timeout) */
+      if(S.switchPending&&g&&!v.seeking){const codec=S.rec&&S.rec.mode==='codecs';if(!codec||v.currentTime>g.s+0.6)S.switchPending=false}
+      if(g&&!S.switchPending&&v.currentTime>=g.e-0.02){
+        if(S.stopAtT!=null&&routineOn()&&segStart(S.segIdx+1,segs())>=S.stopAtT-0.02)pause(); else atSegEnd();
+      }
+      else{
+        if(S.rec&&S.rec.mode==='mr')drawFrame(); else if(S.rec&&!v.requestVideoFrameCallback)captureFrame(v.currentTime);
+        syncSong(false); recSync(false);
+      }
+    }
+    if(ro&&S.stopAtT!=null&&S.playing&&!S.switchPending&&tPos()>=S.stopAtT-0.02)pause();
+    if(ro){
+      const tot=segStart(segs().length,segs())||1; $('#seqHead').style.left=(tPos()/tot*100)+'%';
+      const k=S.playing?S.segIdx:-1;
+      if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
+    }
+  } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
+  let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
+  if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
+  if(S.sBase&&S.hasA&&!a.paused)s=beat(a.currentTime,S.sAnchor,S.sBase);
+  dLights.forEach((l,i)=>l.classList.toggle('on',i===d.idx));
+  sLights.forEach((l,i)=>l.classList.toggle('on',i===s.idx));
+  stage.classList.toggle('pulse-d',d.pulse);
+  stage.classList.toggle('pulse-s',s.pulse);
+  requestAnimationFrame(tick);
+}
+renderSources(); updateTrim(); showSlots(); applyRates(); renderMoves(); updateCutter(); requestAnimationFrame(tick);
+})();
+</script>
+<script>
+/* offline support + updates */
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+/* iPhone/iPad in Safari, not installed yet: show how to add it to the Home Screen */
+(function(){
+  const ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const installed=window.navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+  let dismissed=false; try{dismissed=localStorage.getItem('rs-install-hide')==='1'}catch(e){}
+  if(!ios||installed||dismissed)return;
+  const bar=document.createElement('div'); bar.className='install';
+  bar.innerHTML='<span><b>Install Riddim Swap:</b> tap the Share button, then <b>Add to Home Screen</b>.</span>';
+  const x=document.createElement('button'); x.className='btn sm ghost'; x.textContent='Hide';
+  x.addEventListener('click',()=>{bar.remove();try{localStorage.setItem('rs-install-hide','1')}catch(e){}});
+  bar.append(x);
+  const wrap=document.querySelector('.wrap'); wrap.insertBefore(bar,wrap.children[1]);
+})();
+</script>
+</body>
+</html>
