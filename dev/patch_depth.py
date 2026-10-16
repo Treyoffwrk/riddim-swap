@@ -380,7 +380,7 @@ $('#dTap').addEventListener('click',()=>{S.danceSrc='tapped'});
 $('#dBpm').addEventListener('input',()=>{S.danceSrc='tapped'});
 
 /* ---------- fit scoring ---------- */
-function motionIn(srcId,s,e){const n=srcById(srcId);return n&&n.motion?n.motion.beats.filter(b=>b.t>=s-0.001&&b.t<=e+0.001):null}
+function motionIn(srcId,s,e){const n=srcById(srcId);return n&&n.motion?hitsOf(n).filter(b=>b.t>=s-0.001&&b.t<=e+0.001):null}
 /* score a list of pieces against a song grid. Everything compared in playback seconds. */
 function fitOf(list,G,offset,ar,shift){
   if(!G||!list.length)return null;
@@ -833,7 +833,7 @@ rep("""  if(an.downConf<0.15)warn("Not sure which beat is the 1 of the bar.");""
 rep("""  const m=n.motion; info.textContent=m.beats.length+' hits found in '+n.name+' · dance tempo about '+m.bpm.toFixed(0)+' BPM.';""",
 """  const m=n.motion; info.textContent=m.beats.length+' hits found in '+n.name+' · dance tempo about '+m.bpm.toFixed(0)+' BPM'+(m.confirmed?' · checked by your taps ✓':danceSure()?'':' · not sure')+'.';
   $('#hitRow').hidden=false;""")
-rep("""  if(!n){info.textContent='Add a dance video first.';return}""", """  $('#hitRow').hidden=true;
+rep("""  if(!n){info.textContent='Add a dance video first.';return}""", """  $('#hitRow').hidden=true; $('#hitLevelRow').hidden=true;
   if(!n){info.textContent='Add a dance video first.';return}""")
 rep("""  if(m.contrast<0.55)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');
   if(m.cam>0.8)warn('The camera moves a lot. Camera motion is removed, but strong pans can hide hits.');""",
@@ -952,7 +952,7 @@ $('#hitCheck').addEventListener('click',()=>{
   const T=hitTaps.add(v.currentTime);
   if(T.length<6){hMsg('Keep tapping on the hits… '+T.length+' of 6');return}
   hitTaps.reset();
-  const H=n.motion.beats.map(b=>b.t), near=T.filter(t=>H.some(h=>Math.abs(h-t)<0.12)).length, fr=near/T.length;
+  const H=hitsOf(n).map(b=>b.t), near=T.filter(t=>H.some(h=>Math.abs(h-t)<0.12)).length, fr=near/T.length;
   if(fr>=0.7){n.motion.confirmed=true;hMsg('✓ '+near+' of '+T.length+' taps landed on a detected hit.',true)}
   else{n.motion.confirmed=false;hMsg('Only '+near+' of '+T.length+' taps landed near a detected hit, so the hits for this clip may be off. You can clear them, or tap the dance tempo in the Tempo tab instead.')}
   renderDance(); scheduleFit();
@@ -971,6 +971,134 @@ rep("""    let W=80,H=80,prev=null,series=[],done=false,lastT=-1;
       resolve(res)};""")
 rep("""      if(prev){const dg=RA.directogram(RA.flowPyr(prev,g,W,H,8));series.push({t,D:dg.D,cam:dg.cam,mag:dg.mag})}""",
 """      if(prev){const fv=RA.flowVecs(prev,g,W,H,8),pk=new Float32Array(fv.length*4);fv.forEach((q,i)=>{pk[4*i]=q[0];pk[4*i+1]=q[1];pk[4*i+2]=q[2];pk[4*i+3]=q[3]});series.push({t,p:pk})}""")
+
+# ------------------------------------------------------------------ mark your own hits, delete single hits, one hit per move
+rep(""".okmsg{color:var(--ok)!important}""", """.okmsg{color:var(--ok)!important}
+.hitstrip.edit{height:22px;cursor:pointer;touch-action:manipulation}
+#hitLevel{grid-template-columns:repeat(3,auto)}
+#hitLevel button{padding:0 10px}
+.bigtap{min-height:64px;font:700 20px var(--f-body);width:100%;background:var(--dance);color:#fff;border-color:var(--dance);border-radius:12px}
+.bigtap:active{transform:scale(.98)}""")
+rep("""          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>""",
+"""          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>
+          <div class="subhead" id="hitLevelRow" hidden><span class="label">Hits per move</span>
+            <div class="seg" id="hitLevel" role="group" aria-label="How many hits to show">
+              <button data-hl="fewer" aria-pressed="false">Fewer</button><button data-hl="normal" aria-pressed="true">Normal</button><button data-hl="more" aria-pressed="false">More</button></div></div>
+          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
+          <button class="btn bigtap" id="hitTap" hidden>Hit</button>""")
+rep("""const bMsg=(t,ok)=>{""", r"""/* ---- hits shown: a move often has two stops close together (feet land, then the arms hit). Merge stops closer than
+   part of a beat into the strongest. Hits you marked are always kept, and detected ones right next to them are dropped. ---- */
+function beatPer(){const G=liveGrid();return G&&G.bpm?60/G.bpm:0.48}
+function hitCfg(){return {fewer:[0.9,0.35],normal:[0.65,0.25],more:[0,0.18]}[S.hitLevel||'normal']||[0.65,0.25]}
+function mergeGap(){const c=hitCfg();return c[0]?Math.max(0.2,c[0]*beatPer()):0}
+function hitsOf(n){
+  if(!n||!n.motion)return [];
+  const all=n.motion.beats, mine=all.filter(b=>b.mine), p=beatPer();
+  const cfg=hitCfg();
+  let det=all.filter(b=>!b.mine&&b.w>=cfg[1]&&!mine.some(m=>Math.abs(m.t-b.t)<0.15));
+  if(cfg[0])det=RA.mergeHits(det,Math.max(0.2,cfg[0]*p));
+  return det.concat(mine).sort((x,y)=>x.t-y.t);
+}
+function setHitLevel(l,save){S.hitLevel=l;$$('#hitLevel button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.hl===l)));if(save)try{localStorage.setItem('rs-hitlevel',l)}catch(e){}}
+try{const l=localStorage.getItem('rs-hitlevel');setHitLevel(['fewer','normal','more'].includes(l)?l:'normal',false)}catch(e){setHitLevel('normal',false)}
+$$('#hitLevel button').forEach(b=>b.addEventListener('click',()=>{setHitLevel(b.dataset.hl,true);renderDance();renderMoves();scheduleFit();drawHitStrip()}));
+/* ---- mark hits yourself: play the clip and tap on each hit; your taps replace the hits in the part you played ---- */
+const TAP_LAT=0.03;   /* touch-to-event delay on phones, roughly */
+let mark=null, undoStack=[];
+function curVid(){return [...document.querySelectorAll('#stage video')].find(x=>!x.classList.contains('off'))||v}
+function pushUndo(n){undoStack.push({id:n.id,motion:n.motion?JSON.parse(JSON.stringify(n.motion)):null});if(undoStack.length>20)undoStack.shift();$('#hitUndo').hidden=false}
+function setMarkUI(on){$('#hitTap').hidden=!on;$('#hitMark').textContent=on?'Done marking':'Mark hits myself';$('#hitStrip').classList.toggle('edit',!on&&!!(srcById(S.cur)||{}).motion)}
+$('#hitMark').addEventListener('click',()=>{
+  const n=srcById(S.cur); if(!n||routineOn()){hMsg('Marking works on a single clip: switch to Clip mode first.');return}
+  if(!mark){mark={n,taps:[],start:null};setMarkUI(true);hMsg('Press Hit on every hit while the clip plays. Only the part you play gets replaced.');if(curVid().paused)play();return}
+  /* done */
+  const m=mark; mark=null; setMarkUI(false); if(!curVid().paused)pause();
+  if(m.taps.length<1){hMsg('No hits marked.');return}
+  const end=m.end??m.taps[m.taps.length-1]+0.3, start=m.start;
+  pushUndo(m.n);
+  const old=m.n.motion&&m.n.motion.beats?m.n.motion.beats.filter(b=>b.t<start||b.t>end):[];
+  const beats=old.concat(m.taps.map(t=>({t:+t.toFixed(3),w:1,mine:true}))).sort((x,y)=>x.t-y.t);
+  const iv=[];for(let i=1;i<m.taps.length;i++)iv.push(m.taps[i]-m.taps[i-1]);
+  m.n.motion=Object.assign({bpm:iv.length?60/RA.median(iv):0,conf:1,contrast:1,shake:0,cam:0},m.n.motion||{},{beats,confirmed:true,edited:true});
+  hMsg('✓ '+m.taps.length+' hits marked by you between '+start.toFixed(1)+' s and '+end.toFixed(1)+' s.',true);
+  renderDance(); renderMoves(); scheduleFit(); drawHitStrip();
+});
+$('#hitTap').addEventListener('pointerdown',e=>{
+  e.preventDefault(); if(!mark)return; const vv=curVid();
+  if(vv.paused){play();return}
+  const t=Math.max(0,vv.currentTime-TAP_LAT*vv.playbackRate);
+  if(mark.start==null)mark.start=Math.max(0,t-0.3);
+  mark.taps.push(t); mark.end=t+0.3; hMsg(mark.taps.length+' marked… press Done marking when finished.');
+  if(navigator.vibrate)try{navigator.vibrate(8)}catch(err){}
+});
+/* tap a tick on the strip under the video to remove that hit */
+$('#hitStrip').addEventListener('click',e=>{
+  const n=srcById(S.cur); if(mark||!n||!n.motion||routineOn())return;
+  const r=e.currentTarget.getBoundingClientRect(), d=v.duration||0; if(!d)return;
+  const t=(e.clientX-r.left)/r.width*d, tol=Math.max(0.12,14/r.width*d);
+  const shown=hitsOf(n);let bi=-1,bd=1e9;shown.forEach((b,i)=>{const x=Math.abs(b.t-t);if(x<bd){bd=x;bi=i}});
+  if(bi<0||bd>tol){hMsg('Tap right on a blue tick to remove that hit.');return}
+  pushUndo(n); const gone=shown[bi], g=gone.mine?0.001:Math.max(0.12,mergeGap());
+  /* a detected hit stands for the stops merged into it, so remove those too (otherwise the next one pops up) */
+  n.motion.beats=n.motion.beats.filter(b=>b===gone?false:gone.mine?true:(b.mine||Math.abs(b.t-gone.t)>=g)); n.motion.edited=true;
+  hMsg('Removed the hit at '+gone.t.toFixed(2)+' s.'); renderDance(); renderMoves(); scheduleFit(); drawHitStrip();
+});
+$('#hitUndo').addEventListener('click',()=>{const u=undoStack.pop();if(!u)return;const n=srcById(u.id);if(n){n.motion=u.motion;renderDance();renderMoves();scheduleFit();drawHitStrip();hMsg('Undone.')}$('#hitUndo').hidden=!undoStack.length});
+const bMsg=(t,ok)=>{""")
+# marked hits draw a little taller so you can tell them apart; strip becomes editable when there are hits
+rep("""  if(n&&n.motion){x.fillStyle=tok('--dance');for(const b of n.motion.beats)x.fillRect(b.t/d*w,h*0.5,dpr*1.5,h*0.5)}""",
+"""  if(n&&n.motion){x.fillStyle=tok('--dance');for(const b of hitsOf(n))x.fillRect(b.t/d*w-dpr,b.mine?h*0.25:h*0.5,dpr*2,b.mine?h*0.75:h*0.5)}
+  c.classList.toggle('edit',!mark&&!!(n&&n.motion));""")
+rep("""  $('#hitRow').hidden=false;""", """  $('#hitRow').hidden=false; $('#hitLevelRow').hidden=false;
+  const shown=hitsOf(n); info.textContent=shown.length+' hits in '+n.name+(m.confirmed?' · checked by your taps ✓':danceSure()?'':' · not sure')+'.'+(m.edited?' Includes your own edits.':'')+' Tap a blue tick under the video to remove it.';""")
+
+# ------------------------------------------------------------------ BPM you can use: best clip speed from the hits
+rep("""        <p class="fitmini" id="clipFit"></p>""", """        <p class="fitmini" id="clipFit"></p>
+        <div class="row" id="speedSug" hidden></div>""")
+rep("""  drawHitStrip();
+}
+function tok(name)""", """  drawHitStrip(); suggestSpeed();
+}
+/* Try clip speeds from 60% to 160% (and nudging the song start by under half a beat) and keep the ones where the
+   dance hits land closest to beats and "ands". Slight preference for speeds near 100%. */
+function bestSpeeds(n,G){
+  const H=hitsOf(n).filter(b=>b.t>=S.cIn&&b.t<=clipEnd());
+  if(!G||H.length<4)return null;
+  const tg=[];for(let i=0;i<G.beats.length;i++){tg.push(G.beats[i]);if(i<G.beats.length-1)tg.push((G.beats[i]+G.beats[i+1])/2)}
+  const per=60/G.bpm, half=per/2, res=[];
+  for(let vr=0.6;vr<=1.6001;vr+=0.005){
+    let best=-1,bs=0;
+    for(let sh=0;sh<half;sh+=0.01){let sc=0,ws=0;for(const b of H){const st=S.offset+((b.t-S.cIn)/vr)*S.ar+sh,d=RA.nearest(tg,st);sc+=b.w*Math.exp(-d*d/(2*0.05*0.05));ws+=b.w}sc/=ws;if(sc>best){best=sc;bs=sh}}
+    res.push({vr:+vr.toFixed(3),fit:best,sh:bs,score:best*Math.exp(-Math.pow(Math.log(vr),2)/(2*0.5*0.5))});
+  }
+  res.sort((a,b)=>b.score-a.score);
+  const pick=[];for(const r of res){if(pick.every(p=>Math.abs(Math.log(r.vr/p.vr))>0.1))pick.push(r);if(pick.length>=2)break}
+  const now=res.find(r=>Math.abs(r.vr-S.vr)<0.003);
+  return {pick,now};
+}
+let speedMemo={};
+function suggestSpeed(){
+  const box=$('#speedSug');
+  if(S.playing||S.rec)return;   /* the search takes a few ms: never during playback or recording */
+  const n=srcById(S.cur), G=liveGrid();
+  if(!S.hasV||routineOn()||!n||!n.motion||!G){box.hidden=true;box.dataset.sig='';return}
+  const key=[n.id,hitsOf(n).length,S.hitLevel,S.cIn,clipEnd(),S.vr,S.offset,S.ar,G.bpm,G.beats.length].join('|');
+  const r=speedMemo.key===key?speedMemo.r:(speedMemo={key,r:bestSpeeds(n,G)}).r;
+  if(!r||!r.pick.length){box.hidden=true;box.dataset.sig='';return}
+  /* only rebuild when the suggestion changes, so a tap never lands on a button that was just replaced */
+  const sig=r.pick.map(p=>p.vr+':'+Math.round(p.fit*100)+':'+p.sh.toFixed(2)).join('|')+'@'+S.vr.toFixed(3)+':'+S.offset.toFixed(3);
+  if(box.dataset.sig===sig&&!box.hidden)return; box.dataset.sig=sig; box.textContent='';
+  box.hidden=false;
+  for(const p of r.pick){
+    if(Math.abs(p.vr-S.vr)<0.01&&p.sh<0.02){box.append(el('span','hint','✓ '+Math.round(p.vr*100)+'% speed is already the best fit ('+Math.round(p.fit*100)+'%).'));continue}
+    const b=el('button','btn sm',Math.round(p.vr*100)+'% speed · fit '+Math.round(p.fit*100)+'%');
+    b.title='Sets the clip speed'+(p.sh>=0.02?' and moves the song start by '+Math.round(p.sh*1000)+' ms':'');
+    b.addEventListener('click',()=>{setP(S.main,'vr',p.vr);if(p.sh>=0.02)setP(S.main,'offset',+(S.offset+p.sh).toFixed(3));scheduleFit()});
+    box.append(b);
+  }
+  box.append(el('span','hint','Best clip speeds for this song, from where the hits land.'));
+}
+function tok(name)""")
 
 P.write_text(s)
 print('patched', len(s))

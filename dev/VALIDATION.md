@@ -124,10 +124,31 @@ Tempo unchanged (99.65; librosa 99.38). The beat positions are unchanged from v1
 - In the routine playback test, v2 makes one extra small song correction about 0.5 s after play starts (v1 did not). The song is steady after that. The cause wasn't isolated.
 - The downbeat (the 1) is right on only about half the benchmark songs. Kick on beats 1 and 3 leaves the 1 and the 3 indistinguishable from drums alone, and one-drop puts the kick on 3 by convention. The app says when it's unsure and offers "This is the 1".
 
+## v3: real clips, one hit per move, your own hits, usable speed (Oct 2026)
+
+### What real footage showed
+
+Three takes from the app (TikTok dance clips: one with a single dancer and a steady camera, two with several dancers and cuts between videos), checked frame by frame:
+
+- **Doubles are real stops, not noise.** In fast footwork the feet land and the arms hit about 0.2–0.3 s apart. Image motion sees two stops where a dancer counts one move. On the single-dancer clip, 14 of 56 detected hits were less than 0.3 s from the previous one.
+- **Body tracking isn't a quick fix.** MediaPipe Pose (lite model, run offline in Chromium on every frame) and the image detector agree on only about 40% of hits on that clip. With no hand-labelled hits, neither can be declared right. The pose model is not in the app.
+- **Cuts swamp the detector.** On the two clips with cuts between videos, only 13 and 9 hits were found in about 30 s. In the app, hits are found on the original clips, which usually have no cuts.
+- **The song in a take doesn't help score hits.** The overlay song isn't what the dancer was moving to, so neither detector lands on its beat better than chance.
+
+### Changes
+
+- **Hits per move (Fewer / Normal / More).** Normal merges stops closer than 0.65 of a song beat into the strongest; Fewer uses 0.9 of a beat and drops weaker stops; More shows them all. On the single-dancer clip, Normal shows 32 hits instead of 56, with no pair closer than 0.3 s.
+- **Mark hits myself.** Play the clip and press the big Hit button on each hit. Your taps replace the detected hits in the part you played and are never merged away. Tap a tick under the video to remove a hit; removing one also removes the stops merged into it. Undo is available. Edits are saved.
+- **Best speed for the song (Tempo tab).** The app tries clip speeds from 60% to 160%, nudging the song start by under half a beat, and suggests the two speeds where the hits land closest to beats and "ands". One tap applies a suggestion. On the test clip it suggests 96% and 143% (the speeds that put hits every 0.857 s onto a 100 BPM beat-and-"and" grid: 95.2% and 142.8%). Applying the first raises the clip's beat fit from 45% to 94%. The search never runs during playback or recording: it briefly delayed frame capture in a take, adding about 20 ms of picture offset, until it was moved out.
+
+### Checks
+
+`ui_hits.js` (10 checks): doubles 0.2 s apart merge to the true 13; suggestions shown and applied; tapping a tick removes the hit; Undo; your taps land within 4 ms of where you tapped and replace detected hits in that span; marks survive a reload. `ui_tracking.js` still passes 23/23. The end-to-end run and the independent file check still pass: plan against true beats 0.810, take picture 8–9 ms from the plan, sound 0 ms, sync −14 to +3 ms.
+
 ## Not verified
 
 - **AIST++, GTZAN and Ballroom audio and video:** not reachable from the build environment. Accuracy on real dance footage is untested; the ground truth used here is rendered.
-- **Pose estimation (MediaPipe):** the model couldn't be downloaded, so hits come from image motion. Footwork hidden from the camera, or motion parallel to a panning camera, can be missed.
+- **Pose estimation (MediaPipe):** the model is available through npm and runs, but there are no hand-labelled hits on real footage to show it beats image motion, so the app still uses image motion. Footwork hidden from the camera, or motion parallel to a panning camera, can be missed.
 - **iPhone's AAC encoder lead-in:** this can't be run here. The in-app self-check measures and corrects it per phone after the first take.
 - **iPhone sync numbers:** these come from running **Checks → Sync check** on the device.
 - **Blind ratings by real dancers:** the kit is built and tested with simulated ratings only.

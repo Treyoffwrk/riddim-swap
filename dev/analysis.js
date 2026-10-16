@@ -344,6 +344,46 @@ const RA=(function(){
       r.shake=jd.length?median(jd):0}
     return r;
   }
+  /* ---------- dance hits from body pose ----------
+     frames: [{t, k:[[x,y,vis],...33 MediaPipe landmarks in 0..1] or null}]. Joints are scaled by torso size, so near
+     and far dancers count the same. A hit is when the limbs stop or turn together: per joint velocity goes into a
+     directogram (as with image motion), and a sustained drop marks the hit. Stops closer than minGap merge into one. */
+  const LIMBS=[[15,1],[16,1],[27,1],[28,1],[13,0.6],[14,0.6],[25,0.6],[26,0.6],[0,0.5],[23,0.4],[24,0.4]];
+  function analyzePose(frames,opt){
+    opt=opt||{}; const n=frames.length; if(n<10)return null;
+    /* torso scale (median shoulder-hip distance) and hip centre per frame */
+    const sc=[];for(const f of frames){const k=f.k;if(!k)continue;const sx=(k[11][0]+k[12][0])/2,sy=(k[11][1]+k[12][1])/2,hx=(k[23][0]+k[24][0])/2,hy=(k[23][1]+k[24][1])/2;sc.push(Math.hypot(sx-hx,sy-hy))}
+    const S0=median(sc)||0.2;
+    const series=[];let cuts=0;
+    for(let i=1;i<n;i++){
+      const a=frames[i-1].k,b=frames[i].k,dt=Math.max(1/120,frames[i].t-frames[i-1].t);
+      const D=new Float32Array(8);let mag=0;
+      if(a&&b){
+        /* body jump (scene cut or the tracker switching person): skip */
+        const ha=[(a[23][0]+a[24][0])/2,(a[23][1]+a[24][1])/2],hb=[(b[23][0]+b[24][0])/2,(b[23][1]+b[24][1])/2];
+        if(Math.hypot(ha[0]-hb[0],ha[1]-hb[1])/S0>0.6*dt*30){cuts++;series.push({t:frames[i].t,D,cam:0,mag:0,gap:true});continue}
+        for(const [j,w] of LIMBS){const vis=Math.min(a[j][2],b[j][2]);if(vis<0.4)continue;
+          /* relative to the hips, so walking or the camera panning doesn't count as limb motion */
+          const x=((b[j][0]-hb[0])-(a[j][0]-ha[0]))/S0/dt, y=((b[j][1]-hb[1])-(a[j][1]-ha[1]))/S0/dt, m=Math.hypot(x,y);
+          if(m<0.15)continue;const bin=((Math.round(Math.atan2(y,x)/(Math.PI/4))%8)+8)%8;D[bin]+=w*m*vis;mag+=w*m*vis}
+        /* whole-body moves (jumps, drops, bounces) through the hips */
+        const hx=(hb[0]-ha[0])/S0/dt,hy=(hb[1]-ha[1])/S0/dt,hm=Math.hypot(hx,hy);
+        if(hm>=0.15){const bin=((Math.round(Math.atan2(hy,hx)/(Math.PI/4))%8)+8)%8;D[bin]+=0.8*hm;mag+=0.8*hm}
+        series.push({t:frames[i].t,D,cam:0,mag});
+      } else series.push({t:frames[i].t,D,cam:0,mag:0,gap:true});
+    }
+    const vi=visualImpulses(series); if(!vi.env.length)return null;
+    /* no hits right at a gap (cut / lost dancer): the drop to zero there isn't a stop */
+    for(const s of series)if(s.gap){const i0=Math.round((s.t-vi.t0)*vi.fps);for(let i=i0-8;i<=i0+8;i++)if(i>=0&&i<vi.env.length)vi.env[i]=0}
+    let peaks=pickPeaks(vi.env,vi.fps,vi.t0,{gap:opt.minGap||0.25,k:opt.k||0.5}).filter(p=>p.w>=(opt.minW||0.2));
+    const tp=tempo(vi.env,vi.fps,{min:60,max:200,prior:120});
+    const seen=frames.filter(f=>f.k).length/n;
+    const on=peaks.map(p=>vi.env[Math.round((p.t-vi.t0)*vi.fps)]||0), envMean=Array.from(vi.env).reduce((x,y)=>x+y,0)/Math.max(1,vi.env.length);
+    const contrast=peaks.length?median(on)/(median(on)+4*envMean+1e-6):0;
+    return {beats:peaks.map(p=>({t:+p.t.toFixed(3),w:p.w})),bpm:tp.bpm,conf:tp.conf,contrast,seen,cuts,source:'pose',shake:0,cam:0};
+  }
+  /* merge hits closer than gap seconds, keeping the strongest (one hit per move) */
+  function mergeHits(beats,gap){const out=[];for(const b of beats.slice().sort((x,y)=>x.t-y.t)){const l=out[out.length-1];if(l&&b.t-l.t<gap){if(b.w>l.w)out[out.length-1]=b}else out.push(b)}return out}
   function analyzeMotion(series){
     const vi=visualImpulses(series); if(!vi.env.length)return null;
     const peaks=pickPeaks(vi.env,vi.fps,vi.t0).filter(p=>p.w>=0.18);   /* drop faint blips */
@@ -414,7 +454,7 @@ const RA=(function(){
     for(let i=0;i<bt.length;i++){g.push({t:bt[i],w:ds.has(bt[i].toFixed(3))?1.2:1});if(i<bt.length-1)g.push({t:(bt[i]+bt[i+1])/2,w:0.6})}
     return g;
   }
-  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
+  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,analyzePose,mergeHits,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
 })();
 if(typeof module!=='undefined')module.exports=RA;
 /*ANALYSIS-END*/
