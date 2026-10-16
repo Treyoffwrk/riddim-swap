@@ -214,6 +214,35 @@ input[type=range]{width:100%;accent-color:var(--ink);margin:0}
 .miss{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px;min-width:0}
 .miss span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip-src.missing{border-style:dashed;opacity:.7}
+.anal{display:grid;gap:8px;background:var(--sunk);border:1px solid var(--line);border-radius:10px;padding:10px}
+.anal h3,.fitcard h3{font-family:var(--f-display);font-size:16px;font-weight:700;margin:0}
+.prog{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.prog i{display:block;height:100%;width:0;background:var(--dance);transition:width .2s}
+.warnlist{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px;color:var(--warn)}
+.warnlist:empty{display:none}
+.cand{font:500 12px var(--f-mono)}
+.anal .btn.sm:not(.cand),.fitcard .btn.sm,.blind .btn.sm{font-family:var(--f-body);font-weight:600}
+.cand.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.hitstrip{display:block;width:100%;height:12px}
+.tl-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.fitcard{display:grid;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px}
+.fitnums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.fitnums div{display:grid;gap:2px;background:var(--sunk);border-radius:8px;padding:6px 8px;min-width:0}
+.fitnums b{font:500 18px var(--f-mono);font-variant-numeric:tabular-nums}
+.fitnums small{font-size:11px;color:var(--muted)}
+.fitnums .label{font-size:10px;line-height:1.2}
+@media (max-width:420px){.fitnums{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.chipfit{display:inline-block;font:600 11px var(--f-mono);padding:1px 6px;border-radius:999px;border:1px solid currentColor;margin-left:6px;vertical-align:1px}
+.chipfit.ok{color:var(--ok)} .chipfit.warn{color:var(--warn)} .chipfit.bad{color:var(--bad)} .chipfit.idle{color:var(--muted)}
+.fitmini{font-size:13px;margin:0}
+.blind{display:grid;gap:8px}
+.blind table{width:100%;border-collapse:collapse;font-size:13px}
+.blind th,.blind td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+.blind td.num,.blind th.num{text-align:center;font-variant-numeric:tabular-nums}
+.blind select,.blind input[type=text]{font:500 14px var(--f-body);padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--sunk);color:var(--ink);min-height:34px}
+.blind .takes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.blind video{width:100%;max-height:40vh;background:var(--stage);border-radius:8px}
+.tblwrap{overflow-x:auto}
 .note{font-size:13px;background:var(--sunk);border-radius:8px;padding:8px 10px;color:var(--ink)}
 .readout{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;background:var(--sunk);border-radius:10px;padding:10px 12px}
 .readout div{display:grid;gap:2px;min-width:0}
@@ -313,6 +342,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <div class="scrubwrap">
               <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Clip position" disabled>
               <div class="trimbar" aria-hidden="true"><i id="trimFill" style="left:0;right:0"></i></div>
+              <canvas class="hitstrip" id="hitStrip" aria-hidden="true"></canvas>
             </div>
             <span class="time" id="time">0:00.0</span>
           </div>
@@ -360,6 +390,12 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="chips srcChips" id="srcChips"></div>
           <p class="hint" id="vidName">Add one or more dance videos. Moves from any of them can go in one routine.</p>
         </div>
+        <div class="anal" id="danceCard">
+          <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
+          <div class="prog" id="danceProg" hidden><i></i></div>
+          <p class="hint" id="danceInfo">Finds the moments the dancer hits: sharp stops and changes of direction. They show as blue ticks under the video, next to the song's beats in orange.</p>
+          <ul class="warnlist" id="danceWarn"></ul>
+        </div>
         <p class="note" id="clipNote" hidden>Routine is on, so the start and end below are paused. Switch to "Clip" under the video to use them.</p>
         <div class="field">
           <div class="field-top"><label class="label" for="inRange">Clip starts at</label><span class="val" id="inVal">0:00.00</span></div>
@@ -397,6 +433,17 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <label class="btn file primary">Add song or video<input type="file" id="audFile"></label>
         </div>
         <audio id="aud" preload="auto"></audio>
+        <div class="anal" id="songCard" hidden>
+          <div class="subhead"><h3>Beat</h3><span class="hint" id="songDet"></span></div>
+          <div class="row" id="songCands"></div>
+          <div class="row">
+            <button class="btn sm" id="beatHalf">Shift beat ½</button>
+            <button class="btn sm" id="beatUseDet">Use detected beat</button>
+            <label class="check"><input type="checkbox" id="clickOn"> Click on each beat</label>
+          </div>
+          <ul class="warnlist" id="songWarn"></ul>
+          <p class="hint">Turn on the click and play: if the clicks don't sit on the kick, try another tempo or shift by half a beat. Your ear decides.</p>
+        </div>
         <p class="hint" id="songMsg">MP3, M4A or a video. For a video, only its sound is used.</p>
         <div class="field">
           <div class="field-top"><label class="label" for="offset">Song starts at</label><span class="val" id="offOut">0:00.00</span></div>
@@ -436,6 +483,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <span class="vs">BPM</span>
           <div class="s"><span class="label">Song now</span><span class="num" id="sEff">—</span></div>
         </div>
+        <p class="fitmini" id="clipFit"></p>
         <div class="matchbtns">
           <button class="btn" data-m="0.5" disabled><span>Half-time</span><b>—</b><small>&nbsp;</small></button>
           <button class="btn" data-m="1" disabled><span>Beat for beat</span><b>—</b><small>&nbsp;</small></button>
@@ -473,11 +521,32 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         <div class="field" id="seqWrap">
           <div class="subhead"><h3>Routine <span class="hint" id="seqLen" style="font-family:var(--f-body)"></span></h3><div class="row" style="gap:4px"><button class="btn ghost sm" id="fitAll" disabled>Fit all to beat</button><button class="btn ghost sm" id="seqClear" disabled>Clear</button></div></div>
           <p class="hint" id="fitHint" hidden>Set the song BPM in the Tempo tab to fit moves to the beat.</p>
-          <div class="tl" id="seqBar" hidden><div class="tl-blocks" id="seqBlocks"></div><i class="tl-head" id="seqHead"></i></div>
+          <div class="tl" id="seqBar" hidden><div class="tl-blocks" id="seqBlocks"></div><canvas class="tl-canvas" id="seqCanvas"></canvas><i class="tl-head" id="seqHead"></i></div>
           <ol class="list" id="seqList"></ol>
           <div class="empty-note drop" id="seqEmpty">Drop moves here, or tap them above. Use them in any order, as many times as you like.</div>
           <p class="hint" id="seqHint" hidden>Drag ⠿ to reorder. Tap a move to trim it for this spot. Moves always play back to back with no gap.</p>
         </div>
+        <section class="fitcard" id="fitCard" hidden aria-labelledby="h-fit">
+          <div class="subhead"><h3 id="h-fit">Beat fit</h3>
+            <div class="seg" role="group" aria-label="Timing" style="grid-template-columns:auto auto">
+              <button id="alignOff" aria-pressed="true" style="padding:0 10px">Constant</button>
+              <button id="alignOn" aria-pressed="false" style="padding:0 10px">Aligned</button>
+            </div></div>
+          <div class="fitnums">
+            <div><span class="label">Now</span><b id="fitNow">—</b><small id="fitNowErr">&nbsp;</small></div>
+            <div><span class="label">Constant speed</span><b id="fitConst">—</b><small id="fitConstErr">&nbsp;</small></div>
+            <div><span class="label">Aligned</span><b id="fitAligned">—</b><small id="fitAlignedErr">&nbsp;</small></div>
+            <div><span class="label">Off-beat check</span><b id="fitOff">—</b><small>should be low</small></div>
+          </div>
+          <div class="field clip">
+            <div class="field-top"><label class="label" for="maxStretch">Most a move may speed up or slow down</label><span class="val" id="maxStretchOut">±20%</span></div>
+            <input type="range" id="maxStretch" min="5" max="35" step="1" value="20">
+          </div>
+          <div class="row"><button class="btn primary" id="alignBtn">Align moves to the beat</button><button class="btn ghost sm" id="alignClear">Remove alignment</button></div>
+          <div class="prog" id="alignProg" hidden><i></i></div>
+          <p class="hint" id="fitMsg"></p>
+          <p class="hint">Score = Beat Alignment Score: how close each dance hit lands to a beat or an "and" (100% means every hit is on one; the ms figure is the typical miss). Aligning nudges each move's speed between hits so they land there, favouring the 1 of the bar. The off-beat check takes the best version and moves the song a quarter beat, right between the targets; it should score clearly lower, otherwise the score isn't telling you much.</p>
+        </section>
         <hr class="sep">
         <div class="field song">
           <div class="subhead"><h3>Routine music</h3><button class="btn ghost sm" id="rCopy">Copy from Song tab</button></div>
@@ -519,11 +588,331 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </div>
         <label class="check"><input type="checkbox" id="rFade" checked> Fade the song out at the end of a recording</label>
         <p class="hint">These only apply to the routine, so the sound stays the same however you tweak single clips.</p>
+        <hr class="sep">
+        <div class="field">
+          <div class="subhead"><h3>Checks</h3></div>
+          <div class="row"><button class="btn" id="syncBtn">Sync check</button><button class="btn" id="blindBtn">Make blind test</button></div>
+          <p class="hint">Sync check plays a few seconds and measures how far sound and picture drift apart on this phone. The blind test records three versions (aligned, constant speed, deliberately off) under shuffled letters for dancers to rate without knowing which is which.</p>
+          <div class="note" id="syncOut" hidden></div>
+          <div class="blind" id="blindBox" hidden></div>
+        </div>
       </section>
     </div>
   </div>
 </div>
 
+<script>
+/*ANALYSIS-START*/
+/* ===== Riddim Swap beat analysis (pure functions, no page access) =====
+   Music:  spectral-flux onset envelope -> autocorrelation tempo -> dynamic-programming beat tracker
+           (Ellis 2007, the method behind librosa's beat_track) -> downbeat phase from low-band (kick) accents.
+   Dance:  coarse optical flow per frame -> directional motion histogram ("directogram") -> visual impulses
+           where motion in a direction suddenly stops (after Davis & Agrawala, "Visual Rhythm and Beat") -> peaks.
+   Fit:    constrained per-move time warp that lands motion beats on beats / half-beats, and a Beat Alignment Score. */
+const RA=(function(){
+  /* ---------- small helpers ---------- */
+  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+  function movingAvg(x,w){const n=x.length,o=new Float32Array(n);let s=0;const h=Math.max(1,w|0);
+    for(let i=0;i<n;i++){s+=x[i];if(i>=h)s-=x[i-h];o[i]=s/Math.min(i+1,h)}
+    /* centre it */const c=new Float32Array(n),sh=(h/2)|0;for(let i=0;i<n;i++)c[i]=o[Math.min(n-1,i+sh)];return c}
+  function gaussSmooth(x,sig){if(sig<=0.3)return Float32Array.from(x);const r=Math.ceil(sig*3),k=[];let ks=0;
+    for(let i=-r;i<=r;i++){const v=Math.exp(-i*i/(2*sig*sig));k.push(v);ks+=v}
+    const n=x.length,o=new Float32Array(n);for(let i=0;i<n;i++){let s=0;for(let j=-r;j<=r;j++){const t=i+j;if(t>=0&&t<n)s+=x[t]*k[j+r]}o[i]=s/ks}return o}
+  function stats(x){let m=0;for(const v of x)m+=v;m/=x.length||1;let q=0;for(const v of x)q+=(v-m)*(v-m);return {mean:m,std:Math.sqrt(q/(x.length||1))}}
+  function median(a){if(!a.length)return 0;const b=Array.from(a).sort((p,q)=>p-q),h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2}
+
+  /* ---------- FFT (radix 2, in place) ---------- */
+  function makeFFT(N){
+    const rev=new Uint32Array(N),bits=Math.log2(N);
+    for(let i=0;i<N;i++){let r=0;for(let b=0;b<bits;b++)r|=((i>>b)&1)<<(bits-1-b);rev[i]=r}
+    const cos=new Float64Array(N/2),sin=new Float64Array(N/2);
+    for(let i=0;i<N/2;i++){cos[i]=Math.cos(2*Math.PI*i/N);sin[i]=-Math.sin(2*Math.PI*i/N)}
+    return function(re,im){
+      for(let i=0;i<N;i++){const j=rev[i];if(j>i){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
+      for(let size=2;size<=N;size<<=1){const half=size>>1,step=N/size;
+        for(let i=0;i<N;i+=size)for(let j=0;j<half;j++){const k=j*step,a=i+j,b=a+half;
+          const tr=re[b]*cos[k]-im[b]*sin[k],ti=re[b]*sin[k]+im[b]*cos[k];
+          re[b]=re[a]-tr;im[b]=im[a]-ti;re[a]+=tr;im[a]+=ti}}
+    };
+  }
+
+  /* ---------- music: onset envelope ---------- */
+  /* chans: array of Float32Array, sr: sample rate. Returns env (all bands) and low (kick band), fps. */
+  function onsetEnvelope(chans,sr){
+    const d=Math.max(1,Math.round(sr/22050)), sr2=sr/d, n0=chans[0].length, N=1024,H=256, pad=N/2, n=Math.floor(n0/d)+pad;
+    /* mono, downsampled, padded by half a window so frame f is centred on time f*H */
+    const x=new Float32Array(n+pad);
+    for(let i=pad;i<n;i++){const j=i-pad;let s=0;for(let c=0;c<chans.length;c++){const ch=chans[c];for(let k=0;k<d;k++)s+=ch[j*d+k]||0}x[i]=s/(d*chans.length)}
+    const fft=makeFFT(N),win=new Float64Array(N);
+    for(let i=0;i<N;i++)win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
+    const frames=Math.max(0,Math.floor((n-N)/H)+1), fps=sr2/H;
+    const env=new Float32Array(frames), low=new Float32Array(frames), loud=new Float32Array(frames), lowE=new Float32Array(frames);
+    const re=new Float64Array(N),im=new Float64Array(N);
+    let prev=new Float64Array(N/2+1),cur=new Float64Array(N/2+1);
+    /* mel-spaced bands (30 Hz - 8 kHz), so the many high-frequency bins (hats, noise) don't outvote the kick */
+    const NB=40, mel=f=>2595*Math.log10(1+f/700), imel=m=>700*(Math.pow(10,m/2595)-1);
+    const m0=mel(30),m1=mel(8000), edges=[];for(let b=0;b<NB+2;b++)edges.push(imel(m0+(m1-m0)*b/(NB+1))*N/sr2);
+    const bands=[];for(let b=0;b<NB;b++){const a=edges[b],c=edges[b+1],z=edges[b+2],ws=[];
+      for(let k=Math.max(1,Math.floor(a));k<=Math.min(N/2,Math.ceil(z));k++){const w=k<c?(k-a)/(c-a||1):(z-k)/(z-c||1);if(w>0)ws.push([k,w])}
+      bands.push({ws,low:imel(m0+(m1-m0)*(b+1)/(NB+1))<160})}
+    prev=new Float64Array(NB);cur=new Float64Array(NB);
+    for(let f=0;f<frames;f++){
+      const o=f*H; let e=0;
+      for(let i=0;i<N;i++){const v=x[o+i]*win[i];re[i]=v;im[i]=0;e+=v*v}
+      fft(re,im);
+      let fl=0,lo=0,le=0;
+      for(let b=0;b<NB;b++){let p=0;for(const [k,w] of bands[b].ws)p+=w*(re[k]*re[k]+im[k]*im[k]);
+        if(bands[b].low)le+=p;
+        const m=Math.log1p(1000*p);cur[b]=m;const dd=m-prev[b];if(dd>0){fl+=dd;if(bands[b].low)lo+=dd}}
+      env[f]=fl; low[f]=lo; loud[f]=Math.sqrt(e/N); lowE[f]=Math.sqrt(le);
+      const t=prev;prev=cur;cur=t;
+    }
+    /* remove slow trend, keep rises, normalise */
+    const norm=a=>{const ma=movingAvg(a,Math.round(fps*0.4)),o=new Float32Array(a.length);for(let i=0;i<a.length;i++)o[i]=Math.max(0,a[i]-ma[i]);
+      const st=stats(o);const sd=st.std||1;for(let i=0;i<o.length;i++)o[i]/=sd;return o};
+    const E=norm(env),Lw=norm(low),mix=new Float32Array(E.length);
+    /* kick-heavy styles (dancehall, Jersey club): the low band says where the beat is */
+    for(let i=0;i<E.length;i++)mix[i]=E[i]+1.5*Lw[i];
+    return {env:mix,full:E,low:Lw,lowE,loud,fps};
+  }
+
+  /* ---------- music: tempo ---------- */
+  function autocorr(env,lagMin,lagMax){const n=env.length,ac=new Float32Array(lagMax+2);
+    for(let L=lagMin;L<=lagMax+1&&L<n;L++){let s=0;for(let t=0;t+L<n;t++)s+=env[t]*env[t+L];ac[L]=s/(n-L)}return ac}
+  /* returns {bpm, conf (0..1), candidates:[{bpm,score}]} */
+  function tempo(env,fps,opt,lowEnv){
+    opt=opt||{}; const lo=opt.min||60, hi=opt.max||200, prior=opt.prior||120;
+    const lagMin=Math.floor(60*fps/hi), lagMax=Math.ceil(60*fps/lo);
+    const ac=autocorr(env,lagMin,lagMax*4+4);
+    /* kick-band periodicity: the kick pattern repeats on the beat grid (every 2 / 4 beats) */
+    const acL=lowEnv?autocorr(lowEnv,lagMin,lagMax*4+4):null;
+    const nrm=a=>{if(!a)return a;let m=0;for(let i=lagMin;i<a.length;i++)m=Math.max(m,a[i]);if(m>0)for(let i=0;i<a.length;i++)a[i]/=m;return a};
+    nrm(ac);nrm(acL);
+    const sc=[]; let best=-1,bi=lagMin;
+    for(let L=lagMin;L<=lagMax;L++){
+      const bpm=60*fps/L, w=Math.exp(-0.5*Math.pow(Math.log2(bpm/prior)/1.0,2));
+      /* reward lags whose double also lines up (the real beat period, not a sub-beat) */
+      /* the real beat also repeats every 2 and 4 beats (half bar, bar); syncopations like the 3-3-2 dembow don't */
+      let v=ac[L]+0.5*(ac[2*L]||0)+0.5*(ac[4*L]||0);
+      if(acL)v+=0.5*((acL[2*L]||0)+(acL[4*L]||0));
+      v*=w; sc.push({L,bpm,v}); if(v>best){best=v;bi=L}
+    }
+    /* parabolic refine */
+    const a=sc.find(s=>s.L===bi-1),c=sc.find(s=>s.L===bi+1);let Lr=bi;
+    if(a&&c){const den=a.v-2*best+c.v;if(den<0)Lr=bi+0.5*(a.v-c.v)/den}
+    const vals=sc.map(s=>s.v).filter(v=>v>0),med=median(vals);
+    const conf=best>0?clamp((best-med)/best,0,1):0;
+    /* distinct candidates */
+    const peaks=sc.filter((s,i)=>i>0&&i<sc.length-1&&s.v>=sc[i-1].v&&s.v>=sc[i+1].v).sort((p,q)=>q.v-p.v);
+    const cands=[];for(const p of peaks){if(cands.every(q=>Math.abs(q.bpm-p.bpm)/q.bpm>0.06))cands.push({bpm:+p.bpm.toFixed(1),score:+(p.v/best).toFixed(3)});if(cands.length>=4)break}
+    return {bpm:60*fps/Lr,conf,candidates:cands};
+  }
+
+  /* ---------- music: beat tracker (dynamic programming) ---------- */
+  function beats(env,fps,bpm,tightness){
+    tightness=tightness||100; const n=env.length, period=60*fps/bpm;
+    const local=gaussSmooth(env,period/32);
+    const cum=new Float32Array(n), back=new Int32Array(n).fill(-1);
+    const wMin=Math.round(period/2), wMax=Math.round(2*period);
+    for(let t=0;t<n;t++){
+      let bestV=-Infinity,bestT=-1;
+      for(let tau=t-wMax;tau<=t-wMin;tau++){if(tau<0)continue;const d=(t-tau)/period;const v=cum[tau]-tightness*Math.pow(Math.log(d),2);if(v>bestV){bestV=v;bestT=tau}}
+      cum[t]=local[t]+(bestT>=0?Math.max(0,bestV):0); back[t]=bestV>0?bestT:-1;
+    }
+    /* last beat: best local max of cum within the final period */
+    let end=n-1,bv=-Infinity;for(let t=Math.max(0,n-Math.round(period*1.5));t<n;t++){if(cum[t]>bv){bv=cum[t];end=t}}
+    const out=[];let t=end;while(t>=0){out.push(t);t=back[t]}
+    out.reverse();
+    /* trim weak beats at the edges (silence / fade) */
+    const th=0.5*median(Array.from(out,i=>local[i]));
+    while(out.length&&local[out[0]]<th)out.shift();
+    while(out.length&&local[out[out.length-1]]<th)out.pop();
+    return out.map(i=>i/fps);
+  }
+
+  /* ---------- music: downbeats (which beat is "1") ---------- */
+  function downbeats(bt,low,env,fps,meter){
+    meter=meter||4; const at=(a,t)=>{const i=Math.round(t*fps);let m=0;for(let k=i-2;k<=i+2;k++)if(k>=0&&k<a.length)m=Math.max(m,a[k]);return m};
+    const sc=new Array(meter).fill(0);
+    const lm=Math.max(1e-9,...Array.from(low)), em=Math.max(1e-9,...Array.from(env));
+    bt.forEach((t,i)=>{sc[i%meter]+=at(low,t)/lm+0.15*at(env,t)/em});
+    let p=0;for(let k=1;k<meter;k++)if(sc[k]>sc[p])p=k;
+    const sorted=sc.slice().sort((a,b)=>b-a);const conf=sorted[0]>0?clamp((sorted[0]-sorted[1])/sorted[0],0,1):0;
+    return {phase:p,conf,times:bt.filter((t,i)=>i%meter===p)};
+  }
+
+  /* full song analysis */
+  function analyzeSong(chans,sr,opt){
+    const o=onsetEnvelope(chans,sr), tp=tempo(o.env,o.fps,opt,o.low);
+    if(opt&&opt.forceBpm)tp.bpm=opt.forceBpm;   /* the dancer picked another tempo candidate */
+    let bt=beats(o.env,o.fps,tp.bpm);
+    /* phase check: the beat sits where the low end (kick + bass) is strongest. If half a beat later is clearly
+       stronger, the tracker locked onto the off-beat, so move the grid. */
+    const per=60/tp.bpm, eAt=t=>{const i=Math.round(t*o.fps);let m=0;for(let k=i-3;k<=i+3;k++)if(k>=0&&k<o.lowE.length)m=Math.max(m,o.lowE[k]);return m};
+    const eOn=median(bt.map(eAt)), eHalf=median(bt.map(t=>eAt(t+per/2)));
+    let shifted=false; if(!(opt&&opt.noPhaseFix)&&eHalf>eOn*1.1){bt=bt.map(t=>t+per/2).filter(t=>t<o.lowE.length/o.fps);shifted=true}
+    const db=downbeats(bt,o.lowE,o.full,o.fps,4);
+    /* contrast of the beat: how much stronger onsets are on beats than off them (weak kick -> low) */
+    const on=bt.map(t=>o.env[Math.round(t*o.fps)]||0), off=bt.slice(0,-1).map((t,i)=>o.env[Math.round((t+bt[i+1])/2*o.fps)]||0);
+    const contrast=median(on)/(median(off)+median(on)+1e-6);
+    return {bpm:tp.bpm,conf:tp.conf,candidates:tp.candidates,beats:bt,downbeats:db.times,downConf:db.conf,phase:db.phase,contrast,fps:o.fps,phaseShifted:shifted,lowOn:eOn,lowHalf:eHalf};
+  }
+
+  /* ---------- dance: optical flow between two small greyscale frames ---------- */
+  /* block matching on B x B blocks, search radius R. Returns per-block vectors. */
+  function flow(prev,cur,w,h,B,R){
+    B=B||8;R=R||3;const vecs=[];
+    for(let by=R;by+B+R<=h;by+=B)for(let bx=R;bx+B+R<=w;bx+=B){
+      /* skip flat blocks (no texture -> no reliable motion) */
+      let mn=255,mx=0;for(let y=0;y<B;y+=2)for(let x=0;x<B;x+=2){const v=cur[(by+y)*w+bx+x];if(v<mn)mn=v;if(v>mx)mx=v}
+      if(mx-mn<12)continue;
+      let best=Infinity,bdx=0,bdy=0,zero=0;
+      for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
+        let s=0;for(let y=0;y<B;y++){const r1=(by+y)*w+bx,r0=(by+y+dy)*w+bx+dx;for(let x=0;x<B;x++){const d=cur[r1+x]-prev[r0+x];s+=d<0?-d:d}if(s>=best)break}
+        if(dx===0&&dy===0)zero=s;
+        if(s<best||(s===best&&dx*dx+dy*dy<bdx*bdx+bdy*bdy)){best=s;bdx=dx;bdy=dy}
+      }
+      if(zero-best<B*B*2){bdx=0;bdy=0}   /* not clearly better than "no motion" */
+      /* block moved from (bx+bdx,by+bdy) in prev to (bx,by) in cur -> motion is -d */
+      vecs.push([-bdx,-bdy]);
+    }
+    return vecs;
+  }
+  /* coarse-to-fine flow: match on a half-size image first (catches fast moves), then refine at full size */
+  function halve(img,w,h){const w2=w>>1,h2=h>>1,o=new Uint8Array(w2*h2);
+    for(let y=0;y<h2;y++)for(let x=0;x<w2;x++){const i=2*y*w+2*x;o[y*w2+x]=(img[i]+img[i+1]+img[i+w]+img[i+w+1])>>2}return {img:o,w:w2,h:h2}}
+  function sad(prev,cur,w,h,bx,by,B,dx,dy,limit){
+    if(bx+dx<0||by+dy<0||bx+dx+B>w||by+dy+B>h)return Infinity;
+    let s=0;for(let y=0;y<B;y++){const r1=(by+y)*w+bx,r0=(by+y+dy)*w+bx+dx;for(let x=0;x<B;x++){const d=cur[r1+x]-prev[r0+x];s+=d<0?-d:d}if(s>=limit)return s}return s}
+  function flowPyr(prev,cur,w,h,B){
+    B=B||8; const P=halve(prev,w,h),C=halve(cur,w,h), cw=P.w,ch=P.h, R=4, cm=new Map();
+    for(let by=0;by+B<=ch;by+=B)for(let bx=0;bx+B<=cw;bx+=B){
+      let best=Infinity,bd=[0,0];
+      for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const v=sad(P.img,C.img,cw,ch,bx,by,B,dx,dy,best);if(v<best||(v===best&&dx*dx+dy*dy<bd[0]*bd[0]+bd[1]*bd[1])){best=v;bd=[dx,dy]}}
+      cm.set((by/B)+','+(bx/B),bd);
+    }
+    const vecs=[];
+    for(let by=0;by+B<=h;by+=B)for(let bx=0;bx+B<=w;bx+=B){
+      let mn=255,mx=0;for(let y=0;y<B;y+=2)for(let x=0;x<B;x+=2){const v=cur[(by+y)*w+bx+x];if(v<mn)mn=v;if(v>mx)mx=v}
+      if(mx-mn<12)continue;
+      const g=cm.get(Math.floor(by/2/B)+','+Math.floor(bx/2/B))||[0,0], gx=2*g[0], gy=2*g[1];
+      const zero=sad(prev,cur,w,h,bx,by,B,0,0,Infinity); let best=zero,bdx=0,bdy=0;
+      for(let dy=gy-2;dy<=gy+2;dy++)for(let dx=gx-2;dx<=gx+2;dx++){const v=sad(prev,cur,w,h,bx,by,B,dx,dy,best);if(v<best){best=v;bdx=dx;bdy=dy}}
+      if(zero-best<B*B*2){bdx=0;bdy=0}
+      vecs.push([-bdx,-bdy]);
+    }
+    return vecs;
+  }
+  /* directogram: motion summed into 8 direction bins, after removing camera motion (median vector) */
+  function directogram(vecs){
+    const D=new Float32Array(8); if(!vecs.length)return {D,cam:0,mag:0};
+    const mx=median(vecs.map(v=>v[0])),my=median(vecs.map(v=>v[1]));
+    let mag=0;
+    for(const [x0,y0] of vecs){const x=x0-mx,y=y0-my,m=Math.hypot(x,y);if(m<0.5)continue;const b=((Math.round(Math.atan2(y,x)/(Math.PI/4))%8)+8)%8;D[b]+=m;mag+=m}
+    for(let b=0;b<8;b++)D[b]/=vecs.length;
+    return {D,cam:Math.hypot(mx,my),mag:mag/vecs.length};
+  }
+  /* visual impulses from a series of directograms with timestamps (seconds). Returns uniform 60 Hz envelope. */
+  function visualImpulses(series){
+    const n=series.length; if(n<3)return {env:new Float32Array(0),fps:60,t0:0,cam:0};
+    const raw=[];
+    /* the stop happened between frame i-1 and frame i, so date it half-way */
+    for(let i=1;i<n;i++){const a=series[i-1].D,b=series[i].D,dt=Math.max(1/120,series[i].t-series[i-1].t);let s=0;for(let k=0;k<8;k++){const d=a[k]-b[k];if(d>0)s+=d}raw.push({t:series[i].t-dt/2,v:s/dt})}
+    const fps=60,t0=raw[0].t,t1=raw[raw.length-1].t,len=Math.max(1,Math.round((t1-t0)*fps)+1),env=new Float32Array(len);
+    let j=0;for(let i=0;i<len;i++){const t=t0+i/fps;while(j<raw.length-2&&raw[j+1].t<=t)j++;const A=raw[j],B=raw[Math.min(raw.length-1,j+1)];
+      const u=B.t>A.t?clamp((t-A.t)/(B.t-A.t),0,1):0;env[i]=A.v+(B.v-A.v)*u}
+    const sm=gaussSmooth(env,1.5),ma=movingAvg(sm,fps*0.6),o=new Float32Array(len);
+    for(let i=0;i<len;i++)o[i]=Math.max(0,sm[i]-ma[i]);
+    const st=stats(o);for(let i=0;i<len;i++)o[i]/=st.std||1;
+    const cam=median(series.map(s=>s.cam)), mag=median(series.map(s=>s.mag));
+    return {env:o,fps,t0,cam,mag};
+  }
+  /* peak picking: local max, above adaptive threshold, minimum spacing */
+  function pickPeaks(env,fps,t0,opt){
+    opt=opt||{}; const gap=Math.round((opt.gap||0.16)*fps), k=opt.k||0.6, n=env.length;
+    const ma=movingAvg(env,Math.round(fps*1.0)); const st=stats(env); const out=[];
+    for(let i=1;i<n-1;i++){
+      const v=env[i]; if(v<ma[i]+k*st.std||v<env[i-1]||v<env[i+1])continue;
+      let ok=true;for(let j=Math.max(0,i-gap);j<=Math.min(n-1,i+gap);j++)if(env[j]>v){ok=false;break}
+      if(ok)out.push({t:t0+i/fps,w:v});
+    }
+    const mx=Math.max(1e-6,...out.map(p=>p.w));out.forEach(p=>p.w=+(p.w/mx).toFixed(3));
+    return out;
+  }
+  function analyzeMotion(series){
+    const vi=visualImpulses(series); if(!vi.env.length)return null;
+    const peaks=pickPeaks(vi.env,vi.fps,vi.t0).filter(p=>p.w>=0.18);   /* drop faint blips */
+    const tp=tempo(vi.env,vi.fps,{min:60,max:200,prior:120});
+    /* contrast: how much hits stand out from the background motion */
+    const on=peaks.map(p=>vi.env[Math.round((p.t-vi.t0)*vi.fps)]||0);
+    const contrast=peaks.length?median(on)/(median(on)+median(Array.from(vi.env))+1e-6):0;
+    return {beats:peaks.map(p=>({t:+p.t.toFixed(3),w:p.w})),bpm:tp.bpm,conf:tp.conf,contrast,cam:vi.cam,mag:vi.mag};
+  }
+
+  /* ---------- fit: score ---------- */
+  /* Beat Alignment Score: mean over motion beats of exp(-d^2 / 2 sigma^2), d = distance to nearest music beat (seconds). */
+  function nearest(sorted,t){let lo=0,hi=sorted.length-1;if(hi<0)return Infinity;while(hi-lo>1){const m=(lo+hi)>>1;if(sorted[m]<t)lo=m;else hi=m}return Math.min(Math.abs(sorted[lo]-t),Math.abs(sorted[hi]-t))}
+  function score(motion,musicBeats,sigma){
+    sigma=sigma||0.05; if(!motion.length||!musicBeats.length)return null;
+    let s=0,ws=0;const err=[];
+    for(const m of motion){const d=nearest(musicBeats,m.t);const w=m.w==null?1:m.w;s+=w*Math.exp(-d*d/(2*sigma*sigma));ws+=w;err.push(d)}
+    return {bas:s/ws,errMs:median(err)*1000,n:motion.length};
+  }
+
+  /* ---------- fit: per-move time warp ----------
+     Move = source [s,e] played at base rate r (source s per output s). Song time at the move's start = S0, song rate ar.
+     grid = [{t: song time, w: weight}] (downbeat 1.2, beat 1, half-beat 0.6).
+     Each strong motion beat may be pinned to a grid point; between pins the speed is constant and kept within +/- maxStretch
+     of r. Dynamic programming picks the pins that land the most accent weight with the least speed change.
+     Returns knots [[sourceTime, outputTime from move start], ...] from s to e. */
+  function warpMove(mb,s,e,r,S0,ar,grid,opt){
+    opt=opt||{}; const maxS=opt.maxStretch||0.25, win=opt.window||0.35, minGap=opt.minGap||0.12;
+    const P=mb.filter(m=>m.t>s+0.04&&m.t<e-0.04&&m.w>=(opt.minW||0.25)).sort((a,b)=>a.t-b.t);
+    const L0=(e-s)/r; const out=o=>o;
+    if(!P.length)return [[s,0],[e,L0]];
+    const G=grid.map(g=>({o:(g.t-S0)/ar,w:g.w})).filter(g=>g.o>-0.05&&g.o<L0*(1+maxS)+0.5);
+    /* candidates per motion beat */
+    const C=P.map(m=>{const p=(m.t-s)/r;return G.filter(g=>Math.abs(g.o-p)<=win&&g.o>0.02).map(g=>({o:g.o,w:g.w}))});
+    const okRate=(ds,dout)=>{if(dout<=minGap*0.5)return false;const q=(ds/dout)/r;return q>=1-maxS&&q<=1+maxS};
+    const rateCost=(ds,dout)=>{const q=Math.log((ds/dout)/r);return q*q};
+    /* states: index k of motion beat, chosen candidate c (or -1 = not pinned). Track last pin (src, out). */
+    const SKIP=0.9, LAND=1.0, SMOOTH=opt.smooth||8;
+    let states=[{cost:0,ls:s,lo:0,path:[]}];
+    for(let k=0;k<P.length;k++){
+      const next=[];
+      for(const st of states){
+        /* leave this beat unpinned */
+        next.push({cost:st.cost+SKIP*P[k].w,ls:st.ls,lo:st.lo,path:st.path});
+        for(const c of C[k]){
+          const ds=P[k].t-st.ls, dout=c.o-st.lo;
+          if(!okRate(ds,dout))continue;
+          const cst=st.cost+SMOOTH*rateCost(ds,dout)+LAND*P[k].w*(1.2-c.w);
+          next.push({cost:cst,ls:P[k].t,lo:c.o,path:st.path.concat([[P[k].t,c.o]])});
+        }
+      }
+      /* keep the best state per (last pin) to stay small */
+      const byKey=new Map();for(const st of next){const key=st.ls.toFixed(3)+'|'+st.lo.toFixed(3);const b=byKey.get(key);if(!b||st.cost<b.cost)byKey.set(key,st)}
+      states=[...byKey.values()].sort((a,b)=>a.cost-b.cost).slice(0,60);
+    }
+    /* finish: the tail after the last pin plays at base speed */
+    let best=null;for(const st of states){const tail=(e-st.ls)/r;const c=st.cost;if(!best||c<best.cost)best={...st,tail}}
+    const knots=[[s,0]].concat(best.path);const last=knots[knots.length-1];
+    knots.push([e,last[1]+(e-last[0])/r]);
+    return knots.map(k=>[+k[0].toFixed(4),+out(k[1]).toFixed(4)]);
+  }
+
+  /* beats + half-beats with weights, from beat times and downbeat times */
+  function grid(bt,down){
+    const g=[];const ds=new Set((down||[]).map(t=>t.toFixed(3)));
+    for(let i=0;i<bt.length;i++){g.push({t:bt[i],w:ds.has(bt[i].toFixed(3))?1.2:1});if(i<bt.length-1)g.push({t:(bt[i]+bt[i+1])/2,w:0.6})}
+    return g;
+  }
+  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,analyzeMotion,score,warpMove,grid,nearest,median};
+})();
+if(typeof module!=='undefined')module.exports=RA;
+/*ANALYSIS-END*/
+
+</script>
 <script>
 (function(){
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
@@ -533,7 +922,9 @@ const S={vr:1,ar:1,offset:0,dBase:null,sBase:null,dAnchor:null,sAnchor:null,cIn:
   sources:[],cur:null,markSrc:null,
   moves:[],seq:[],useSeq:false,segIdx:0,switchPending:false,markIn:null,markOut:null,markThumb:'',preview:null,
   main:{offset:0,ar:1,vr:1}, rt:{offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'},
-  mainSong:null, rtSong:null, liveSong:null, sel:null, stopAtT:null, primed:null, lastFix:0};
+  mainSong:null, rtSong:null, liveSong:null, sel:null, stopAtT:null, primed:null, lastFix:0,
+  beatSrc:'detected', variant:null, takeWaiter:null, clickOn:false, fitPer:[], blind:null, avComp:0};
+try{S.avComp=+(localStorage.getItem('rs-avcomp')||0)||0}catch(e){}
 let uidCount=0;
 let srcCount=0,aUrl=null,ctx=null,buf=null,loadIds={main:0,rt:0},take=null,downloads=null,moveCount=0;
 let recDest=null,recSrc=null,recT=0,recPos=0;
@@ -564,13 +955,37 @@ function moveById(id){return S.moves.find(m=>m.id===id)}
 function routineOn(){return S.useSeq&&S.seq.length>0&&!S.preview}
 function segs(){
   if(S.preview)return [S.preview];
-  if(routineOn())return S.seq.map(x=>{const m=moveById(x.id);return m?{src:m.src,s:x.s,e:x.e,r:rateOf(x)}:null}).filter(Boolean);
+  if(routineOn())return S.seq.map(x=>segOf(x)).filter(Boolean);
   return [{src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}];
+}
+/* a routine move as a playable piece. k = time-warp knots [[source, output-from-start]...] when aligned */
+function warpOk(x){
+  return S.rt.alignOn===true&&!(S.variant&&S.variant.noWarp)&&x.warp&&x.warp.length>1&&Math.abs((x.warpR||0)-rateOf(x))<1e-6
+    &&Math.abs(x.warp[0][0]-x.s)<1e-3&&Math.abs(x.warp[x.warp.length-1][0]-x.e)<1e-3;
+}
+function segOf(x,noWarp){const m=moveById(x.id);if(!m)return null;const g={src:m.src,s:x.s,e:x.e,r:rateOf(x)};if(!noWarp&&warpOk(x))g.k=x.warp;return g}
+function segLen(g){return g.k?g.k[g.k.length-1][1]:(g.e-g.s)/segR(g)}
+function toOut(g,t){
+  if(!g.k)return clamp(t-g.s,0,g.e-g.s)/segR(g);
+  const k=g.k; if(t<=k[0][0])return 0;
+  for(let i=1;i<k.length;i++)if(t<=k[i][0]){const [s1,o1]=k[i-1],[s2,o2]=k[i];return o1+(t-s1)*(o2-o1)/((s2-s1)||1)}
+  return k[k.length-1][1];
+}
+function toSrc(g,o){
+  if(!g.k)return g.s+clamp(o*segR(g),0,g.e-g.s);
+  const k=g.k; if(o<=0)return k[0][0];
+  for(let i=1;i<k.length;i++)if(o<=k[i][1]){const [s1,o1]=k[i-1],[s2,o2]=k[i];return s1+(o-o1)*(s2-s1)/((o2-o1)||1)}
+  return k[k.length-1][0];
+}
+function rateAt(g,t){
+  if(!g||!g.k)return segR(g);
+  const k=g.k; for(let i=1;i<k.length;i++)if(t<k[i][0]-1e-4||i===k.length-1){const [s1,o1]=k[i-1],[s2,o2]=k[i];return clamp((s2-s1)/((o2-o1)||1),0.2,4)}
+  return segR(g);
 }
 /* speed of one routine move: shared, or its own when "Each move" is on */
 function rateOf(x){return S.rt.spMode==='each'?(x.sp||1):S.rt.vr}
 function segR(g){return g&&g.r||S.vr||1}
-function curRate(){const g=segs()[S.segIdx];return segR(g)}
+function curRate(){const g=segs()[S.segIdx];return g?rateAt(g,v.currentTime):S.vr}
 function srcById(id){return S.sources.find(x=>x.id===id)}
 /* Make one video the visible, playing one. Each video keeps its own start/end points. */
 function activate(id){
@@ -596,7 +1011,7 @@ function ensureEl2(n){
 function swapTo(e,srcId){
   const n=srcById(srcId), prev=v;
   if(S.cur!==srcId){const old=srcById(S.cur);if(old){old.cIn=S.cIn;old.cOut=S.cOut}S.cIn=n.cIn||0;S.cOut=n.cOut??null;S.cur=srcId;$('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');renderSources()}
-  v=e; e.playbackRate=segR(segs()[S.segIdx]); e.muted=!$('#origAudio').checked;
+  const cg=segs()[S.segIdx]; v=e; e.playbackRate=cg?rateAt(cg,cg.s):S.vr; e.muted=!$('#origAudio').checked;
   showOnly(e);
   if(S.playing||S.rec)e.play().catch(()=>{});
   if(prev!==e){try{prev.pause()}catch(_){}}
@@ -610,34 +1025,36 @@ function primeNext(){
   if(S.stopAtT!=null&&segStart(i,L)>=S.stopAtT-0.02)return;
   const g=L[i], n=srcById(g.src); if(!n)return;
   let e=n.el; if(e===v)e=ensureEl2(n); if(e===v)return;
-  e.playbackRate=segR(g); e.muted=true;
+  /* park it a little before the move's first frame; it starts playing (hidden) that long before the cut */
+  const pre=Math.min(S.preroll||0.12,Math.max(0,g.s)), park=g.s-pre*rateAt(g,g.s);
+  e.playbackRate=rateAt(g,g.s); e.muted=true;
   if(e.readyState<2){
-    const p=e.play(); if(p)p.then(()=>{if(e!==v){e.pause();e.currentTime=g.s}}).catch(()=>{});
+    const p=e.play(); if(p)p.then(()=>{if(e!==v){e.pause();e.currentTime=park}}).catch(()=>{});
   } else {
     try{e.pause()}catch(_){}
-    if(Math.abs(e.currentTime-g.s)>0.03)e.currentTime=g.s;
+    if(Math.abs(e.currentTime-park)>0.03)e.currentTime=park;
   }
-  S.primed={i,el:e};
+  S.primed={i,el:e,park,pre,started:false};
 }
-function segStart(i,L){let t=0;for(let k=0;k<i;k++)t+=(L[k].e-L[k].s)/segR(L[k]);return t}
-function tPos(){const L=segs(),i=Math.min(S.segIdx,L.length-1),g=L[i];if(!g)return 0;return segStart(i,L)+clamp(v.currentTime-g.s,0,g.e-g.s)/segR(g)}
-function expected(){return S.offset+tPos()*S.ar}
+function segStart(i,L){let t=0;for(let k=0;k<i;k++)t+=segLen(L[k]);return t}
+function tPos(){const L=segs(),i=Math.min(S.segIdx,L.length-1),g=L[i];if(!g)return 0;return segStart(i,L)+toOut(g,v.currentTime)}
+function expected(){return S.offset+(S.variant&&S.variant.shift||0)+(tPos()+(S.avComp||0))*S.ar}
 function gotoSeg(i){
   const g=segs()[i]; S.segIdx=i; if(!g)return;
   const P=S.primed; S.primed=null;
-  if(P&&P.i===i&&P.el!==v&&(S.playing||S.rec)&&P.el.readyState>=2&&!P.el.seeking&&Math.abs(P.el.currentTime-g.s)<0.06){
-    swapTo(P.el,g.src); S.switchPending=false; primeNext(); return;
+  if(P&&P.i===i&&P.el!==v&&(S.playing||S.rec)&&P.el.readyState>=2&&!P.el.seeking&&P.el.currentTime>=g.s-0.06&&P.el.currentTime<g.s+0.15){
+    swapTo(P.el,g.src); S.switchPending=false; S.cutAt=performance.now(); primeNext(); return;
   }
   gotoSegSeek(i,g); primeNext();
 }
 function gotoSegSeek(i,g){
   if(g.src&&g.src!==S.cur){
     const live=S.playing||S.rec;
-    activate(g.src); v.playbackRate=segR(g); S.switchPending=true; v.currentTime=g.s;
+    activate(g.src); v.playbackRate=rateAt(g,g.s); S.switchPending=true; v.currentTime=g.s;
     if(live){v.play().catch(()=>{})}
     return;
   }
-  v.playbackRate=segR(g);
+  v.playbackRate=rateAt(g,g.s);
   if(Math.abs(v.currentTime-g.s)>0.04){S.switchPending=true;v.currentTime=g.s}else S.switchPending=false;
 }
 function toStart(){gotoSeg(0)}
@@ -645,8 +1062,7 @@ function seekT(T){
   const L=segs(); let i=0;
   while(i<L.length-1&&T>=segStart(i+1,L))i++;
   S.segIdx=i; S.switchPending=false; if(L[i].src&&L[i].src!==S.cur)activate(L[i].src);
-  v.playbackRate=segR(L[i]);
-  v.currentTime=L[i].s+clamp((T-segStart(i,L))*segR(L[i]),0,L[i].e-L[i].s);
+  const src=toSrc(L[i],T-segStart(i,L)); v.playbackRate=rateAt(L[i],src); v.currentTime=src;
   primeNext();
 }
 function atSegEnd(){
@@ -694,10 +1110,16 @@ function showSlots(){
   $('#audName').textContent=S.mainSong?S.mainSong.name+(md?' · '+fmt(md):'')+miss(S.mainSong):'No song yet';
   $('#rSongName').textContent=S.rtSong?S.rtSong.name+(sDur(S.rtSong)?' · '+fmt(sDur(S.rtSong)):'')+miss(S.rtSong):(S.mainSong?'Same song as the Song tab':'No song yet');
   $('#rSongReset').hidden=!S.rtSong;
+  scheduleFit();
 }
 
 /* ---------- playback: the song plays through a normal audio player (reliable on iPhone) ---------- */
 function setRate(r){if(Math.abs(a.playbackRate-r)>0.002)a.playbackRate=r}
+/* Moving the song makes it pause briefly while it seeks, so it lands late. Aim ahead by this phone's delay,
+   check ~0.4 s later where it actually is, and learn. */
+try{const sl=localStorage.getItem('rs-seeklead');if(sl!=null)S.seekLead=+sl}catch(e){}
+function songLead(){return S.seekLead==null?0.06:S.seekLead}
+function seekSong(e){a.currentTime=Math.max(0,e+songLead()*S.ar);S.seekCheck={at:performance.now()}}
 function syncSong(force){
   if(!S.hasA||!S.hasV)return;
   const e=expected(), d=songDur(), live=S.playing&&!v.paused&&!S.stalled;
@@ -706,23 +1128,32 @@ function syncSong(force){
     if(!live&&e>=0&&e<d&&Math.abs(a.currentTime-e)>0.03)a.currentTime=e;
     return;
   }
-  if(a.paused){a.currentTime=e;setRate(S.ar);a.play().catch(songFail);return}
+  if(a.paused){seekSong(e);setRate(S.ar);a.play().catch(songFail);return}
   setRate(S.ar);
-  const drift=a.currentTime-e;
-  if(routineOn()&&!force){
-    /* routine: leave the music alone through cuts and brief stalls; only fix it when it's clearly out */
-    const now=performance.now();
-    if(Math.abs(drift)>0.35&&!S.switchPending&&!v.seeking&&!a.seeking&&now-S.lastFix>1500){S.lastFix=now;a.currentTime=e}
-    return;
+  const drift=a.currentTime-e, now=performance.now();
+  if(S.seekCheck&&now-S.seekCheck.at>400&&!a.seeking&&!S.switchPending&&!v.seeking&&a.readyState>=3){
+    S.seekLead=clamp(songLead()-0.8*drift/S.ar,0,0.4); S.seekCheck=null;
+    try{localStorage.setItem('rs-seeklead',String(S.seekLead))}catch(err){}
+    if(Math.abs(drift)>0.03){S.lastFix=now;S.driftEma=0;seekSong(e);return}
   }
-  if(force||Math.abs(drift)>0.25){S.lastFix=performance.now();a.currentTime=e}
+  if(force){S.lastFix=now;S.driftEma=0;seekSong(e);return}
+  if(S.seekCheck)return;   /* wait until the last move has landed */
+  /* smooth the measured drift so one late frame or a cut doesn't trigger a jump */
+  /* ignore the half second after a cut: the new move is still settling */
+  const afterCut=now-(S.cutAt||0)<600;
+  if(!S.switchPending&&!v.seeking&&!a.seeking&&!afterCut)S.driftEma=0.85*(S.driftEma||0)+0.15*drift;
+  const settled=!S.switchPending&&!v.seeking&&!a.seeking&&!afterCut&&now-S.lastFix>1500;
+  /* just after pressing play the song often starts late; nudging it now (while it is only just starting) can't be heard */
+  if(now-(S.playAt||0)<900&&Math.abs(drift)>0.03&&!a.seeking&&a.readyState>=3&&!S.switchPending&&now-(S.earlyFix||0)>200){S.earlyFix=now;S.driftEma=0;seekSong(e);return}
+  /* a big jump (user seek): fix at once; a steady offset above 80 ms (e.g. the sound starting late): fix once it's clear */
+  if((Math.abs(drift)>(routineOn()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
 }
 /* The song's play() has to happen inside the tap, or the phone keeps it silent. */
 function unlockSong(){
   if(!S.hasA)return;
   const e=S.hasV?expected():a.currentTime;
   if(!S.hasV||(e>=0&&e<songDur())){
-    if(S.hasV)a.currentTime=e;
+    if(S.hasV)seekSong(e);
     setRate(S.ar); a.play().catch(songFail);
   } else {
     a.muted=true; const p=a.play();
@@ -735,6 +1166,7 @@ function setPlaying(p){
   $('#play').setAttribute('aria-label',p?'Pause':'Play');
 }
 function play(){
+  S.playAt=performance.now();
   if(S.hasV&&broken(v)){healMedia(false);recMsg('Reloading the video… tap play again.');return}
   if(routineOn()){const gone=S.seq.map(x=>moveById(x.id)).filter(m=>m&&srcById(m.src)&&srcById(m.src).missing);
     if(gone.length){recMsg('Re-add "'+srcById(gone[0].src).name+'" first. Tap Projects.',true);return}}
@@ -757,6 +1189,7 @@ function enable(){
   ['#scrub','#inRange','#setOut','#clearOut','#repeat','#markIn','#markOut'].forEach(id=>$(id).disabled=!hv);
   $$('[data-in]').forEach(b=>b.disabled=!hv);
   $('#recBtn').disabled=!(hv&&S.hasA&&buf);
+  const cn=srcById(S.cur); $('#danceAnalyze').disabled=!(cn&&!cn.missing)||!!S.analyzing; renderDance();
   updateCutter();
 }
 
@@ -800,7 +1233,8 @@ function createSource(f,meta){
   const num=meta.num||++srcCount; if(num>srcCount)srcCount=num;
   const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,
     name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
-    key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0};
+    key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0,
+    motion:meta.motion||null};
   if(f){n.url=URL.createObjectURL(f);ve.src=n.url;ve.load()}
   S.sources.push(n); return n;
 }
@@ -876,11 +1310,12 @@ function encodeWav(b){
   return new Blob([ab],{type:'audio/wav'});
 }
 function setSongSrc(blob){if(aUrl)URL.revokeObjectURL(aUrl);aUrl=URL.createObjectURL(blob);a.src=aUrl;a.load()}
-function loadSong(f,which,restoring){
+function loadSong(f,which,restoring,meta){
   if(!f)return; if(S.rec)stopRecording(); pause();
   const rt=which==='rt', slotKey=rt?'rt':'main', id=++loadIds[slotKey], isVideo=(f.type||'').startsWith('video/')||/\.(mp4|mov|m4v|webm)$/i.test(f.name);
   const msg=(t,err)=>{if(rt){const m=$('#rSongMsg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('err',!!err)}else songMsg(t,err)};
-  const so={name:f.name.replace(/\.[^.]+$/,'')||f.name,blob:null,buf:null,dur:0,ready:false,key:mediaKey(f),fname:f.name,size:f.size};
+  const so={name:f.name.replace(/\.[^.]+$/,'')||f.name,blob:null,buf:null,dur:0,ready:false,key:mediaKey(f),fname:f.name,size:f.size,
+    forceBpm:meta&&meta.forceBpm||null,beatShift:meta&&meta.beatShift||0,an:null};
   if(!restoring)saveMedia(so.key,f);
   msg('Reading the sound…');
   const place=()=>{if(rt)S.rtSong=so;else S.mainSong=so;S.liveSong=undefined;syncSlot();syncSong(true);updateMissing()};
@@ -888,7 +1323,7 @@ function loadSong(f,which,restoring){
     .then(ab=>new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej)))
     .then(b=>{
       if(id!==loadIds[slotKey])return;
-      so.buf=b; so.dur=b.duration; so.blob=encodeWav(b); so.ready=true; place();
+      so.buf=b; so.dur=b.duration; so.blob=encodeWav(b); so.ready=true; place(); analyzeSongObj(so,!restoring);
       msg(isVideo?'Using the sound from this video. Its picture is ignored.':(rt?'':'Song ready.'));
     })
     .catch(()=>{
@@ -966,7 +1401,7 @@ function updateTrim(){
   const r=$('#repeat'); r.classList.toggle('on',S.loop); r.setAttribute('aria-pressed',S.loop);
   $('#modeSeg').hidden=!S.seq.length;
   $('#modeClip').setAttribute('aria-pressed',!ro); $('#modeSeq').setAttribute('aria-pressed',ro);
-  syncSlot();
+  syncSlot(); scheduleFit();
 }
 function setIn(t){
   S.cIn=+clamp(t,0,Math.max(0,clipEnd()-0.2)).toFixed(2);
@@ -1074,9 +1509,10 @@ function fitEntry(x){
   x.e=+Math.min(max,x.s+k*b).toFixed(3); return true;
 }
 function beatsText(x){const b=beatLen(rateOf(x));if(!b)return '';const k=(x.e-x.s)/b, r=Math.round(k);return Math.abs(k-r)<0.04?' · '+r+(r===1?' beat':' beats'):' · '+k.toFixed(1)+' beats'}
-function playLen(x){return (x.e-x.s)/rateOf(x)}
+function playLen(x){const g=segOf(x);return g?segLen(g):(x.e-x.s)/rateOf(x)}
 function seqTotal(){return S.seq.reduce((t,x)=>t+playLen(x),0)}
 function updateSeqStats(){
+  scheduleFit();
   $('#seqLen').textContent=S.seq.length?'· '+S.seq.length+' moves · '+fmt(seqTotal()):'';
   const tot=seqTotal()||1;
   [...$('#seqBlocks').children].forEach((b,i)=>{const x=S.seq[i];if(x)b.style.flexGrow=String(playLen(x)/tot*100)});
@@ -1114,7 +1550,8 @@ function renderMoves(){
     const li=el('li','item r'); li.dataset.i=i; if(i===cur)li.classList.add('now'); if(S.sel===x.uid)li.classList.add('sel');
     const h=el('span','handle','⠿'); h.setAttribute('aria-hidden','true'); dragSource(h,{kind:'seq',i},null,li);
     const tap=el('button','tap'); tap.type='button'; tap.setAttribute('aria-expanded',S.sel===x.uid);
-    tap.append(nameEl(m),el('span','len',lenText(x,m)));
+    const lenEl=el('span','len',lenText(x,m)); tap.append(nameEl(m),lenEl);
+    const fc=el('span','chipfit idle','');fc.dataset.fit=i;fc.hidden=true;tap.querySelector('b').append(fc);
     tap.addEventListener('click',()=>{S.sel=S.sel===x.uid?null:x.uid;renderMoves();if(S.sel)showFrame(m.src,x.s)});
     const meta=el('div','meta'); meta.append(tap);
     const acts=el('div','acts');
@@ -1139,7 +1576,7 @@ function lenText(x,m){
   const sp=S.rt.spMode==='each'&&Math.abs((x.sp||1)-1)>0.004?' · ×'+(x.sp||1).toFixed(2):'';
   return playLen(x).toFixed(2)+'s'+sp+beatsText(x)+((Math.abs(x.s-m.s)>0.005||Math.abs(x.e-m.e)>0.005)?' · trimmed':'');
 }
-function segsFor(){return S.seq.map(x=>({s:x.s,e:x.e,r:rateOf(x)}))}
+function segsFor(){return S.seq.map(x=>segOf(x)||{s:x.s,e:x.e,r:rateOf(x)})}
 
 /* trimming one spot in the routine (doesn't change the saved move) */
 function editor(x,m,i,li){
@@ -1285,13 +1722,13 @@ function tapper(btn,label,onBpm){
   return {reset(){t=[];clearTimeout(btn._r);btn.textContent=label}};
 }
 const dTap=tapper($('#dTap'),'Tap steps',bpm=>{S.dBase=bpm/S.vr;S.dAnchor=v.currentTime;$('#dBpm').value=S.dBase.toFixed(1);updateMatch()});
-const sTap=tapper($('#sTap'),'Tap beat',bpm=>{
+const sTap=tapper($('#sTap'),'Tap beat',bpm=>{S.beatSrc='tapped';
   S.sBase=bpm/S.ar;$('#sBpm').value=S.sBase.toFixed(1);
   if(!a.paused)S.sAnchor=a.currentTime;
   updateMatch();
 });
 $('#dBpm').addEventListener('input',e=>{const x=+e.target.value;S.dBase=x>0?x:null;updateMatch()});
-$('#sBpm').addEventListener('input',e=>{const x=+e.target.value;S.sBase=x>0?x:null;updateMatch()});
+$('#sBpm').addEventListener('input',e=>{const x=+e.target.value;S.sBase=x>0?x:null;S.beatSrc='tapped';updateMatch()});
 function clearDance(){S.dBase=null;S.dAnchor=null;$('#dBpm').value='';dTap.reset()}
 function clearSong(){S.sBase=null;S.sAnchor=null;$('#sBpm').value='';sTap.reset()}
 $('#dClear').addEventListener('click',()=>{clearDance();updateMatch()});
@@ -1300,6 +1737,7 @@ $('#tClear').addEventListener('click',()=>{clearDance();clearSong();updateMatch(
 
 function updateMatch(){
   if($('#seqList').children.length)renderMoves();
+  scheduleFit();
   $('#dBeats').hidden=!S.dBase; $('#sBeats').hidden=!S.sBase; $('#pulses').hidden=!S.dBase&&!S.sBase;
   const dE=S.dBase?S.dBase*S.vr:null, sE=S.sBase?S.sBase*S.ar:null;
   $('#dEff').textContent=dE?dE.toFixed(1):'—';
@@ -1343,10 +1781,11 @@ async function prepRec(){
   try{
     if(S.hasV&&v.videoWidth){
       const [w,h]=recSize(); vCfg=null;
-      for(const codec of ['avc1.640028','avc1.4d0028','avc1.42002a','avc1.42001f']){
-        const cfg={codec,width:w,height:h,bitrate:5000000,framerate:30,avc:{format:'avc'}};
+      for(const codec of ['avc1.640028','avc1.4d0028','avc1.42002a','avc1.42001f','vp09.00.10.08','vp8']){
+        const avc=codec.startsWith('avc');
+        const cfg=avc?{codec,width:w,height:h,bitrate:5000000,framerate:30,avc:{format:'avc'}}:{codec,width:w,height:h,bitrate:5000000,framerate:30};
         const r=await VideoEncoder.isConfigSupported(cfg).catch(()=>null);
-        if(r&&r.supported){vCfg=cfg;break}
+        if(r&&r.supported&&codec!=='vp8'){vCfg=cfg;vCfg.mux=avc?'avc':'vp9';break}
       }
     }
     if(buf){
@@ -1354,8 +1793,10 @@ async function prepRec(){
       for(const sr of [buf.sampleRate,48000,44100]){
         const cfg={codec:'mp4a.40.2',sampleRate:sr,numberOfChannels:ch,bitrate:160000};
         const r=await AudioEncoder.isConfigSupported(cfg).catch(()=>null);
-        if(r&&r.supported){aCfg=cfg;break}
+        if(r&&r.supported){aCfg=cfg;aCfg.mux='aac';break}
       }
+      if(!aCfg){const cfg={codec:'opus',sampleRate:48000,numberOfChannels:ch,bitrate:160000};
+        const r=await AudioEncoder.isConfigSupported(cfg).catch(()=>null); if(r&&r.supported){aCfg=cfg;aCfg.mux='opus'}}
     }
   }catch(e){}
 }
@@ -1364,7 +1805,7 @@ function captureFrame(mediaTime){
   const L=R.segs, i=S.segIdx, g=L[i]; if(!g)return;
   if(S.switchPending){ if(mediaTime>=g.s-0.002&&mediaTime<=g.s+0.5)S.switchPending=false; else return; }
   if(mediaTime<g.s-0.002||mediaTime>g.e+0.002)return;
-  const T=segStart(i,L)+Math.max(0,mediaTime-g.s)/segR(g);
+  const T=segStart(i,L)+toOut(g,mediaTime);
   const ts=Math.round(T*1e6);
   if(ts<=R.lastTs||R.ve.encodeQueueSize>8)return;
   try{
@@ -1372,7 +1813,7 @@ function captureFrame(mediaTime){
     const f=new VideoFrame(cv,{timestamp:ts,duration:33333});
     const key=R.frames===0||ts-R.lastKey>=2000000; if(key)R.lastKey=ts;
     R.ve.encode(f,{keyFrame:key}); f.close();
-    R.lastTs=ts; R.frames++;
+    R.lastTs=ts; R.frames++; if(window.__recLog)window.__recLog.push([+mediaTime.toFixed(3),i,+T.toFixed(3),!!g.k]);
   }catch(e){R.failed=e}
 }
 function drawFit(el){
@@ -1396,9 +1837,9 @@ function startCodecRec(){
   cv.width=vCfg.width; cv.height=vCfg.height;
   const target=new Mp4Muxer.ArrayBufferTarget();
   const muxer=new Mp4Muxer.Muxer({target,fastStart:'in-memory',firstTimestampBehavior:'offset',
-    video:{codec:'avc',width:vCfg.width,height:vCfg.height},
-    audio:{codec:'aac',numberOfChannels:aCfg.numberOfChannels,sampleRate:aCfg.sampleRate}});
-  const R={mode:'codecs',segs:segs().map(g=>({src:g.src,s:g.s,e:g.e,r:segR(g)})),fade:routineOn()&&S.rt.fade,muxer,target,vr:S.vr,ar:S.ar,offset:S.offset,lastTs:-1,lastKey:0,frames:0,failed:null};
+    video:{codec:vCfg.mux||'avc',width:vCfg.width,height:vCfg.height},
+    audio:{codec:aCfg.mux||'aac',numberOfChannels:aCfg.numberOfChannels,sampleRate:aCfg.sampleRate}});
+  const R={mode:'codecs',segs:segs().map(g=>({src:g.src,s:g.s,e:g.e,r:segR(g),k:g.k})),fade:routineOn()&&S.rt.fade,muxer,target,vr:S.vr,ar:S.ar,offset:S.offset+(S.variant&&S.variant.shift||0),lastTs:-1,lastKey:0,frames:0,failed:null};
   R.ve=new VideoEncoder({output:(c,m)=>{try{muxer.addVideoChunkRaw(rawChunk(c),c.type,c.timestamp,okDur(c.duration)?c.duration:33333,m)}catch(e){R.failed=e}},error:e=>{R.failed=e}});
   R.ve.configure(vCfg);
   return R;
@@ -1409,13 +1850,14 @@ function stripAdts(d){
 }
 /* Encode the song from its start point, for the length of the recorded video. */
 async function encodeSong(R,interleaved){
-  const out=[], aDur=Math.round(1024/aCfg.sampleRate*1e6); let err=null;
-  const ae=new AudioEncoder({output:c=>{out.push({data:stripAdts(rawChunk(c)),type:c.type||'key',ts:c.timestamp,dur:okDur(c.duration)?c.duration:aDur})},error:e=>{err=e}});
+  const out=[], aDur=aCfg.mux==='opus'?20000:Math.round(1024/aCfg.sampleRate*1e6); let err=null;
+  const ae=new AudioEncoder({output:(c,m)=>{if(m&&m.decoderConfig&&!out.meta)out.meta=m;const raw=rawChunk(c);out.push({data:aCfg.mux==='opus'?raw:stripAdts(raw),type:c.type||'key',ts:c.timestamp,dur:okDur(c.duration)?c.duration:aDur})},error:e=>{err=e}});
   try{
     ae.configure(aCfg);
     const sr=aCfg.sampleRate, ch=aCfg.numberOfChannels, total=Math.ceil((R.lastTs/1e6+1/30)*sr);
     const src=[];for(let c=0;c<ch;c++)src.push(buf.getChannelData(Math.min(c,buf.numberOfChannels-1)));
-    const step=R.ar*buf.sampleRate/sr, p0=R.offset*buf.sampleRate, N=4096;
+    /* encComp: measured per phone and codec by the recording self-check (encoder lead-in) */
+    const step=R.ar*buf.sampleRate/sr, p0=(R.offset+encComp()*R.ar)*buf.sampleRate, N=4096;
     const fin=Math.round(0.03*sr), fout=R.fade?Math.min(Math.round(1.5*sr),Math.floor(total/3)):0;
     const gain=i=>{let g=1;if(i<fin)g=i/fin;if(fout&&i>total-fout)g=Math.min(g,(total-i)/fout);return g};
     for(let i0=0;i0<total&&!err;i0+=N){
@@ -1446,11 +1888,14 @@ async function finishCodecRec(R){
     let chunks=await encodeSong(R,false);
     if(!chunks.length)chunks=await encodeSong(R,true);   /* some encoders only take interleaved samples */
     if(!chunks.length)throw new Error("the phone produced no sound data");
-    for(const c of chunks)R.muxer.addAudioChunkRaw(c.data,c.type,c.ts,c.dur);  /* muxer writes its own AAC header */
+    /* Opus: hand over the encoder's real header so players skip the right lead-in (the default skip is 80 ms).
+       AAC: the muxer writes its own header (iPhone's encoder metadata made silent files). */
+    chunks.forEach((c,i)=>R.muxer.addAudioChunkRaw(c.data,c.type,c.ts,c.dur,(i===0&&aCfg.mux==='opus'&&chunks.meta)?chunks.meta:undefined));
     if(R.failed)throw R.failed;
     R.muxer.finalize();
-    finishRecording(new Blob([R.target.buffer],{type:'video/mp4'}));
-  }catch(e){recMsg("Couldn't finish the video ("+((e&&e.message)||e)+").",true)}
+    const outBlob=new Blob([R.target.buffer],{type:'video/mp4'});
+    finishRecording(outBlob); verifyTake(outBlob,R);
+  }catch(e){recMsg("Couldn't finish the video ("+((e&&e.message)||e)+").",true);if(S.takeWaiter){const w=S.takeWaiter;S.takeWaiter=null;w(null)}}
   finally{try{R.ve.close()}catch(e){}}
 }
 
@@ -1495,7 +1940,7 @@ function startRecording(){
   if(!useCodecs&&!(window.MediaRecorder&&cv.captureStream)){recMsg("This browser can't record video.",true);return}
   pause(); S.preview=null; S.segIdx=0; recMsg(''); updateTrim();
   const L=segs(), len=segStart(L.length,L);
-  try{S.rec=useCodecs?startCodecRec():startMrRec()}
+  try{S.rec=useCodecs?startCodecRec():startMrRec();if(/debug/.test(location.hash))window.__lastRecMode=S.rec&&S.rec.mode}
   catch(e){S.rec=null;recMsg("Couldn't start recording on this device.",true);return}
   toStart(); if(useCodecs)S.switchPending=true;
   play();
@@ -1512,9 +1957,10 @@ function stopRecording(){
   try{if(R.mr.state!=='inactive'){R.mr.requestData&&R.mr.requestData();R.mr.stop()}}catch(e){}
   setTimeout(()=>{if(R.done)return;R.done=true;
     if(R.chunks.length)finishRecording(new Blob(R.chunks,{type:R.mr.mimeType||'video/mp4'}));
-    else recMsg("Recording didn't finish on this device. Try again in Safari.",true)},5000);
+    else{recMsg("Recording didn't finish on this device. Try again in Safari.",true);if(S.takeWaiter){const w=S.takeWaiter;S.takeWaiter=null;w(null)}}},5000);
 }
 function finishRecording(blob){
+  if(S.takeWaiter){const w=S.takeWaiter;S.takeWaiter=null;w(blob&&blob.size?blob:null);return}
   if(!blob.size){recMsg('Nothing was recorded. Try again with the clip playing.',true);return}
   if(take)URL.revokeObjectURL(take.url);
   const ext=/webm/.test(blob.type)?'webm':'mp4';
@@ -1592,11 +2038,12 @@ function saveMedia(key,f){
   if(!key||!f)return;
   mediaPut(key,f).catch(()=>{PJ.mediaFail=true;saveState("Videos not kept: storage full",true)});
 }
-function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.size}:null}
+function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.size,forceBpm:so.forceBpm||null,beatShift:so.beatShift||0}:null}
 function snapshot(){
   return {v:1,
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
-      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut})),
+      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null})),
+    beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
     cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.loop, useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
     mainSong:songMeta(S.mainSong), rtSong:songMeta(S.rtSong),
@@ -1668,7 +2115,7 @@ function resetAll(){
   const vid=$('#vid'); vid.removeAttribute('src'); try{vid.load()}catch(e){} vid.classList.remove('off'); v=vid;
   Object.assign(S,{sources:[],cur:null,hasV:false,cIn:0,cOut:null,moves:[],seq:[],useSeq:false,segIdx:0,preview:null,sel:null,
     primed:null,stopAtT:null,mainSong:null,rtSong:null,liveSong:undefined,loop:false,dBase:null,sBase:null,dAnchor:null,sAnchor:null,
-    main:{offset:0,ar:1,vr:1},rt:{offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'}});
+    main:{offset:0,ar:1,vr:1},rt:{offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'},beatSrc:'detected',blind:null,fitPer:[]});
   srcCount=0;moveCount=0;uidCount=0; resetCut();
   $('#dBpm').value='';$('#sBpm').value='';$('#origAudio').checked=false;
   $('#empty').hidden=false; songMsg('MP3, M4A or a video. For a video, only its sound is used.'); $('#rSongMsg').hidden=true;
@@ -1687,7 +2134,7 @@ async function restore(rec){
     const c=d.counts||{}; srcCount=Math.max(srcCount,c.src||0); moveCount=c.move||0; uidCount=c.uid||0;
     S.moves=d.moves||[]; S.seq=d.seq||[]; S.loop=!!d.loop;
     S.main=Object.assign({offset:0,ar:1,vr:1},d.main); S.rt=Object.assign({offset:0,ar:1,vr:1,fade:true,set:false,spMode:'all'},d.rt);
-    S.dBase=d.dBase||null; S.sBase=d.sBase||null;
+    S.dBase=d.dBase||null; S.sBase=d.sBase||null; S.beatSrc=d.beatSrc||'detected'; S.blind=d.blind||null;
     $('#dBpm').value=S.dBase?S.dBase.toFixed(1):''; $('#sBpm').value=S.sBase?S.sBase.toFixed(1):'';
     $('#origAudio').checked=!!d.origAudio;
     S.hasV=S.sources.some(n=>!n.missing);
@@ -1698,11 +2145,11 @@ async function restore(rec){
       if(!meta)continue;
       saveState('Loading songs…');
       const f=await toMemory(await mediaGet(meta.key));
-      if(f)loadSong(f,slot,true);
+      if(f)loadSong(f,slot,true,meta);
       else{const so=Object.assign({blob:null,buf:null,dur:0,ready:false,missing:true},meta);if(slot==='rt')S.rtSong=so;else S.mainSong=so}
     }
     S.useSeq=!!d.useSeq&&S.seq.length>0; S.liveSong=undefined;
-    enable(); renderSources(); renderMoves(); updateTrim(); updateMatch(); updateMissing();
+    enable(); renderSources(); renderMoves(); updateTrim(); updateMatch(); updateMissing(); renderBlind(); renderSongCard();
     PJ.last=JSON.stringify(snapshot()); saveState('Saved');
     return true;
   }catch(e){saveState("Couldn't open project",true);return false}
@@ -1798,6 +2245,363 @@ $('#projImport').addEventListener('change',async e=>{
   if(rec&&await restore(rec)){const n=missingItems().length;saveState(n?'Restored · files missing':'Restored',!!n)}
 })();
 
+/* ================== BEAT ANALYSIS, ALIGNMENT, FIT, CHECKS ================== */
+
+/* ---------- song beat ---------- */
+function songChans(b){const out=[];for(let c=0;c<Math.min(2,b.numberOfChannels);c++)out.push(b.getChannelData(c));return out}
+function analyzeSongObj(so,apply){
+  if(!so||!so.buf)return;
+  setTimeout(()=>{
+    try{
+      const an=RA.analyzeSong(songChans(so.buf),so.buf.sampleRate,{forceBpm:so.forceBpm||undefined,noPhaseFix:false});
+      if(so.beatShift){const h=30/an.bpm;an.beats=an.beats.map(t=>t+h).filter(t=>t<so.buf.duration);an.downbeats=an.beats.filter((t,i)=>i%4===((an.phase||0)%4))}
+      so.an=an;
+    }catch(e){so.an=null}
+    if(so===S.mainSong){if(apply)S.beatSrc='detected';if(S.beatSrc!=='tapped')applyDetectedBeat(so)}
+    renderSongCard(); scheduleFit();
+  },30);
+}
+function applyDetectedBeat(so){
+  if(!so||!so.an)return;
+  S.beatSrc='detected'; S.sBase=+so.an.bpm.toFixed(2); S.sAnchor=(so.an.downbeats[0]??so.an.beats[0])||0;
+  $('#sBpm').value=S.sBase.toFixed(1); updateMatch();
+}
+/* beat grid of a song in song seconds. The Song tab's song uses taps instead when the dancer tapped. */
+function songGrid(so){
+  if(!so)return null;
+  if(so===S.mainSong&&S.beatSrc==='tapped'&&S.sBase){
+    const p=60/S.sBase, a0=S.sAnchor||0, dur=sDur(so)||600, b=[], d=[];
+    let k0=Math.ceil(-a0/p); for(let k=k0;a0+k*p<dur;k++){const t=a0+k*p;b.push(t);if(((k%4)+4)%4===0)d.push(t)}
+    return {beats:b,down:d,bpm:S.sBase,tapped:true};
+  }
+  if(so.an&&so.an.beats.length>4)return {beats:so.an.beats,down:so.an.downbeats,bpm:so.an.bpm};
+  return null;
+}
+function liveGrid(){return songGrid(S.liveSong)}
+function routineSong(){return S.rtSong||S.mainSong}
+function renderSongCard(){
+  const so=S.mainSong, card=$('#songCard');
+  if(!so||!so.an){card.hidden=!(so&&so.ready&&!so.an&&so.buf);if(!card.hidden){$('#songDet').textContent='Finding the beat…'}return}
+  card.hidden=false; const an=so.an;
+  $('#songDet').textContent=an.bpm.toFixed(1)+' BPM · '+Math.round(an.conf*100)+'% sure'+(S.beatSrc==='tapped'?' · using your taps':'');
+  const box=$('#songCands'); box.textContent='';
+  const all=[{bpm:+an.bpm.toFixed(1)}].concat((an.candidates||[]).filter(c=>Math.abs(c.bpm-an.bpm)/an.bpm>0.05)).slice(0,4);
+  all.forEach((c,i)=>{const b=el('button','btn sm cand'+(i===0?' on':''),c.bpm.toFixed(1));b.setAttribute('aria-label','Use '+c.bpm.toFixed(1)+' BPM');
+    b.addEventListener('click',()=>{if(i===0)return;so.forceBpm=c.bpm;so.beatShift=0;S.beatSrc='detected';$('#songDet').textContent='Re-finding the beat…';analyzeSongObj(so,true)});box.append(b)});
+  const w=$('#songWarn'); w.textContent='';
+  const warn=t=>w.append(el('li',null,t));
+  if(an.conf<0.35)warn('The tempo is unclear here (weak or irregular kick). Check it with the click, or tap it in the Tempo tab.');
+  if(an.contrast<0.6)warn('Beats barely stand out from the rest of the track, so beat positions may be off.');
+  if(an.candidates&&an.candidates.some(c=>Math.abs(c.bpm/an.bpm-4/3)<0.03||Math.abs(c.bpm/an.bpm-3/4)<0.03))warn('A 3-3-2 rhythm (like the dembow) can make a tempo 4/3 off look strong. If the clicks drift against the kick, try the other number.');
+  if(an.downConf<0.15)warn("Not sure which beat is the 1 of the bar.");
+}
+$('#beatHalf').addEventListener('click',()=>{const so=S.mainSong;if(!so)return;so.beatShift=so.beatShift?0:0.5;S.beatSrc='detected';analyzeSongObj(so,true)});
+$('#beatUseDet').addEventListener('click',()=>{const so=S.mainSong;if(so&&so.an)applyDetectedBeat(so);renderSongCard();scheduleFit()});
+$('#clickOn').addEventListener('change',e=>{S.clickOn=e.target.checked;if(S.clickOn){const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}});
+/* click track: a short tick each time the song passes a beat (downbeats higher) */
+let lastClickT=-1;
+function clickTick(){
+  if(!S.clickOn||a.paused||!S.hasA){lastClickT=-1;return}
+  const G=liveGrid(); if(!G)return; const t=a.currentTime;
+  if(lastClickT<0||t<lastClickT||t-lastClickT>0.5){lastClickT=t;return}
+  const hit=G.beats.find(b=>b>lastClickT&&b<=t+0.012); lastClickT=t;
+  if(hit==null)return;
+  const c=getCtx(); if(c.state!=='running')return;
+  const down=G.down.some(d=>Math.abs(d-hit)<0.02);
+  const o=c.createOscillator(),g=c.createGain(); o.frequency.value=down?1600:1000; g.gain.setValueAtTime(0.35,c.currentTime); g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.05);
+  o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+0.06);
+}
+
+/* ---------- dance hits (motion beats) ---------- */
+let ANALYZE_RATE=1;   /* normal speed: at 2x, phones and browsers skip frames and hits get missed */
+function analyzeVideo(n,onProg){
+  return new Promise(resolve=>{
+    if(!n||!n.url||n.missing){resolve(null);return}
+    const ve=document.createElement('video'); ve.muted=true; ve.setAttribute('playsinline',''); ve.preload='auto';
+    ve.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
+    document.body.append(ve); ve.src=n.url;
+    const cvs=document.createElement('canvas'), c2=cvs.getContext('2d',{willReadFrequently:true});
+    let W=80,H=80,prev=null,series=[],done=false,lastT=-1;
+    const finish=()=>{if(done)return;done=true;try{ve.pause()}catch(e){}ve.remove();
+      const res=series.length>10?RA.analyzeMotion(series):null; resolve(res)};
+    const grab=t=>{
+      if(t<=lastT+0.001)return; lastT=t;
+      c2.drawImage(ve,0,0,W,H); const d=c2.getImageData(0,0,W,H).data, g=new Uint8Array(W*H);
+      for(let i=0,j=0;i<g.length;i++,j+=4)g[i]=(d[j]*77+d[j+1]*150+d[j+2]*29)>>8;
+      if(prev){const dg=RA.directogram(RA.flowPyr(prev,g,W,H,8));series.push({t,D:dg.D,cam:dg.cam,mag:dg.mag})}
+      prev=g; if(onProg&&ve.duration)onProg(Math.min(1,t/ve.duration));
+    };
+    ve.addEventListener('loadedmetadata',()=>{
+      const vw=ve.videoWidth||16,vh=ve.videoHeight||9; W=112; H=Math.max(56,Math.min(200,Math.round(112*vh/vw)));
+      cvs.width=W; cvs.height=H; ve.playbackRate=window.__rsRate||ANALYZE_RATE;
+      const p=ve.play(); if(p)p.catch(()=>finish());
+      if(ve.requestVideoFrameCallback){const cb=(now,meta)=>{if(done)return;grab(meta.mediaTime);ve.requestVideoFrameCallback(cb)};ve.requestVideoFrameCallback(cb)}
+      else{const poll=()=>{if(done)return;grab(ve.currentTime);requestAnimationFrame(poll)};requestAnimationFrame(poll)}
+    });
+    ve.addEventListener('ended',finish); ve.addEventListener('error',finish);
+    setTimeout(finish,600000);
+  });
+}
+async function findHits(n){
+  if(!n||S.analyzing)return null;
+  S.analyzing=true; enable(); $('#danceProg').hidden=false; const bar=$('#danceProg i'); bar.style.width='0';
+  $('#danceInfo').textContent='Finding hits in '+n.name+'… (plays through it once, silently)';
+  const res=await analyzeVideo(n,p=>{bar.style.width=Math.round(p*100)+'%'});
+  S.analyzing=false; $('#danceProg').hidden=true;
+  if(res){n.motion=res; if(n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+res.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}}
+  enable(); renderMoves(); updateMatch(); scheduleFit();
+  if(!res)$('#danceInfo').textContent="Couldn't read frames from this video.";
+  return res;
+}
+$('#danceAnalyze').addEventListener('click',()=>findHits(srcById(S.cur)));
+function renderDance(){
+  const n=srcById(S.cur), info=$('#danceInfo'), w=$('#danceWarn');
+  if(S.analyzing)return; w.textContent='';
+  if(!n){info.textContent='Add a dance video first.';return}
+  $('#danceAnalyze').textContent=n.motion?'Find again':'Find hits';
+  if(!n.motion){info.textContent='Finds the moments the dancer hits: sharp stops and changes of direction. They show as blue ticks under the video, next to the song’s beats in orange.';return}
+  const m=n.motion; info.textContent=m.beats.length+' hits found in '+n.name+' · dance tempo about '+m.bpm.toFixed(0)+' BPM.';
+  const warn=t=>w.append(el('li',null,t));
+  if(m.contrast<0.55)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');
+  if(m.cam>0.8)warn('The camera moves a lot. Camera motion is removed, but strong pans can hide hits.');
+  if(m.beats.length<4)warn('Very few hits found. Try a clip where the dancer fills more of the frame.');
+  warn('Hits come from image motion, not body tracking: footwork hidden from the camera or below the frame can be missed.');
+}
+$('#dTap').addEventListener('click',()=>{S.danceSrc='tapped'});
+$('#dBpm').addEventListener('input',()=>{S.danceSrc='tapped'});
+
+/* ---------- fit scoring ---------- */
+function motionIn(srcId,s,e){const n=srcById(srcId);return n&&n.motion?n.motion.beats.filter(b=>b.t>=s-0.001&&b.t<=e+0.001):null}
+/* score a list of pieces against a song grid. Everything compared in playback seconds. */
+function fitOf(list,G,offset,ar,shift){
+  if(!G||!list.length)return null;
+  /* targets: every beat and every "and" (half-beat), as alignment uses */
+  const tg=[];for(let i=0;i<G.beats.length;i++){tg.push(G.beats[i]);if(i<G.beats.length-1)tg.push((G.beats[i]+G.beats[i+1])/2)}
+  const beatsOut=tg.map(b=>(b-offset-(shift||0))/ar).sort((p,q)=>p-q);
+  let T=0, all=[], per=[], missing=false;
+  for(const g of list){
+    const mb=motionIn(g.src,g.s,g.e);
+    if(!mb){per.push(null);missing=true;T+=segLen(g);continue}
+    const pts=mb.map(b=>({t:T+toOut(g,b.t),w:b.w}));
+    per.push(pts.length?RA.score(pts,beatsOut,0.05):null); all=all.concat(pts); T+=segLen(g);
+  }
+  return {all:all.length?RA.score(all,beatsOut,0.05):null,per,missing};
+}
+const pct=x=>x==null?'—':Math.round(x*100)+'%';
+const fitClass=x=>x==null?'idle':x>=0.6?'ok':x>=0.35?'warn':'bad';
+let fitQueued=false;
+function scheduleFit(){if(fitQueued)return;fitQueued=true;requestAnimationFrame(()=>{fitQueued=false;refreshFit()})}
+function refreshFit(){
+  /* routine card */
+  const card=$('#fitCard'); card.hidden=!S.seq.length;
+  if(S.seq.length){
+    const rs=routineSong(), G=songGrid(rs), off=S.rt.offset, ar=S.rt.ar;
+    const now=S.seq.map(x=>segOf(x)).filter(Boolean), cst=S.seq.map(x=>segOf(x,true)).filter(Boolean);
+    const hasWarp=S.seq.some(x=>x.warp&&Math.abs((x.warpR||0)-rateOf(x))<1e-6&&Math.abs(x.warp[0][0]-x.s)<1e-3&&Math.abs(x.warp[x.warp.length-1][0]-x.e)<1e-3);
+    const alignedList=hasWarp?S.seq.map(x=>{const g=segOf(x,true);if(g&&x.warp&&Math.abs((x.warpR||0)-rateOf(x))<1e-6)g.k=x.warp;return g}).filter(Boolean):null;
+    const fNow=fitOf(now,G,off,ar,0), fC=fitOf(cst,G,off,ar,0), fA=alignedList?fitOf(alignedList,G,off,ar,0):null, fO=G?fitOf(alignedList||now,G,off,ar,15/G.bpm):null;
+    const show=(id,f)=>{$('#'+id).textContent=f&&f.all?pct(f.all.bas):'—';const e=$('#'+id+'Err');if(e)e.textContent=f&&f.all?'±'+Math.round(f.all.errMs)+' ms':' '};
+    show('fitNow',fNow); show('fitConst',fC); show('fitAligned',fA); $('#fitOff').textContent=fO&&fO.all?pct(fO.all.bas):'—';
+    const on=S.rt.alignOn===true; $('#alignOn').setAttribute('aria-pressed',on); $('#alignOff').setAttribute('aria-pressed',!on); $('#alignOn').disabled=!hasWarp;
+    $('#maxStretchOut').textContent='±'+Math.round((S.rt.maxStretch||0.2)*100)+'%'; if(document.activeElement!==$('#maxStretch'))$('#maxStretch').value=Math.round((S.rt.maxStretch||0.2)*100);
+    S.fitPer=fNow?fNow.per:[];
+    $$('[data-fit]').forEach(c=>{const p=S.fitPer[+c.dataset.fit];c.hidden=!p;if(p){c.className='chipfit '+fitClass(p.bas);c.textContent=pct(p.bas)}});
+    const msg=$('#fitMsg');
+    if(!G)msg.textContent='Add the routine song so the beat can be found (Song tab).';
+    else if(fNow&&fNow.missing)msg.textContent='Some videos have no dance hits yet. Align finds them first.';
+    else if(!msg.dataset.keep)msg.textContent='';
+    drawSeqCanvas(now,G,off,ar);
+  }
+  /* clip: Tempo tab line */
+  const cf=$('#clipFit');
+  if(S.hasV&&!routineOn()){
+    const g={src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}, f=fitOf([g],liveGrid(),S.offset,S.ar,0);
+    cf.textContent=f&&f.all?'Beat fit for this clip: '+pct(f.all.bas)+' · hits miss by about '+Math.round(f.all.errMs)+' ms':(srcById(S.cur)&&srcById(S.cur).motion?'':'Find dance hits (Clip tab) to see how well this clip fits the beat.');
+  } else cf.textContent='';
+  drawHitStrip();
+}
+function tok(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim()||'#888'}
+function sizeCanvas(c){const r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1;const w=Math.max(1,Math.round(r.width*dpr)),h=Math.max(1,Math.round(r.height*dpr));if(c.width!==w||c.height!==h){c.width=w;c.height=h}return {w,h,dpr}}
+function drawSeqCanvas(list,G,off,ar){
+  const c=$('#seqCanvas'); if($('#seqBar').hidden)return; const {w,h,dpr}=sizeCanvas(c), x=c.getContext('2d'); x.clearRect(0,0,w,h);
+  const tot=list.reduce((t,g)=>t+segLen(g),0)||1;
+  if(G){x.fillStyle='rgba(255,255,255,.85)';const dn=new Set(G.down.map(t=>t.toFixed(3)));
+    for(const b of G.beats){const o=(b-off)/ar;if(o<0||o>tot)continue;const X=o/tot*w,isD=dn.has(b.toFixed(3));x.globalAlpha=isD?0.95:0.45;x.fillRect(X-dpr*0.5,0,dpr*(isD?2:1),isD?h:h*0.45)}}
+  x.globalAlpha=1; x.fillStyle=tok('--song-hot'); let T=0;
+  for(const g of list){const mb=motionIn(g.src,g.s,g.e)||[];for(const b of mb){const X=(T+toOut(g,b.t))/tot*w;x.beginPath();x.arc(X,h-4*dpr,(1.5+2*b.w)*dpr,0,7);x.fill()}T+=segLen(g)}
+}
+function drawHitStrip(){
+  const c=$('#hitStrip'); const {w,h,dpr}=sizeCanvas(c), x=c.getContext('2d'); x.clearRect(0,0,w,h);
+  if(!S.hasV)return;
+  const ro=routineOn(), list=segs(), G=liveGrid();
+  if(ro){const tot=list.reduce((t,g)=>t+segLen(g),0)||1;
+    if(G){x.fillStyle=tok('--song-hot');for(const b of G.beats){const o=(b-S.offset)/S.ar;if(o<0||o>tot)continue;x.fillRect(o/tot*w,0,dpr,h*0.5)}}
+    x.fillStyle=tok('--dance');let T=0;for(const g of list){for(const b of motionIn(g.src,g.s,g.e)||[])x.fillRect((T+toOut(g,b.t))/tot*w,h*0.5,dpr*1.5,h*0.5);T+=segLen(g)}
+    return}
+  const n=srcById(S.cur), d=v.duration||0; if(!d)return;
+  if(G){x.fillStyle=tok('--song-hot');for(const b of G.beats){const src=S.cIn+((b-S.offset)/S.ar)*S.vr;if(src<0||src>d)continue;x.fillRect(src/d*w,0,dpr,h*0.5)}}
+  if(n&&n.motion){x.fillStyle=tok('--dance');for(const b of n.motion.beats)x.fillRect(b.t/d*w,h*0.5,dpr*1.5,h*0.5)}
+}
+window.addEventListener('resize',scheduleFit);
+
+/* ---------- align: time-warp each move so its hits land on beats ---------- */
+function fitMsg(t){const m=$('#fitMsg');m.textContent=t||'';if(t)m.dataset.keep='1';else delete m.dataset.keep}
+async function alignRoutine(){
+  if(S.rec||!S.seq.length)return; pause();
+  const rs=routineSong(), G=songGrid(rs);
+  if(!G){fitMsg('Add the routine song first so its beat can be found.');return}
+  const need=[...new Set(S.seq.map(x=>moveById(x.id)&&moveById(x.id).src))].map(srcById).filter(n=>n&&!n.motion&&!n.missing);
+  const prog=$('#alignProg'), bar=$('#alignProg i');
+  for(let i=0;i<need.length;i++){prog.hidden=false;fitMsg('Finding dance hits in '+need[i].name+' ('+(i+1)+'/'+need.length+')…');
+    const r=await analyzeVideo(need[i],p=>{bar.style.width=Math.round(((i+p)/need.length)*100)+'%'});if(r)need[i].motion=r}
+  prog.hidden=true;
+  const grid=RA.grid(G.beats,G.down); let T=0, pinned=0, strong=0, maxQ=0;
+  for(const x of S.seq){
+    const m=moveById(x.id); if(!m)continue; const r=rateOf(x), mb=motionIn(m.src,x.s,x.e)||[];
+    const S0=S.rt.offset+T*S.rt.ar;
+    x.warp=RA.warpMove(mb,x.s,x.e,r,S0,S.rt.ar,grid,{maxStretch:S.rt.maxStretch||0.2}); x.warpR=r;
+    for(let i=1;i<x.warp.length;i++){const q=((x.warp[i][0]-x.warp[i-1][0])/((x.warp[i][1]-x.warp[i-1][1])||1))/r;maxQ=Math.max(maxQ,Math.abs(q-1))}
+    pinned+=x.warp.length-2; strong+=mb.filter(b=>b.w>=0.25).length; T+=x.warp[x.warp.length-1][1];
+  }
+  S.rt.alignOn=true; S.rt.set=true;
+  renderMoves(); updateTrim(); refreshFit();
+  fitMsg(pinned+' of '+strong+' strong hits pinned to the beat · biggest speed change ±'+Math.round(maxQ*100)+'%.'+(S.seq.length>1?' Changing a move’s trim, speed or the song start undoes its alignment; align again after editing.':''));
+}
+$('#alignBtn').addEventListener('click',alignRoutine);
+$('#alignClear').addEventListener('click',()=>{S.seq.forEach(x=>{delete x.warp;delete x.warpR});S.rt.alignOn=false;fitMsg('');renderMoves();updateTrim();refreshFit()});
+$('#alignOn').addEventListener('click',()=>{if(S.rec)return;pause();S.rt.alignOn=true;renderMoves();updateTrim();refreshFit()});
+$('#alignOff').addEventListener('click',()=>{if(S.rec)return;pause();S.rt.alignOn=false;renderMoves();updateTrim();refreshFit()});
+$('#maxStretch').addEventListener('input',e=>{S.rt.maxStretch=(+e.target.value)/100;S.rt.set=true;$('#maxStretchOut').textContent='±'+e.target.value+'%'});
+
+/* ---------- recording self-check: decode the file just made and line its sound up with the song ---------- */
+function encKey(){return 'rs-enccomp-'+(aCfg&&aCfg.codec||'x')}
+function encComp(){try{return +(localStorage.getItem(encKey())||0)||0}catch(e){return 0}}
+async function verifyTake(blob,R){
+  try{
+    if(!buf)return;
+    const ab=await blob.arrayBuffer(); const dec=await new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej));
+    const SR=8000, take=dec.getChannelData(0), tsr=dec.sampleRate, song=buf.getChannelData(0), ssr=buf.sampleRate;
+    const t0=0.2, t1=Math.min(4.2,dec.duration-0.3); if(t1-t0<1.2)return;
+    const n=Math.floor((t1-t0)*SR), x=new Float32Array(n);
+    for(let i=0;i<n;i++)x[i]=take[Math.floor((t0+i/SR)*tsr)]||0;
+    const ref=lag=>{const r=new Float32Array(n);const base=R.offset;  /* compare with where the song SHOULD be, not where we told the encoder */for(let i=0;i<n;i++){const st=base+(t0+i/SR)*R.ar+lag;r[i]=song[Math.floor(st*ssr)]||0}return r};
+    let best={lag:0,c:-1}; const nx=Math.hypot(...x.subarray(0,Math.min(n,4000)))>0?1:0;
+    for(let ms=-250;ms<=250;ms+=2){const r=ref(ms/1000);let dot=0,a2=0,b2=0;for(let i=0;i<n;i+=2){dot+=x[i]*r[i];a2+=x[i]*x[i];b2+=r[i]*r[i]}const c=dot/Math.sqrt(a2*b2+1e-12);if(c>best.c)best={lag:ms,c}}
+    for(let ms=best.lag-2;ms<=best.lag+2;ms++){const r=ref(ms/1000);let dot=0,a2=0,b2=0;for(let i=0;i<n;i++){dot+=x[i]*r[i];a2+=x[i]*x[i];b2+=r[i]*r[i]}const c=dot/Math.sqrt(a2*b2+1e-12);if(c>best.c)best={lag:ms,c}}
+    const info=$('#takeInfo'); if(!nx||best.c<0.5){return}
+    if(window.__rs)window.__rs.lastVerify=best;
+    if(Math.abs(best.lag)<=12){info.textContent+=' · sound checked: lines up (±'+Math.abs(best.lag)+' ms)';return}
+    const comp=encComp()-best.lag/1000/R.ar; try{localStorage.setItem(encKey(),String(comp))}catch(e){}
+    info.textContent+=' · sound was '+Math.abs(best.lag)+' ms '+(best.lag>0?'early':'late')+' in this file; fixed for your next takes on this phone. Record again for a tight take.';
+  }catch(e){}
+}
+
+/* ---------- sync check (ITU-R BT.1359: sound >45 ms early or >125 ms late is detectable) ---------- */
+let syncLog=null;
+function syncCheck(){
+  const out=$('#syncOut'); out.hidden=false;
+  if(!S.hasV||!S.hasA){out.textContent='Add a dance video and a song first.';return}
+  if(S.rec)return;
+  pause(); S.segIdx=0; toStart();
+  const samples=[]; let checking=true; const t0=performance.now();
+  allEls().forEach(e=>{if(!e.requestVideoFrameCallback)return;const f=(now,meta)=>{if(!checking)return;
+    if(e===v&&S.playing&&!S.switchPending&&!a.paused&&a.readyState>=2){const L=segs(),g=L[S.segIdx];
+      if(g&&meta.mediaTime>=g.s-0.01&&meta.mediaTime<=g.e+0.01){const T=segStart(S.segIdx,L)+toOut(g,meta.mediaTime);const exp=S.offset+T*S.ar;
+        const lead=Math.max(0,(meta.expectedDisplayTime||performance.now())-performance.now())/1000;
+        const audioAtDisplay=a.currentTime+lead*a.playbackRate;
+        samples.push({t:+T.toFixed(3),ms:+(((audioAtDisplay-exp)/S.ar)*1000).toFixed(1)})}}
+    e.requestVideoFrameCallback(f)};e.requestVideoFrameCallback(f)});
+  play(); out.textContent='Measuring… keep the app open for 8 seconds.';
+  setTimeout(()=>{
+    checking=false; pause();
+    const use=samples.filter(x=>x.t>0.6).map(x=>x.ms).sort((p,q)=>p-q);
+    if(use.length<20){out.textContent='Not enough frames measured. Try again with the video playing.'+(allEls()[0].requestVideoFrameCallback?'':' (This browser can’t time frames.)');return}
+    const q=f=>use[Math.min(use.length-1,Math.max(0,Math.round(f*(use.length-1))))];
+    const med=q(0.5),p5=q(0.05),p95=q(0.95), early=Math.max(0,p95), late=Math.max(0,-p5);
+    const pass=early<=45&&late<=125;
+    syncLog={device:navigator.userAgent,when:new Date().toISOString(),mode:routineOn()?'routine':'clip',correction_ms:Math.round((S.avComp||0)*1000),samples,summary:{median_ms:med,p5_ms:p5,p95_ms:p95,frames:use.length,pass}};
+    out.innerHTML='';
+    out.append(el('b',null,pass?'In sync on this phone.':'Out of sync on this phone.'));
+    out.append(document.createTextNode(' Typical offset '+(med>0?'+':'')+Math.round(med)+' ms (sound '+(med>=0?'ahead':'behind')+'); 90% of frames between '+Math.round(p5)+' and +'+Math.round(p95)+' ms, from '+use.length+' frames. Limits: sound up to 45 ms early or 125 ms late (ITU-R BT.1359). Doesn’t include Bluetooth or AirPlay delay, which can add 150–250 ms. Recordings are built from the same timeline, so they line up by design. '));
+    if(Math.abs(med)>15){const fx=el('button','btn sm primary','Correct for this phone');
+      fx.addEventListener('click',()=>{S.avComp=clamp((S.avComp||0)-med/1000,-0.3,0.3);try{localStorage.setItem('rs-avcomp',String(S.avComp))}catch(e){}
+        fx.textContent='Corrected by '+Math.round(-med)+' ms · run the check again to confirm';fx.disabled=true});out.append(fx,document.createTextNode(' '))}
+    if(S.avComp){const rs=el('button','btn sm ghost','Reset correction ('+Math.round(S.avComp*1000)+' ms)');rs.addEventListener('click',()=>{S.avComp=0;try{localStorage.removeItem('rs-avcomp')}catch(e){};rs.textContent='Correction cleared'});out.append(rs,document.createTextNode(' '))}
+    const sv=el('button','btn sm','Save log'); sv.addEventListener('click',async()=>{const r=await saveFile('riddim-swap-sync-'+Date.now()+'.json',JSON.stringify(syncLog,null,1),'application/json');sv.textContent=saveWords[r]||'Saved'});
+    out.append(sv);
+  },8000);
+}
+$('#syncBtn').addEventListener('click',syncCheck);
+
+/* ---------- blind test kit ---------- */
+const blindTakes={};
+function recordTake(){
+  return new Promise(res=>{S.takeWaiter=res;startRecording();if(!S.rec){S.takeWaiter=null;res(null)}});
+}
+async function makeBlind(){
+  const box=$('#blindBox'); box.hidden=false; box.textContent='';
+  if(!S.seq.length||!S.hasA){box.append(el('p','hint','Build a routine with a song first.'));return}
+  if(!S.seq.some(x=>x.warp)){box.append(el('p','hint','Aligning the routine first…'));await alignRoutine()}
+  const G=songGrid(routineSong()); if(!G){box.textContent='';box.append(el('p','hint','The song’s beat is needed first.'));return}
+  if(!routineOn())setMode(true);
+  const kinds=['aligned','constant','off'], letters=['A','B','C'];
+  for(let i=kinds.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[kinds[i],kinds[j]]=[kinds[j],kinds[i]]}
+  const key={}; letters.forEach((L,i)=>key[L]=kinds[i]);
+  const wasOn=S.rt.alignOn;
+  for(let i=0;i<3;i++){
+    box.textContent=''; box.append(el('p','hint','Recording take '+(i+1)+' of 3… keep the app open.'));
+    const k=key[letters[i]];
+    S.rt.alignOn=true;
+    S.variant=k==='aligned'?{noWarp:false,shift:0}:k==='constant'?{noWarp:true,shift:0}:{noWarp:true,shift:15/G.bpm};
+    updateTrim();
+    const blob=await recordTake(); S.variant=null;
+    if(blindTakes[letters[i]])URL.revokeObjectURL(blindTakes[letters[i]].url);
+    blindTakes[letters[i]]=blob?{blob,url:URL.createObjectURL(blob)}:null;
+    await new Promise(r=>setTimeout(r,400));
+  }
+  S.rt.alignOn=wasOn; updateTrim();
+  S.blind={key,ratings:[],at:new Date().toISOString(),revealed:false};
+  renderBlind();
+}
+function renderBlind(){
+  const box=$('#blindBox'), B=S.blind; box.textContent=''; if(!B){box.hidden=true;return} box.hidden=false;
+  box.append(el('p','hint','Show each take to dancers without saying which is which. Ask: "Is the dance on the beat?" 1 = off, 5 = locked in.'));
+  const player=el('video'); player.setAttribute('playsinline',''); player.controls=true; player.hidden=true;
+  const takes=el('div','takes');
+  ['A','B','C'].forEach(L=>{const t=blindTakes[L];const col=el('div','field');
+    const pl=el('button','btn sm','▶ Take '+L); pl.disabled=!t; pl.addEventListener('click',()=>{player.hidden=false;player.src=t.url;player.play().catch(()=>{})});
+    const sv=el('button','btn sm','Save '+L); sv.disabled=!t; sv.addEventListener('click',async()=>{const r=await saveFile('take-'+L+'.mp4',t.blob,t.blob.type||'video/mp4');sv.textContent=r==='declined'?'Save '+L:'Saved'});
+    col.append(pl,sv); takes.append(col)});
+  if(!blindTakes.A)box.append(el('p','hint','The take videos aren’t kept after closing the app; ratings and the answer key are.'));
+  box.append(takes,player);
+  /* ratings */
+  const form=el('div','row'); const nm=el('input'); nm.type='text'; nm.placeholder='Dancer'; nm.setAttribute('aria-label','Dancer name');
+  const sel={}; ['A','B','C'].forEach(L=>{const s2=el('select');s2.setAttribute('aria-label','Rating for take '+L);s2.append(el('option',null,L+' –'));for(let i=1;i<=5;i++){const o=el('option',null,L+' '+i);o.value=i;s2.append(o)}sel[L]=s2;form.append(s2)});
+  const add=el('button','btn sm','Add rating'); add.addEventListener('click',()=>{const r={name:nm.value.trim()||('Dancer '+(B.ratings.length+1))};let ok=true;['A','B','C'].forEach(L=>{const v2=+sel[L].value;if(!v2)ok=false;r[L]=v2});if(!ok)return;B.ratings.push(r);renderBlind()});
+  form.prepend(nm); form.append(add); box.append(form);
+  if(B.ratings.length){
+    const wrap=el('div','tblwrap'),tb=el('table'),hd=el('tr');['Dancer','A','B','C'].forEach((h,i)=>{const th=el('th',i?'num':null,h);hd.append(th)});tb.append(hd);
+    B.ratings.forEach(r=>{const tr=el('tr');tr.append(el('td',null,r.name));['A','B','C'].forEach(L=>tr.append(el('td','num',String(r[L]))));tb.append(tr)});
+    wrap.append(tb); box.append(wrap);
+  }
+  const rv=el('button','btn sm',B.revealed?'Hide answers':'Reveal answers'); rv.addEventListener('click',()=>{B.revealed=!B.revealed;renderBlind()});
+  const ex=el('button','btn sm ghost','Save results'); ex.disabled=!B.ratings.length;
+  ex.addEventListener('click',async()=>{const lines=['dancer,take,version,rating'];B.ratings.forEach(r=>['A','B','C'].forEach(L=>lines.push([JSON.stringify(r.name),L,B.key[L],r[L]].join(','))));const res=await saveFile('blind-test-results.csv',lines.join('\n'),'text/csv');ex.textContent=saveWords[res]||'Saved'});
+  const again=el('button','btn sm ghost','New test'); again.addEventListener('click',makeBlind);
+  const row=el('div','row'); row.append(rv,ex,again); box.append(row);
+  if(B.revealed){
+    const names={aligned:'Aligned',constant:'Constant speed',off:'Deliberately off'};
+    const mean=k=>{const L=Object.keys(B.key).find(x=>B.key[x]===k);const v2=B.ratings.map(r=>r[L]);return v2.length?v2.reduce((p,q)=>p+q,0)/v2.length:null};
+    const ul=el('ul',null); ['A','B','C'].forEach(L=>{const m=mean(B.key[L]);ul.append(el('li',null,'Take '+L+' = '+names[B.key[L]]+(m!=null?' · average '+m.toFixed(1)+' / 5':'')))});
+    box.append(ul);
+    if(B.ratings.length){const mo=mean('off'),ma=mean('aligned'),mc=mean('constant');
+      box.append(el('p','hint',mo<Math.min(ma,mc)?'The deliberately-off take was rated lowest, so these dancers can hear timing and their ratings of the other two mean something.'+(ma>mc?' They rated the aligned version highest.':' They did not rate the aligned version highest.'):'The deliberately-off take was NOT rated lowest, so these ratings can’t tell the versions apart. Try more dancers, or a routine with clearer hits.'))}
+  }
+}
+$('#blindBtn').addEventListener('click',makeBlind);
+
+/* test hook: only with #debug in the address */
+if(/debug/.test(location.hash))window.__rs={S,RA,segs,tPos,srcById,routineOn};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage');
 let lastSeg=-1;
@@ -1811,10 +2615,21 @@ function tick(){
       const g=segs()[S.segIdx];
       /* a cut has finished seeking: carry on (while recording, the frame grabber confirms it, with a safety timeout) */
       if(S.switchPending&&g&&!v.seeking){const codec=S.rec&&S.rec.mode==='codecs';if(!codec||v.currentTime>g.s+0.6)S.switchPending=false}
-      if(g&&!S.switchPending&&v.currentTime>=g.e-0.02){
+      /* pre-roll: start the next move (hidden) its measured start-up time before the cut */
+      const P=S.primed;
+      if(P&&!P.started&&g&&!S.switchPending&&P.el.readyState>=2&&!P.el.seeking){
+        const left=(g.e-v.currentTime)/Math.max(0.2,v.playbackRate);
+        if(left<=P.pre+0.01){P.started=true;P.t0=performance.now();const pp=P.el.play();
+          const mark=()=>{if(P.t0){const lat=(performance.now()-P.t0)/1000;S.preroll=clamp(0.7*(S.preroll||0.12)+0.3*lat,0.04,0.4);P.t0=0}};
+          if(P.el.requestVideoFrameCallback)P.el.requestVideoFrameCallback(mark);else if(pp)pp.then(mark).catch(()=>{})}
+      }
+      /* at the cut, wait (briefly) until the pre-rolled move reaches its first frame */
+      const waitNext=P&&P.started&&P.el.currentTime<P.park+P.pre*0.6&&(performance.now()-(P.t0||0))<300&&P.i===S.segIdx+1;
+      if(g&&!S.switchPending&&v.currentTime>=g.e-0.02&&!waitNext){
         if(S.stopAtT!=null&&routineOn()&&segStart(S.segIdx+1,segs())>=S.stopAtT-0.02)pause(); else atSegEnd();
       }
       else{
+        if(g&&g.k&&!S.switchPending){const r=rateAt(g,v.currentTime);if(Math.abs(v.playbackRate-r)>0.004)v.playbackRate=r}
         if(S.rec&&S.rec.mode==='mr')drawFrame(); else if(S.rec&&!v.requestVideoFrameCallback)captureFrame(v.currentTime);
         syncSong(false); recSync(false);
       }
@@ -1826,6 +2641,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
+  clickTick();
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.sBase&&S.hasA&&!a.paused)s=beat(a.currentTime,S.sAnchor,S.sBase);
@@ -1835,7 +2651,7 @@ function tick(){
   stage.classList.toggle('pulse-s',s.pulse);
   requestAnimationFrame(tick);
 }
-renderSources(); updateTrim(); showSlots(); applyRates(); renderMoves(); updateCutter(); requestAnimationFrame(tick);
+renderSources(); updateTrim(); showSlots(); applyRates(); renderMoves(); updateCutter(); renderBlind(); requestAnimationFrame(tick);
 })();
 </script>
 <script>
