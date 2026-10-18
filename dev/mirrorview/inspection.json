@@ -1,0 +1,152 @@
+{
+  "baselineVersion": "0.13",
+  "source": "supplied conversation artifact, not fetched from live host",
+  "runtimeBytes": 572966,
+  "runtimeSha256": "9229eb1ccf5560e942391b23bc1f08f9bc5cbbf3f8463a5241df8f2dd4cc9867",
+  "moduleMarkers": [
+    {
+      "section": "math.js",
+      "startLine": 607,
+      "endLine": 682
+    },
+    {
+      "section": "tracking.js",
+      "startLine": 683,
+      "endLine": 874
+    },
+    {
+      "section": "movement.js",
+      "startLine": 875,
+      "endLine": 941
+    },
+    {
+      "section": "alignment.js",
+      "startLine": 942,
+      "endLine": 986
+    },
+    {
+      "section": "playback-clock.js",
+      "startLine": 987,
+      "endLine": 1041
+    },
+    {
+      "section": "pulse.js",
+      "startLine": 1042,
+      "endLine": 1146
+    },
+    {
+      "section": "pulse-analysis.js",
+      "startLine": 1147,
+      "endLine": 1309
+    },
+    {
+      "section": "music-anchors.js",
+      "startLine": 1310,
+      "endLine": 1438
+    },
+    {
+      "section": "audio-bridge.js",
+      "startLine": 1439,
+      "endLine": 1563
+    },
+    {
+      "section": "pulse-audio.js",
+      "startLine": 1564,
+      "endLine": 1737
+    },
+    {
+      "section": "pulse-timeline.js",
+      "startLine": 1738,
+      "endLine": 1844
+    },
+    {
+      "section": "pulse-ui.js",
+      "startLine": 1845,
+      "endLine": 1886
+    },
+    {
+      "section": "pulse-workspace.js",
+      "startLine": 1887,
+      "endLine": 2122
+    },
+    {
+      "section": "practice.js",
+      "startLine": 2123,
+      "endLine": 2144
+    },
+    {
+      "section": "demo.js",
+      "startLine": 2145,
+      "endLine": 2199
+    },
+    {
+      "section": "storage.js",
+      "startLine": 2200,
+      "endLine": 2209
+    },
+    {
+      "section": "recovery.js",
+      "startLine": 2210,
+      "endLine": 2283
+    },
+    {
+      "section": "media.js",
+      "startLine": 2284,
+      "endLine": 2530
+    },
+    {
+      "section": "sequence.js",
+      "startLine": 2531,
+      "endLine": 2620
+    },
+    {
+      "section": "practice-view.js",
+      "startLine": 2621,
+      "endLine": 2921
+    },
+    {
+      "section": "render.js",
+      "startLine": 2922,
+      "endLine": 3181
+    },
+    {
+      "section": "pulse-transfer.js",
+      "startLine": 3182,
+      "endLine": 3300
+    },
+    {
+      "section": "session-guide.js",
+      "startLine": 3301,
+      "endLine": 3407
+    },
+    {
+      "section": "build-workspace.js",
+      "startLine": 3408,
+      "endLine": 3577
+    },
+    {
+      "section": "app.js",
+      "startLine": 3578,
+      "endLine": 5100
+    }
+  ],
+  "packagingChecks": [
+    {
+      "check": "node --check baseline inline script 1",
+      "passed": true,
+      "output": ""
+    },
+    {
+      "check": "node --check baseline inline script 2",
+      "passed": true,
+      "output": ""
+    }
+  ],
+  "notPerformed": [
+    "functional regression rerun",
+    "host app inspection",
+    "iPhone hardware testing",
+    "native compilation or signing",
+    "deployment"
+  ]
+}

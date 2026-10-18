@@ -1100,5 +1100,50 @@ function suggestSpeed(){
 }
 function tok(name)""")
 
+# ------------------------------------------------------------------ MirrorView: entry points and media hand-off (installed app only)
+rep(""".okmsg{color:var(--ok)!important}""", """.okmsg{color:var(--ok)!important}
+.mv-only{display:none!important}
+html.rs-hosted .mv-only{display:revert!important}""")
+rep("""      <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>""",
+"""      <button class="btn sm ghost mv-only" id="mvBtn" title="Pose tracking, Worldline, Pulse and practice">MirrorView</button>
+      <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>""")
+rep("""          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button>""",
+"""          <div class="row mv-only"><button class="btn sm" id="mvClip">Study this clip in MirrorView</button></div>
+          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button>""")
+rep("""          <button class="btn" id="discardBtn">Discard</button>""",
+"""          <button class="btn" id="discardBtn">Discard</button>
+          <button class="btn mv-only" id="mvTake">Practise in MirrorView</button>""")
+rep("""/* ---------- dance hits (motion beats) ---------- */
+let ANALYZE_RATE""", r"""/* ---------- MirrorView hand-off ----------
+   MirrorView lives at ./mirrorview/ in the same installed app (same origin and storage). A clip or take is left in
+   IndexedDB 'riddim-bridge' and MirrorView opens it through its own Load video path, then deletes it. */
+if(window.RS_HOSTED)document.documentElement.classList.add('rs-hosted');
+function bridgeDb(){return new Promise((res,rej)=>{const r=indexedDB.open('riddim-bridge',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('handoff'))r.result.createObjectStore('handoff',{keyPath:'id'})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function handOff(kind,blob,name,meta){
+  const db=await bridgeDb(), id='h'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  await new Promise((res,rej)=>{const t=db.transaction('handoff','readwrite'),st=t.objectStore('handoff');st.clear();st.put({id,v:1,from:'riddim-swap',kind,name,blob,meta:meta||null,created:Date.now()});t.oncomplete=res;t.onerror=()=>rej(t.error)});
+  db.close(); return id;
+}
+async function goMirror(id){
+  pause(); try{await autosave(true)}catch(e){}
+  location.href='mirrorview/'+(id?'?handoff='+encodeURIComponent(id):'')+(/debug/.test(location.hash)?'#debug':'');
+}
+$('#mvBtn').addEventListener('click',()=>goMirror(null));
+$('#mvClip').addEventListener('click',async()=>{
+  const n=srcById(S.cur);
+  if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return}
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null});goMirror(id)}
+  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').')}
+});
+$('#mvTake').addEventListener('click',async()=>{
+  if(!take)return;
+  const G=routineOn()?songGrid(routineSong()):liveGrid();
+  try{const id=await handOff('take',take.blob,'Riddim Swap take '+new Date().toISOString().slice(0,16).replace('T',' ')+'.'+take.ext,{songBpm:G&&G.bpm||null});goMirror(id)}
+  catch(e){saveMsg('Couldn’t pass the take to MirrorView ('+(e&&e.message||e)+').',true)}
+});
+
+/* ---------- dance hits (motion beats) ---------- */
+let ANALYZE_RATE""")
+
 P.write_text(s)
 print('patched', len(s))

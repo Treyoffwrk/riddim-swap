@@ -70,6 +70,7 @@ head = f"""<!doctype html>
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 {chr(10).join(links)}
+<script>window.RS_HOSTED=1</script>
 {lib_tag}
 {style}
 {extra_css}
@@ -78,6 +79,10 @@ head = f"""<!doctype html>
 
 html = head + body + app_js + "\n</body>\n</html>\n"
 (OUT / 'index.html').write_text(html)
+
+# MirrorView route (built from its verified baseline; see mv/build_mirrorview.py)
+import subprocess
+subprocess.run(['python3', '/home/claude/mv/build_mirrorview.py'], check=True)
 
 manifest = {
     "name": "Riddim Swap",
@@ -105,17 +110,19 @@ version = h.hexdigest()[:10]
 
 sw = """/* Riddim Swap offline support. Version changes on every build. */
 const VERSION='rs-%s';
-const SHELL=['./','./index.html','./manifest.webmanifest','./vendor/mp4-muxer.js',
+const SHELL=['./','./index.html','./mirrorview/','./mirrorview/index.html','./manifest.webmanifest','./vendor/mp4-muxer.js',
   './icons/icon-192.png','./icons/icon-512.png','./icons/maskable-512.png','./icons/apple-touch-icon.png','./icons/favicon-32.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==VERSION).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',e=>{
   const req=e.request; if(req.method!=='GET')return;
   const url=new URL(req.url);
-  /* the page itself: newest when online, saved copy when offline */
+  /* pages (Riddim Swap and MirrorView): newest when online, that page's saved copy when offline.
+     Each page is cached under its own address, so opening MirrorView never replaces the saved Riddim Swap page. */
   if(req.mode==='navigate'||(url.origin===location.origin&&url.pathname.endsWith('.html'))){
-    e.respondWith(fetch(req).then(r=>{const c=r.clone();caches.open(VERSION).then(x=>x.put('./index.html',c));return r})
-      .catch(()=>caches.match('./index.html')));
+    const key=new URL(url.pathname.endsWith('/')?url.pathname+'index.html':url.pathname,location.origin).href;
+    e.respondWith(fetch(req).then(r=>{if(r.ok&&r.type==='basic'){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
+      .catch(()=>caches.match(key).then(m=>m||caches.match('./index.html'))));
     return;
   }
   /* app files: saved copy first */
