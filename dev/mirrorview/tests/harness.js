@@ -9,6 +9,7 @@ async function launch(opts={}){
     const f=path.join(TA,'tasks-vision',rel);if(!fs.existsSync(f))return r.fulfill({status:404});
     const ct=rel.endsWith('.wasm')?'application/wasm':rel.endsWith('.mjs')||rel.endsWith('.js')?'text/javascript':'application/octet-stream';
     r.fulfill({status:200,headers:{'content-type':ct,'access-control-allow-origin':'*'},body:fs.readFileSync(f)})});
+  await ctx.route(/storage\.googleapis\.com\/mediapipe-models\/pose_landmarker\/pose_landmarker_full\//,r=>r.fulfill({status:200,headers:{'content-type':'application/octet-stream','access-control-allow-origin':'*'},body:fs.readFileSync(path.join(TA,'pose_landmarker_full.task'))}));
   await ctx.route(/storage\.googleapis\.com\/mediapipe-models\/pose_landmarker\/pose_landmarker_lite\//,r=>r.fulfill({status:200,headers:{'content-type':'application/octet-stream','access-control-allow-origin':'*'},body:fs.readFileSync(path.join(TA,'pose_landmarker_lite.task'))}));
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/,r=>r.fulfill({status:200,body:''}));
   return {b,ctx};

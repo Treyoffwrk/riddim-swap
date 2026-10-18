@@ -88,6 +88,42 @@ The tests run in headless Chromium on the local build, served over HTTP. In the 
 | Practice count-in, A/B loop, freeze and align, Build with two real Moves | **Not run** in this integration | These are baseline code paths and weren't touched. |
 | Import/export of Pulse, take and Build JSON on the phone (Files) | **Not run** | |
 
+## Stage 2: one app, one look, the dance body (Oct 2026)
+
+### What changed
+
+- **Shared look ("Sound System").** Both apps use one palette: a dark stage, blue for the dancer, amber for the music and magenta for the hips. The fonts are Figtree for text, Bricolage Grotesque for headings and JetBrains Mono for numbers.
+  - Riddim Swap's colours are its CSS variables, overridden in `patch_depth.py`.
+  - MirrorView hard-codes about 470 colours, so `mv_theme_block.py` translates them by rule and keeps each colour's lightness: greys become the shared neutrals, mint/green becomes blue, orange becomes amber, and a few colours are mapped exactly.
+- **Shared bottom bar.** On phones, Riddim Swap's tabs move to a bottom bar: Clip, Song, Tempo, Moves, Routine and **Body**. Body opens MirrorView with the current clip and its body tracking. MirrorView shows the same bar with Body active, and tapping another section returns to that Riddim Swap tab (localStorage `rs-tab-req`). The bar hides in Practice and stand-back mode. On phones the header MirrorView button is gone, replaced by the Body tab.
+- **Dance body.** The tracker landed on the body; the trouble was how the skeleton was timed and drawn. There are two parts:
+  - *Tracking* (`body.js`, shared): MediaPipe tasks-vision **0.10.18** (MirrorView's pinned runtime) with `pose_landmarker_full`, run in IMAGE mode on **every frame**. It steps through the clip frame by frame (seek, wait for that frame, track), so slow phones can't skip frames. Each sample keeps its frame's media time, and drawing uses the pose for the exact frame on screen. Smoothing is light and centred (0.2·0.6·0.2), so it adds no lag, and it's skipped across jumps. Tracking is stored per clip in IndexedDB (`body:<media key>`) and survives media clean-up.
+  - *Drawing*: a torso shape; a pelvis shape that narrows when the dancer turns side-on and tilts with the hips; thick limbs scaled to torso size; the head; the hips' path relative to the chest over the last second, drawn at twice its real size so a whine reads as a loop; and dotted foot trails. Riddim Swap draws it on the stage. MirrorView's one skeleton function (`skeleton2D`) draws it for the main figure, while faint after-images and dashed guides keep the thin original.
+- **One tracker, one beat engine.**
+  - **Tracker:** the Body tab hands Riddim Swap's every-frame tracking to MirrorView, which loads it as its reference poses (no second tracking). MirrorView's own preparation now samples 30 poses a second in every profile (it was 24).
+  - **Beat engine:** Pulse keeps MirrorView's audio extraction, timeline mapping, onsets and frequency events. Its tempo and beat position now come from Riddim Swap's `analysis.js`. The two decodes are lined up by cross-correlating low-frequency energy rather than assuming the decoders start together (`mv_pulse_block.py`).
+- **Hits from the body.** After body tracking, hits come from stops and turns of the hips, feet and hands (`RA.analyzePose`). The image-motion hits are kept as a fallback, and hits you marked yourself are kept. The Fewer/Normal/More merging applies to both.
+
+### Evidence (headless Chromium; CDN requests answered with test copies as before; your clip 2, first 15 s, VP9/Opus)
+
+| Test | Result | Notes |
+|---|---|---|
+| Model choice, on 10 s of clip 2 at 30 fps, against the heavy model | Measured | Hip error lite 0.027 / full 0.033 torso lengths; wrists lite 0.078 / full 0.046; ankles lite 0.057 / full 0.044. Hip-sway correlation 0.98–0.99 for all settings. The full model was picked for its limbs; for hips, the settings differ by about 3% of torso length. |
+| Body tracked on every frame | Passed | 308 of 308 tracked frames have a body. The clip has 312 real frames (23.4 fps, variable). Median gap 43 ms, largest 86 ms. 143 ms a frame on the test machine's CPU (not phone speed). |
+| Pose drawn is the frame on screen | Passed | Nearest stored sample within 20 ms of the playhead. |
+| Dance body drawn (blue body, magenta pelvis and path) | Passed | Pixel check plus screenshots against the design. |
+| Hits from the body | Passed | 19 raw hits on clip 2, then merged per move. |
+| Body tracking kept after reload | Passed | |
+| Body tab → MirrorView uses the same tracking | Passed | 308/308 poses loaded; the reference pose is shown with no second tracking. |
+| MirrorView bottom bar → Riddim Swap Routine tab | Passed | |
+| Pulse beat grid on a song with known beats (dembow 100) | Passed | Shared engine: 99.5 BPM, every beat within 70 ms, median offset 19 ms, alignment correlation 0.98. MirrorView's own estimate on the same audio: 50 BPM, no beats within 70 ms. |
+| Pulse on clip 2's song | Improved | 126.2 BPM (librosa 129). MirrorView alone read 50.7. |
+| Riddim Swap suites | Passed | `ui_tracking` 23/23, `ui_hits` 10/10, end-to-end (beat F 0.99, hits F 1.0, recording sound 0 ms). The take-picture check measured 36 ms on one run and 8 ms on a rerun. |
+| Camera, offline cache, hand-off, failed replacement | Passed | As in stage 1. |
+| Pulse on a Riddim Swap take | Still failing | The recorder still writes no MP4 edit list (stage 1 gap). |
+| Body tracking accuracy on real dance | **Not verified** | No hand-labelled poses. The full model agrees with the heavy model to a few percent of torso length; that's agreement within one model family, not ground truth. |
+| iPhone speed, heat and real camera | **Not run** | |
+
 ## Known limits
 
 - **Takes in Pulse:** Pulse can't analyse a Riddim Swap take until the recorder writes MP4 edit lists (see above).

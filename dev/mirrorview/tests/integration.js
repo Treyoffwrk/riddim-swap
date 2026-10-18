@@ -7,14 +7,14 @@ const R=[];const rec=(name,status,detail)=>{R.push({name,status,detail});console
  const {b,ctx}=await launch();const p=await ctx.newPage();const errs=[];p.on('pageerror',e=>errs.push(p.url().split('/').slice(-2).join('/')+': '+e.message));
  await p.goto(HOST+'#debug');await p.evaluate(()=>{indexedDB.deleteDatabase('riddim-swap');indexedDB.deleteDatabase('riddim-bridge');localStorage.clear()});await p.reload();
  /* host baseline: entry visible only in the installed app */
- rec('Host shows MirrorView entry',await p.isVisible('#mvBtn')?'passed':'failed','header button visible in the hosted build');
+ rec('Host shows MirrorView entry (Body tab)',await p.isVisible('#t-body')?'passed':'failed','Body tab visible in the hosted build');
  await p.setInputFiles('#vidFile',CLIP);await p.setInputFiles('#audFile',SONG);
  for(let i=0;i<40;i++){if(await p.evaluate(()=>!!(window.__rs.S.mainSong&&window.__rs.S.mainSong.an)))break;await p.waitForTimeout(250)}
  await p.evaluate(()=>{const v=[...document.querySelectorAll('#stage video')].find(x=>!x.classList.contains('off'));v.currentTime=4.2});await p.waitForTimeout(400);
  await p.click('#t-moves');await p.click('#markIn');await p.evaluate(()=>{const v=[...document.querySelectorAll('#stage video')].find(x=>!x.classList.contains('off'));v.currentTime=6.0});await p.waitForTimeout(300);await p.click('#markOut');await p.click('#saveMove');
  const before=await p.evaluate(()=>({moves:document.querySelectorAll('#tray .tcard').length,song:window.__rs.S.mainSong.name,bpm:window.__rs.S.sBase}));
  /* plain entry and return */
- await p.click('#mvBtn');await p.waitForURL(/mirrorview\//,{timeout:15000});await p.waitForTimeout(1500);
+ await p.click('#t-body');await p.waitForURL(/mirrorview\//,{timeout:15000});await p.waitForTimeout(1500);
  const mvOk=await p.evaluate(()=>({v:(document.querySelector('.brand small')||{}).textContent,back:!!document.getElementById('rs-back')}));
  rec('Entry opens MirrorView 0.13',mvOk.v==='0.13'&&mvOk.back?'passed':'failed',JSON.stringify(mvOk));
  await p.click('#rs-back');await p.waitForURL(u=>!/mirrorview/.test(u.toString()),{timeout:15000});await p.waitForTimeout(2500);
@@ -50,7 +50,7 @@ const R=[];const rec=(name,status,detail)=>{R.push({name,status,detail});console
  const t0=Date.now();
  await p.evaluate(()=>{const s=window.__mv.state;s.a=2;s.b=6;});
  await p.evaluate(()=>document.querySelector('[data-action="analyse-reference"]').click());
- let ps=null;for(let i=0;i<480;i++){await p.waitForTimeout(500);ps=await p.evaluate(()=>{const s=window.__mv.state;const f=s.poseSamples||[];return {busy:s.busy,n:f.length,withPose:f.filter(x=>x.points).length,t0:f[0]&&+f[0].t.toFixed(2),t1:f.length&&+f.at(-1).t.toFixed(2)}});if(!ps.busy&&ps.n>0)break;if(!ps.busy&&i>20)break}
+ let ps=null;for(let i=0;i<1400;i++){await p.waitForTimeout(500);ps=await p.evaluate(()=>{const s=window.__mv.state;const f=s.poseSamples||[];return {busy:s.busy,n:f.length,withPose:f.filter(x=>x.points).length,t0:f[0]&&+f[0].t.toFixed(2),t1:f.length&&+f.at(-1).t.toFixed(2)}});if(!ps.busy&&ps.n>0)break;if(!ps.busy&&i>20)break}
  const secs=(Date.now()-t0)/1000;
  rec('Real pose preparation on the real clip',ps.withPose>0.8*ps.n&&ps.n>10?'passed':'failed',`${ps.withPose}/${ps.n} frames with a skeleton, range ${ps.t0}–${ps.t1} s, ${secs.toFixed(0)} s in software rendering (not phone speed)`);
  const land=await p.evaluate(()=>{const f=window.__mv.state.poseSamples.find(x=>x.points);if(!f)return null;const P=f.points;const ok=P.filter(q=>q&&q.x>0&&q.x<1&&q.y>0&&q.y<1).length;return {t:f.t,points:P.length,inFrame:ok,nose:P[0]&&[+P[0].x.toFixed(2),+P[0].y.toFixed(2)],ankle:P[27]&&[+P[27].x.toFixed(2),+P[27].y.toFixed(2)]}});

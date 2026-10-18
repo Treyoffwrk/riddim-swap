@@ -3,6 +3,7 @@ import pathlib
 P = pathlib.Path('/home/claude/riddim-swap.html')
 s = P.read_text()
 analysis = pathlib.Path('/home/claude/analysis.js').read_text()
+bodyjs = pathlib.Path('/home/claude/body.js').read_text()
 
 def rep(a, b, count=1):
     global s
@@ -112,6 +113,9 @@ rep("""<script>
 (function(){
 const $=s=>document.querySelector(s)""", """<script>
 """ + analysis + """
+</script>
+<script>
+""" + bodyjs + """
 </script>
 <script>
 (function(){
@@ -1129,12 +1133,20 @@ async function goMirror(id){
   location.href='mirrorview/'+(id?'?handoff='+encodeURIComponent(id):'')+(/debug/.test(location.hash)?'#debug':'');
 }
 $('#mvBtn').addEventListener('click',()=>goMirror(null));
-$('#mvClip').addEventListener('click',async()=>{
+/* the clip, its hits and its body tracking (so MirrorView shows the same dance body without tracking again) */
+async function sendClip(){
   const n=srcById(S.cur);
-  if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return}
-  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null});goMirror(id)}
-  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').')}
-});
+  if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
+  const B=bodyOf(n);
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,
+      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data}:null});goMirror(id);return true}
+  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').');return false}
+}
+$('#mvClip').addEventListener('click',sendClip);
+/* coming back from MirrorView's bottom bar: open the section that was tapped there */
+function takeTabReq(){let r=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click()}
+window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
+$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob&&!routineOn())sendClip();else goMirror(null)});
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();
@@ -1144,6 +1156,132 @@ $('#mvTake').addEventListener('click',async()=>{
 
 /* ---------- dance hits (motion beats) ---------- */
 let ANALYZE_RATE""")
+
+# ------------------------------------------------------------------ dance body: tracking on every frame, drawing, hits from the body
+rep(""".hitstrip.edit{""", """.bodycv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.bodyrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.hitstrip.edit{""")
+rep("""          <div class="recdot" id="recDot" hidden>Recording</div>""", """          <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>
+          <div class="recdot" id="recDot" hidden>Recording</div>""")
+rep("""          <div class="row mv-only"><button class="btn sm" id="mvClip">Study this clip in MirrorView</button></div>""",
+"""          <div class="bodyrow mv-only" id="bodyRow">
+            <button class="btn sm" id="bodyTrack" disabled>Track body</button>
+            <label class="check"><input type="checkbox" id="bodyShow" checked> Show body</label>
+            <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
+          </div>
+          <div class="prog" id="bodyProg" hidden><i></i></div>
+          <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
+          <div class="row mv-only"><button class="btn sm" id="mvClip">Study this clip in MirrorView</button></div>""")
+rep("""    for(const k of keys||[])if(!keep.has(k))await mediaDel(k);""", """    for(const k of keys||[])if(!keep.has(k)&&!(String(k).startsWith('body:')&&keep.has(String(k).slice(5))))await mediaDel(k);""")
+rep("""/* ---------- MirrorView hand-off ----------""", r"""/* ---------- dance body ---------- */
+function srcOfEl(el){return S.sources.find(x=>x.el===el||x.el2===el)}
+function bodyOf(n){
+  if(!n||!n.key)return null;
+  if(n.body===undefined){n.body=null;mediaGet('body:'+n.key).then(b=>{if(b&&b.data&&b.n){n.body=b;renderDance()}}).catch(()=>{})}
+  return n.body;
+}
+try{const v0=localStorage.getItem('rs-body');if(v0==='0')$('#bodyShow').checked=false;const h0=localStorage.getItem('rs-hip');if(h0==='0')$('#hipShow').checked=false}catch(e){}
+$('#bodyShow').addEventListener('change',e=>{try{localStorage.setItem('rs-body',e.target.checked?'1':'0')}catch(err){}});
+$('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.target.checked?'1':'0')}catch(err){}});
+const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;
+function drawBody(){
+  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=$('#bodyShow').checked&&!!B;
+  if(!on){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false}return}
+  const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);
+  if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
+  const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
+  RB.draw(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked});
+  bodyDrawn=true;
+}
+/* hits from the body: stops and turns of the limbs and hips (RA.analyzePose); your own marked hits are kept */
+function hitsFromBody(n){
+  const B=bodyOf(n); if(!B)return false;
+  const m=RA.analyzePose(RB.framesOf(B)); if(!m||m.beats.length<3)return false;
+  const mine=n.motion&&n.motion.beats?n.motion.beats.filter(b=>b.mine):[];
+  if(n.motion&&n.motion.source!=='pose')n.motionImg=n.motion;
+  n.motion=Object.assign(m,{beats:m.beats.concat(mine).sort((a,b)=>a.t-b.t),edited:mine.length>0,source:'pose',confirmed:false});
+  return true;
+}
+$('#bodyTrack').addEventListener('click',async()=>{
+  const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
+  S.bodyBusy=true; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
+  $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
+  try{
+    const B=await RB.track(n.url,{onProgress:p=>{bar.style.width=Math.round(p*100)+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+Math.round(p*100)+'%'}});
+    n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
+    const got=hitsFromBody(n);
+    $('#bodyInfo').textContent=`Body tracked on ${B.seen} of ${B.n} frames`+(B.missed?` (${B.missed} skipped while playing)`:'')+(got?'. Hits now come from the body.':'.');
+    if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
+  }catch(e){$('#bodyInfo').textContent='Body tracking didn’t run: '+((e&&e.message)||e)}
+  finally{S.bodyBusy=false;$('#bodyProg').hidden=true;enable();renderDance();renderMoves();updateMatch();scheduleFit();drawHitStrip()}
+});
+
+/* ---------- MirrorView hand-off ----------""")
+rep("""  $('#recBtn').disabled=!(hv&&S.hasA&&buf);""", """  $('#recBtn').disabled=!(hv&&S.hasA&&buf);
+  {const bn=srcById(S.cur);$('#bodyTrack').disabled=!(bn&&!bn.missing&&bn.url)||!!S.bodyBusy;$('#bodyTrack').textContent=bn&&bodyOf(bn)?'Track again':'Track body'}""")
+rep("""  clickTick();
+  let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};""", """  clickTick(); drawBody();
+  let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};""")
+
+rep("""  if(S.analyzing)return; w.textContent='';""", """  if(S.analyzing)return; w.textContent='';
+  {const B=n&&bodyOf(n);if(!S.bodyBusy)$('#bodyInfo').textContent=B?`Body tracked on ${B.seen} of ${B.n} frames.`+(n.motion&&n.motion.source==='pose'?' Hits come from the body.':''):'Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.'}""")
+
+# ------------------------------------------------------------------ Sound System: the shared look with MirrorView
+rep("""family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap""",
+    """family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap""")
+rep("""\n</style>""", """
+/* ===== Sound System: the look shared with MirrorView. Dark stage; blue = the dancer, amber = the music, magenta = the hips. ===== */
+:root{--bg:#0E1014!important;--surface:#171A21!important;--sunk:#20242D!important;--ink:#F3F1EC!important;--muted:#A3A9B6!important;--line:#2C313C!important;
+  --dance:#6E8BFF!important;--song:#FFB547!important;--song-hot:#FFB547!important;--hips:#FF5FA2!important;
+  --ok:#4FD1A1!important;--warn:#FF9466!important;--bad:#FF6B6B!important;--stage:#08090C!important;--on-stage:#F3F1EC!important;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif!important;--f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace!important;color-scheme:dark}
+body{font-size:16px}
+h1 span{color:var(--song)}
+.panel{border-radius:18px;padding:16px}
+.stage{border-radius:18px}
+.btn{border-radius:12px;min-height:44px;padding:8px 14px;font:600 15px var(--f-body)}
+.btn.sm{min-height:38px;padding:6px 12px;font:600 14px var(--f-body);border-radius:10px}
+.btn.primary{background:var(--ink);color:var(--bg)}
+.btn.rec{background:#E5484D;color:#fff}
+.btn.on{background:var(--ink);color:var(--bg)}
+.seg{border-radius:999px;background:var(--bg)}
+.seg button{border-radius:999px}
+.seg button[aria-pressed="true"]{background:var(--dance);color:#0E1014;box-shadow:none}
+.anal,.fitcard{background:var(--surface);border-color:var(--line);border-radius:18px}
+.subhead h3,.anal h3,.fitcard h3{font-size:19px;font-weight:800}
+.chip-src.on button{color:#0E1014}
+.cand.on{background:var(--song);color:#0E1014;border-color:var(--song)}
+.tabs{--ntabs:5;grid-template-columns:repeat(var(--ntabs),minmax(0,1fr))}
+html.rs-hosted .tabs{--ntabs:6}
+html.rs-hosted .tab.mv-only,html.rs-hosted .bodyrow.mv-only{display:flex!important}
+#t-clip,#t-moves,#t-routine{--tabc:var(--dance)} #t-song,#t-tempo{--tabc:var(--song)} #t-body{--tabc:var(--hips)}
+/* phones: the section tabs become a bottom bar, the same bar MirrorView shows */
+@media (max-width:860px){
+  html.rs-hosted #mvBtn{display:none!important}   /* the Body tab opens MirrorView on phones */
+  body{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px))}
+  .tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;border-radius:0;border:0;border-top:1px solid var(--line);background:var(--bg);padding:6px 4px calc(10px + env(safe-area-inset-bottom,0px));gap:0}
+  .tab{flex-direction:column;gap:5px;font:600 12px var(--f-body);min-height:52px;background:transparent!important;box-shadow:none!important;border-radius:0;padding:4px 2px}
+  .tab .dot{display:none}
+  .tab::before{content:"";width:24px;height:4px;border-radius:2px;background:transparent}
+  .tab[aria-selected="true"]{color:var(--ink);font-weight:700}
+  .tab[aria-selected="true"]::before{background:var(--tabc,var(--dance))}
+}
+</style>""")
+rep("""        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>""",
+"""        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
+        <button class="tab mv-only" id="t-body" type="button" title="Body tracking, Worldline and practice (MirrorView)">Body</button>""")
+
+# body-tracked hits: their own trust rule and wording
+rep("""  if(m.confirmed)return true;
+  return (m.contrast??1)>=0.6&&(m.shake||0)<0.6;""", """  if(m.confirmed)return true;
+  if(m.source==='pose')return (m.seen??1)>=0.8;   /* body tracking: sure when the dancer was found on most frames */
+  return (m.contrast??1)>=0.6&&(m.shake||0)<0.6;""")
+rep("""  warn('Hits come from image motion, not body tracking: footwork hidden from the camera or below the frame can be missed.');""",
+"""  if(m.source==='pose'){if((m.seen??1)<0.8)warn('The dancer was only found on '+Math.round((m.seen||0)*100)+'% of frames (out of shot, covered, or several people), so some hits may be missing.');
+    warn('Hits come from body tracking (stops and turns of the hips, feet and hands). Fast spins or a second dancer in front can still confuse it, so check them or mark your own.')}
+  else warn('Hits come from image motion, not body tracking: footwork hidden from the camera or below the frame can be missed. Track body for better hits.');""")
+rep("""  if(m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');""",
+    """  if(m.source!=='pose'&&m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');""")
 
 P.write_text(s)
 print('patched', len(s))

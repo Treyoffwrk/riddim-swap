@@ -16,7 +16,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <script>window.RS_HOSTED=1</script>
 <script src="vendor/mp4-muxer.js"></script>
 <style>
@@ -256,6 +256,8 @@ body.bv-calm .beats.s i.on{background:color-mix(in srgb,var(--song-hot) 35%,var(
 .okmsg{color:var(--ok)!important}
 .mv-only{display:none!important}
 html.rs-hosted .mv-only{display:revert!important}
+.bodycv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.bodyrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 .hitstrip.edit{height:22px;cursor:pointer;touch-action:manipulation}
 #hitLevel{grid-template-columns:repeat(3,auto)}
 #hitLevel button{padding:0 10px}
@@ -281,6 +283,42 @@ html.rs-hosted .mv-only{display:revert!important}
 .take h2{font-family:var(--f-display);font-size:18px;font-weight:700;margin:0}
 .take video{width:100%;max-height:50vh;background:var(--stage);border-radius:10px;display:block}
 @media (prefers-reduced-motion: reduce){.stage,.beats i{transition:none}}
+/* ===== Sound System: the look shared with MirrorView. Dark stage; blue = the dancer, amber = the music, magenta = the hips. ===== */
+:root{--bg:#0E1014!important;--surface:#171A21!important;--sunk:#20242D!important;--ink:#F3F1EC!important;--muted:#A3A9B6!important;--line:#2C313C!important;
+  --dance:#6E8BFF!important;--song:#FFB547!important;--song-hot:#FFB547!important;--hips:#FF5FA2!important;
+  --ok:#4FD1A1!important;--warn:#FF9466!important;--bad:#FF6B6B!important;--stage:#08090C!important;--on-stage:#F3F1EC!important;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif!important;--f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace!important;color-scheme:dark}
+body{font-size:16px}
+h1 span{color:var(--song)}
+.panel{border-radius:18px;padding:16px}
+.stage{border-radius:18px}
+.btn{border-radius:12px;min-height:44px;padding:8px 14px;font:600 15px var(--f-body)}
+.btn.sm{min-height:38px;padding:6px 12px;font:600 14px var(--f-body);border-radius:10px}
+.btn.primary{background:var(--ink);color:var(--bg)}
+.btn.rec{background:#E5484D;color:#fff}
+.btn.on{background:var(--ink);color:var(--bg)}
+.seg{border-radius:999px;background:var(--bg)}
+.seg button{border-radius:999px}
+.seg button[aria-pressed="true"]{background:var(--dance);color:#0E1014;box-shadow:none}
+.anal,.fitcard{background:var(--surface);border-color:var(--line);border-radius:18px}
+.subhead h3,.anal h3,.fitcard h3{font-size:19px;font-weight:800}
+.chip-src.on button{color:#0E1014}
+.cand.on{background:var(--song);color:#0E1014;border-color:var(--song)}
+.tabs{--ntabs:5;grid-template-columns:repeat(var(--ntabs),minmax(0,1fr))}
+html.rs-hosted .tabs{--ntabs:6}
+html.rs-hosted .tab.mv-only,html.rs-hosted .bodyrow.mv-only{display:flex!important}
+#t-clip,#t-moves,#t-routine{--tabc:var(--dance)} #t-song,#t-tempo{--tabc:var(--song)} #t-body{--tabc:var(--hips)}
+/* phones: the section tabs become a bottom bar, the same bar MirrorView shows */
+@media (max-width:860px){
+  html.rs-hosted #mvBtn{display:none!important}   /* the Body tab opens MirrorView on phones */
+  body{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px))}
+  .tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;border-radius:0;border:0;border-top:1px solid var(--line);background:var(--bg);padding:6px 4px calc(10px + env(safe-area-inset-bottom,0px));gap:0}
+  .tab{flex-direction:column;gap:5px;font:600 12px var(--f-body);min-height:52px;background:transparent!important;box-shadow:none!important;border-radius:0;padding:4px 2px}
+  .tab .dot{display:none}
+  .tab::before{content:"";width:24px;height:4px;border-radius:2px;background:transparent}
+  .tab[aria-selected="true"]{color:var(--ink);font-weight:700}
+  .tab[aria-selected="true"]::before{background:var(--tabc,var(--dance))}
+}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -350,6 +388,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <small>MP4, MOV or WebM. It stays on your phone.</small>
             <label class="btn file">Choose dance video<input type="file" id="vidFile" accept="video/*"></label>
           </div>
+          <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>
           <div class="recdot" id="recDot" hidden>Recording</div>
         </div>
         <div class="transport">
@@ -401,6 +440,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1">Tempo</button>
         <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1">Moves</button>
         <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
+        <button class="tab mv-only" id="t-body" type="button" title="Body tracking, Worldline and practice (MirrorView)">Body</button>
       </div>
 
       <!-- CLIP -->
@@ -419,6 +459,13 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="subhead" id="hitLevelRow" hidden><span class="label">Hits per move</span>
             <div class="seg" id="hitLevel" role="group" aria-label="How many hits to show">
               <button data-hl="fewer" aria-pressed="false">Fewer</button><button data-hl="normal" aria-pressed="true">Normal</button><button data-hl="more" aria-pressed="false">More</button></div></div>
+          <div class="bodyrow mv-only" id="bodyRow">
+            <button class="btn sm" id="bodyTrack" disabled>Track body</button>
+            <label class="check"><input type="checkbox" id="bodyShow" checked> Show body</label>
+            <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
+          </div>
+          <div class="prog" id="bodyProg" hidden><i></i></div>
+          <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
           <div class="row mv-only"><button class="btn sm" id="mvClip">Study this clip in MirrorView</button></div>
           <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
           <button class="btn bigtap" id="hitTap" hidden>Hit</button>
@@ -1110,6 +1157,169 @@ if(typeof module!=='undefined')module.exports=RA;
 
 </script>
 <script>
+/*BODY-START*/
+/* Riddim Swap dance body: pose tracking for fast dance (dancehall, Philly) and the dance-body drawing.
+   Tracking: MediaPipe tasks-vision 0.10.18 (the same runtime MirrorView pins), pose_landmarker_full, IMAGE mode on every
+   decoded frame of a clip ("prepared"), so there is no tracking lag and no frames thinned out. Each sample keeps the
+   frame's own media time. Drawing looks up the pose for the exact frame on screen; nothing is filtered causally.
+   Drawing: torso shape, a pelvis shape that tilts and turns, thick limbs, head, the hips' path relative to the chest
+   (last second, scaled), and foot trails. */
+(function(root){
+  'use strict';
+  const CFG={
+    sdkURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs',
+    wasmURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
+    modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+    edge:640          /* longest side of the image given to the tracker (the person crop is resized from this) */
+  };
+  const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
+  let runtime=null, loading=null;
+
+  async function load(){
+    if(runtime)return runtime; if(loading)return loading;
+    loading=(async()=>{
+      const sdk=await import(CFG.sdkURL);
+      const files=await sdk.FilesetResolver.forVisionTasks(CFG.wasmURL);
+      const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
+      const model=new Uint8Array(await r.arrayBuffer());
+      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},runningMode:'IMAGE',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+      let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
+      try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
+      runtime={task,delegate}; return runtime;
+    })();
+    try{return await loading}catch(e){loading=null;throw e}
+  }
+
+  /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
+     skipped however slow the phone is. Each sample keeps the frame's own media time. */
+  async function track(url,opt){
+    opt=opt||{}; const rt=await load();
+    const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='auto';
+    v.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none'; document.body.append(v); v.src=url;
+    const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove()};
+    try{
+      await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('This video could not be read for body tracking.'))});
+      const W=v.videoWidth,H=v.videoHeight, sc=Math.min(1,CFG.edge/Math.max(W,H));
+      const cv=document.createElement('canvas'); cv.width=Math.round(W*sc); cv.height=Math.round(H*sc); const cx=cv.getContext('2d',{willReadFrequently:false});
+      const start=Math.max(0,opt.start||0), end=Math.min(v.duration||0,opt.end||v.duration||0);
+      const hasRVFC=typeof v.requestVideoFrameCallback==='function';
+      /* frame rate: play a moment and read the frame clock (falls back to 30) */
+      let fps=opt.fps||0;
+      if(!fps&&hasRVFC){const ts=[];await new Promise(res=>{let k=0;const cb=(now,m)=>{ts.push(m.mediaTime);if(++k<12)v.requestVideoFrameCallback(cb);else res()};v.requestVideoFrameCallback(cb);v.play().catch(res);setTimeout(res,1500)});v.pause();
+        const d=[];for(let i=1;i<ts.length;i++)if(ts[i]>ts[i-1])d.push(ts[i]-ts[i-1]);d.sort((a,b)=>a-b);const md=d.length?d[d.length>>1]:1/30;fps=Math.min(60,Math.max(15,Math.round(1/md)))}
+      fps=fps||30;
+      const seekTo=t=>new Promise(res=>{let done=false;const fin=m=>{if(done)return;done=true;res(m)};
+        if(hasRVFC)v.requestVideoFrameCallback((now,m)=>fin(m.mediaTime));
+        v.addEventListener('seeked',()=>setTimeout(()=>fin(null),hasRVFC?120:30),{once:true});
+        v.currentTime=t;});
+      const rows=[]; let ms=0, n=0, last=-1;
+      const total=Math.max(1,Math.floor((end-start)*fps+1e-6)+1);
+      for(let k=0;k<total;k++){
+        if(opt.signal&&opt.signal.aborted)break;
+        const want=start+(k+0.5)/fps; if(want>end)break;   /* aim at the middle of each frame's display interval */
+        const mt=await seekTo(want); const t=mt!=null?mt:want-0.5/fps;
+        if(t<=last+1e-4)continue; last=t;
+        cx.drawImage(v,0,0,cv.width,cv.height);
+        const s=performance.now(); let pts=null;
+        rt.task.detect(cv,r=>{pts=r.landmarks&&r.landmarks[0]?r.landmarks[0]:null});
+        ms+=performance.now()-s; n++;
+        const row=new Float32Array(STRIDE); row[0]=t;
+        if(pts)for(let j=0;j<N;j++){row[1+j*3]=pts[j].x;row[2+j*3]=pts[j].y;row[3+j*3]=pts[j].visibility??0}
+        else row.fill(NaN,1);
+        rows.push(row);
+        if(opt.onProgress)opt.onProgress(Math.min(1,(k+1)/total));
+      }
+      const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
+      const seen=rows.filter(r=>!isNaN(r[1])).length;
+      return {v:1,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:smooth(data,rows.length),seen,missed:Math.max(0,total-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end};
+    }finally{cleanup()}
+  }
+
+  /* Zero-phase light smoothing: each frame with its two neighbours (0.2 · 0.6 · 0.2). Centred, so it adds no lag;
+     skipped across gaps, low-visibility points and large jumps so fast accents keep their peak. */
+  function smooth(d,n){
+    const o=new Float32Array(d);
+    for(let i=1;i<n-1;i++){const a=(i-1)*STRIDE,b=i*STRIDE,c=(i+1)*STRIDE;
+      if(d[c]-d[a]>0.12)continue;
+      for(let j=0;j<N;j++){const x=1+j*3,y=x+1,vv=x+2;
+        if(isNaN(d[a+x])||isNaN(d[b+x])||isNaN(d[c+x])||d[b+vv]<0.5)continue;
+        const jump=Math.hypot(d[c+x]-d[a+x],d[c+y]-d[a+y]); if(jump>0.08)continue;
+        o[b+x]=0.2*d[a+x]+0.6*d[b+x]+0.2*d[c+x]; o[b+y]=0.2*d[a+y]+0.6*d[b+y]+0.2*d[c+y];}}
+    return o;
+  }
+
+  const tAt=(B,i)=>B.data[i*STRIDE];
+  function index(B,t){let lo=0,hi=B.n-1;if(hi<0)return -1;while(lo<hi){const m=(lo+hi)>>1;if(tAt(B,m)<t)lo=m+1;else hi=m}return lo}
+  /* pose at time t: the exact frame when one is within 20 ms, else interpolated between the two neighbours when they
+     are close (≤70 ms apart); never across gaps */
+  function poseAt(B,t){
+    if(!B||!B.n)return null; const i=index(B,t); const cand=[i-1,i].filter(k=>k>=0&&k<B.n);
+    let best=-1,bd=1e9;for(const k of cand){const dd=Math.abs(tAt(B,k)-t);if(dd<bd){bd=dd;best=k}}
+    const get=k=>{const o=k*STRIDE;if(isNaN(B.data[o+1]))return null;const p=new Array(N);for(let j=0;j<N;j++)p[j]=[B.data[o+1+j*3],B.data[o+2+j*3],B.data[o+3+j*3]];return p};
+    if(bd<=0.02)return get(best);
+    const a=i-1,b=i; if(a<0||b>=B.n)return null; const ta=tAt(B,a),tb=tAt(B,b); if(tb-ta>0.07||t<ta||t>tb)return bd<=0.04?get(best):null;
+    const A=get(a),Bp=get(b); if(!A||!Bp)return A||Bp; const u=(t-ta)/(tb-ta);
+    return A.map((p,j)=>[p[0]+(Bp[j][0]-p[0])*u,p[1]+(Bp[j][1]-p[1])*u,Math.min(p[2],Bp[j][2])]);
+  }
+  /* frames for the hit detector in analysis.js (RA.analyzePose) */
+  function framesOf(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],k:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>[B.data[o+1+j*3],B.data[o+2+j*3],B.data[o+3+j*3]])})}return out}
+
+  /* ---------- drawing ---------- */
+  const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
+  const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
+  /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
+  function draw(ctx,B,t,rect,o){
+    o=o||{}; const P=poseAt(B,t); if(!P)return false;
+    const X=p=>[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h], vis=j=>P[j][2]>=0.35;
+    const q=P.map(X), sh=mid(q[11],q[12]), hp=mid(q[23],q[24]), torso=Math.hypot(sh[0]-hp[0],sh[1]-hp[1])||40;
+    const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(3,torso*0.11);
+    ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
+    /* hips' path relative to the chest over the last second, drawn around the hips now (scaled so a whine reads) */
+    if(o.hipPath!==false){
+      const k=o.hipScale||2, pts=[];
+      for(let s=-1;s<=0.0001;s+=1/30){const Q=poseAt(B,t+s);if(!Q){pts.push(null);continue}const qq=Q.map(X),s2=mid(qq[11],qq[12]),h2=mid(qq[23],qq[24]);
+        pts.push([hp[0]+((h2[0]-s2[0])-(hp[0]-sh[0]))*k,hp[1]+((h2[1]-s2[1])-(hp[1]-sh[1]))*k])}
+      for(let i=1;i<pts.length;i++){if(!pts[i]||!pts[i-1])continue;ctx.strokeStyle=pink;ctx.globalAlpha=0.15+0.7*i/pts.length;ctx.lineWidth=Math.max(2,lw*0.35);ctx.beginPath();ctx.moveTo(...pts[i-1]);ctx.lineTo(...pts[i]);ctx.stroke()}
+      ctx.globalAlpha=1;
+    }
+    /* foot trails (last 0.6 s), dotted */
+    if(o.feet!==false){
+      ctx.setLineDash([2,lw*0.7]);ctx.strokeStyle=blue;ctx.lineWidth=Math.max(2,lw*0.3);
+      for(const j of [27,28]){ctx.beginPath();let on=false;for(let s=-0.6;s<=0.0001;s+=1/30){const Q=poseAt(B,t+s);if(!Q||Q[j][2]<0.35){on=false;continue}const p=X(Q[j]);if(!on){ctx.moveTo(...p);on=true}else ctx.lineTo(...p)}ctx.globalAlpha=0.7;ctx.stroke()}
+      ctx.setLineDash([]);ctx.globalAlpha=1;
+    }
+    /* torso */
+    ctx.fillStyle=blue;ctx.strokeStyle=blue;ctx.lineWidth=Math.max(2,lw*0.3);
+    ctx.globalAlpha=0.22;ctx.beginPath();[11,12,24,23].forEach((j,i)=>i?ctx.lineTo(...q[j]):ctx.moveTo(...q[j]));ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;ctx.stroke();
+    /* pelvis: from the waist (28% up towards the shoulders) to the hip joints pushed outwards, closed below the hips;
+       it narrows when the dancer turns side-on and tilts with the hip line */
+    const hw=Math.hypot(q[23][0]-q[24][0],q[23][1]-q[24][1]), ax=[(q[23][0]-q[24][0])/(hw||1),(q[23][1]-q[24][1])/(hw||1)];
+    const down=[sh[0]-hp[0],sh[1]-hp[1]].map(c=>-c/torso);
+    const wl=lerp2(q[23],q[11],0.28), wr=lerp2(q[24],q[12],0.28), push=Math.max(hw*0.12,torso*0.05);
+    const ol=[q[23][0]+ax[0]*push,q[23][1]+ax[1]*push], or_=[q[24][0]-ax[0]*push,q[24][1]-ax[1]*push];
+    const cr=[hp[0]+down[0]*torso*0.2,hp[1]+down[1]*torso*0.2];
+    ctx.fillStyle=pink;ctx.strokeStyle=pink;ctx.globalAlpha=0.55;ctx.beginPath();[wl,wr,or_,cr,ol].forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
+    /* limbs */
+    ctx.strokeStyle=blue;
+    const limb=(ids,w)=>{ctx.lineWidth=w;ctx.beginPath();let on=false;for(const j of ids){if(!vis(j)){on=false;continue}if(!on){ctx.moveTo(...q[j]);on=true}else ctx.lineTo(...q[j])}ctx.stroke()};
+    limb([11,13,15],lw*0.9);limb([12,14,16],lw*0.9);limb([23,25,27,31],lw);limb([24,26,28,32],lw);
+    /* head */
+    const hr=Math.max(6,Math.hypot(q[7][0]-q[8][0],q[7][1]-q[8][1])*0.75);
+    ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
+    ctx.restore(); return true;
+  }
+  /* where a video frame sits inside a box with object-fit: contain */
+  function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
+  /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
+  function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
+  root.RB={CFG,load,track,poseAt,framesOf,draw,containRect,toMirrorView,STRIDE,N};
+})(typeof window!=='undefined'?window:globalThis);
+/*BODY-END*/
+
+</script>
+<script>
 (function(){
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let v=$('#vid'); const a=$('#aud'), cv=$('#recCanvas'), cx=cv.getContext('2d');
@@ -1385,6 +1595,7 @@ function enable(){
   ['#scrub','#inRange','#setOut','#clearOut','#repeat','#markIn','#markOut'].forEach(id=>$(id).disabled=!hv);
   $$('[data-in]').forEach(b=>b.disabled=!hv);
   $('#recBtn').disabled=!(hv&&S.hasA&&buf);
+  {const bn=srcById(S.cur);$('#bodyTrack').disabled=!(bn&&!bn.missing&&bn.url)||!!S.bodyBusy;$('#bodyTrack').textContent=bn&&bodyOf(bn)?'Track again':'Track body'}
   const cn=srcById(S.cur); $('#danceAnalyze').disabled=!(cn&&!cn.missing)||!!S.analyzing; renderDance();
   updateCutter();
 }
@@ -2400,7 +2611,7 @@ async function cleanMedia(){
     const keep=new Set(); S.sources.forEach(n=>n.key&&keep.add(n.key)); [S.mainSong,S.rtSong].forEach(so=>so&&so.key&&keep.add(so.key));
     (await projAll()).forEach(p=>{try{const d=JSON.parse(p.data);(d.sources||[]).forEach(m=>keep.add(m.key));[d.mainSong,d.rtSong].forEach(m=>m&&keep.add(m.key))}catch(e){}});
     const keys=await idbDo('media','readonly',st=>st.getAllKeys());
-    for(const k of keys||[])if(!keep.has(k))await mediaDel(k);
+    for(const k of keys||[])if(!keep.has(k)&&!(String(k).startsWith('body:')&&keep.has(String(k).slice(5))))await mediaDel(k);
   }catch(e){}
 }
 function sheetMsg(t,err){const m=$('#projMsg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('err',!!err)}
@@ -2526,6 +2737,7 @@ function danceSure(){
   if(S.danceSrc!=='detected')return true;
   const n=srcById(S.cur), m=n&&n.motion; if(!m)return true;
   if(m.confirmed)return true;
+  if(m.source==='pose')return (m.seen??1)>=0.8;   /* body tracking: sure when the dancer was found on most frames */
   return (m.contrast??1)>=0.6&&(m.shake||0)<0.6;
 }
 function setBeatView(v0,save){
@@ -2678,6 +2890,49 @@ $('#hitCheck').addEventListener('click',()=>{
   renderDance(); scheduleFit();
 });
 
+/* ---------- dance body ---------- */
+function srcOfEl(el){return S.sources.find(x=>x.el===el||x.el2===el)}
+function bodyOf(n){
+  if(!n||!n.key)return null;
+  if(n.body===undefined){n.body=null;mediaGet('body:'+n.key).then(b=>{if(b&&b.data&&b.n){n.body=b;renderDance()}}).catch(()=>{})}
+  return n.body;
+}
+try{const v0=localStorage.getItem('rs-body');if(v0==='0')$('#bodyShow').checked=false;const h0=localStorage.getItem('rs-hip');if(h0==='0')$('#hipShow').checked=false}catch(e){}
+$('#bodyShow').addEventListener('change',e=>{try{localStorage.setItem('rs-body',e.target.checked?'1':'0')}catch(err){}});
+$('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.target.checked?'1':'0')}catch(err){}});
+const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;
+function drawBody(){
+  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=$('#bodyShow').checked&&!!B;
+  if(!on){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false}return}
+  const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);
+  if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
+  const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
+  RB.draw(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked});
+  bodyDrawn=true;
+}
+/* hits from the body: stops and turns of the limbs and hips (RA.analyzePose); your own marked hits are kept */
+function hitsFromBody(n){
+  const B=bodyOf(n); if(!B)return false;
+  const m=RA.analyzePose(RB.framesOf(B)); if(!m||m.beats.length<3)return false;
+  const mine=n.motion&&n.motion.beats?n.motion.beats.filter(b=>b.mine):[];
+  if(n.motion&&n.motion.source!=='pose')n.motionImg=n.motion;
+  n.motion=Object.assign(m,{beats:m.beats.concat(mine).sort((a,b)=>a.t-b.t),edited:mine.length>0,source:'pose',confirmed:false});
+  return true;
+}
+$('#bodyTrack').addEventListener('click',async()=>{
+  const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
+  S.bodyBusy=true; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
+  $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
+  try{
+    const B=await RB.track(n.url,{onProgress:p=>{bar.style.width=Math.round(p*100)+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+Math.round(p*100)+'%'}});
+    n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
+    const got=hitsFromBody(n);
+    $('#bodyInfo').textContent=`Body tracked on ${B.seen} of ${B.n} frames`+(B.missed?` (${B.missed} skipped while playing)`:'')+(got?'. Hits now come from the body.':'.');
+    if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
+  }catch(e){$('#bodyInfo').textContent='Body tracking didn’t run: '+((e&&e.message)||e)}
+  finally{S.bodyBusy=false;$('#bodyProg').hidden=true;enable();renderDance();renderMoves();updateMatch();scheduleFit();drawHitStrip()}
+});
+
 /* ---------- MirrorView hand-off ----------
    MirrorView lives at ./mirrorview/ in the same installed app (same origin and storage). A clip or take is left in
    IndexedDB 'riddim-bridge' and MirrorView opens it through its own Load video path, then deletes it. */
@@ -2693,12 +2948,20 @@ async function goMirror(id){
   location.href='mirrorview/'+(id?'?handoff='+encodeURIComponent(id):'')+(/debug/.test(location.hash)?'#debug':'');
 }
 $('#mvBtn').addEventListener('click',()=>goMirror(null));
-$('#mvClip').addEventListener('click',async()=>{
+/* the clip, its hits and its body tracking (so MirrorView shows the same dance body without tracking again) */
+async function sendClip(){
   const n=srcById(S.cur);
-  if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return}
-  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null});goMirror(id)}
-  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').')}
-});
+  if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
+  const B=bodyOf(n);
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,
+      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data}:null});goMirror(id);return true}
+  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').');return false}
+}
+$('#mvClip').addEventListener('click',sendClip);
+/* coming back from MirrorView's bottom bar: open the section that was tapped there */
+function takeTabReq(){let r=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click()}
+window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
+$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob&&!routineOn())sendClip();else goMirror(null)});
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();
@@ -2753,6 +3016,7 @@ $('#danceAnalyze').addEventListener('click',()=>findHits(srcById(S.cur)));
 function renderDance(){
   const n=srcById(S.cur), info=$('#danceInfo'), w=$('#danceWarn');
   if(S.analyzing)return; w.textContent='';
+  {const B=n&&bodyOf(n);if(!S.bodyBusy)$('#bodyInfo').textContent=B?`Body tracked on ${B.seen} of ${B.n} frames.`+(n.motion&&n.motion.source==='pose'?' Hits come from the body.':''):'Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.'}
   $('#hitRow').hidden=true; $('#hitLevelRow').hidden=true;
   if(!n){info.textContent='Add a dance video first.';return}
   $('#danceAnalyze').textContent=n.motion?'Find again':'Find hits';
@@ -2761,11 +3025,13 @@ function renderDance(){
   $('#hitRow').hidden=false; $('#hitLevelRow').hidden=false;
   const shown=hitsOf(n); info.textContent=shown.length+' hits in '+n.name+(m.confirmed?' · checked by your taps ✓':danceSure()?'':' · not sure')+'.'+(m.edited?' Includes your own edits.':'')+' Tap a blue tick under the video to remove it.';
   const warn=t=>w.append(el('li',null,t));
-  if(m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');
+  if(m.source!=='pose'&&m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');
   if((m.shake||0)>=0.6)warn('The camera shakes, which makes stops hard to tell from wobble. Hits from this clip are less reliable: prop the phone up if you can.');
   else if(m.cam>0.8)warn('The camera moves a lot. Camera motion is removed, but strong pans can hide hits.');
   if(m.beats.length<4)warn('Very few hits found. Try a clip where the dancer fills more of the frame.');
-  warn('Hits come from image motion, not body tracking: footwork hidden from the camera or below the frame can be missed.');
+  if(m.source==='pose'){if((m.seen??1)<0.8)warn('The dancer was only found on '+Math.round((m.seen||0)*100)+'% of frames (out of shot, covered, or several people), so some hits may be missing.');
+    warn('Hits come from body tracking (stops and turns of the hips, feet and hands). Fast spins or a second dancer in front can still confuse it, so check them or mark your own.')}
+  else warn('Hits come from image motion, not body tracking: footwork hidden from the camera or below the frame can be missed. Track body for better hits.');
 }
 $('#dTap').addEventListener('click',()=>{S.danceSrc='tapped'});
 $('#dBpm').addEventListener('input',()=>{S.danceSrc='tapped'});
@@ -3081,7 +3347,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick();
+  clickTick(); drawBody();
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.sBase&&S.hasA&&!a.paused)s=beat(a.currentTime,S.sAnchor,S.sBase);

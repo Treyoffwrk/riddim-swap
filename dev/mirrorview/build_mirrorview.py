@@ -33,25 +33,14 @@ rep('<title>MirrorView · Worldline</title>', '''<title>MirrorView · Worldline<
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">''')
 
-# ---- return path: a slim strip above MirrorView's top bar, using MirrorView's own button class ----
-rep('<div class="app">\n<header class="topbar">\n', '''<div class="app">
-<div class="rs-strip"><button class="text-button rs-back" id="rs-back" type="button" aria-label="Back to Riddim Swap">‹ Riddim Swap</button><span class="rs-where">MirrorView inside Riddim Swap</span></div>
-<header class="topbar">
-''')
-# styles go at the end of the last style block, so they win over MirrorView's earlier rules
-STRIP_CSS = """
-/* Riddim Swap integration: slim return strip above MirrorView's own top bar (hidden in Practice) */
-.rs-strip{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:env(safe-area-inset-top,0px) 12px 0;min-height:36px;border-bottom:1px solid var(--line);font-size:12px}
-.rs-back{white-space:nowrap;font-weight:650;min-height:34px;padding:0 6px}
-.rs-where{opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-body.practice-active .rs-strip{display:none!important}
-"""
-i = s.rfind('</style>')
-s = s[:i] + STRIP_CSS + s[i:]
+# ---- shared look, dance body and denser prepared poses (see mv_theme_block.py) ----
+exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_theme_block.py').read_text(), 'mv_theme_block.py', 'exec'))
+
+exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_pulse_block.py').read_text(), 'mv_pulse_block.py', 'exec'))
 
 # ---- bridge, inside MirrorView's own scope so it uses importFile/state/toast directly ----
 m = list(re.finditer(r'<script>([\s\S]*?)</script>', s))
-app = m[0]
+app = next(x for x in m if '// ---- math.js ----' in x.group(1))   # MirrorView's app script (analysis.js now loads before it)
 end = app.group(1).rstrip()
 assert end.endswith('})();'), 'unexpected end of the MirrorView app script'
 bridge = r'''
@@ -60,11 +49,21 @@ bridge = r'''
    IndexedDB 'riddim-bridge' (never a URL or a message). It goes through importFile(): the same validation,
    atomic replacement and recovery as Load video. A failed import leaves the current reference as it was. */
 (()=>{
-  const back=$('rs-back');
-  if(back)back.addEventListener('click',async()=>{
-    try{if(state.playing)await setPlaying(false);}catch(e){}
-    try{camera?.stop?.();}catch(e){}
-    let ref=null;try{ref=document.referrer?new URL(document.referrer):null;}catch(e){}
+  /* the shared bottom bar: the same sections as Riddim Swap. Leaving pauses, stops the camera and asks Riddim Swap to
+     open the chosen section. */
+  const nav=document.createElement('nav');nav.className='rs-nav';nav.setAttribute('aria-label','Riddim Swap sections');
+  [['t-clip','Clip'],['t-song','Song'],['t-tempo','Tempo'],['t-moves','Moves'],['t-routine','Routine'],['','Body']].forEach(([tab,label])=>{
+    const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.rsTab=tab;
+    if(!tab){b.className='on';b.setAttribute('aria-current','page');b.id='rs-back-body'}else if(tab==='t-clip')b.id='rs-back';
+    nav.append(b);
+  });
+  document.querySelector('.app')?.append(nav);
+  nav.addEventListener('click',async e=>{
+    const b=e.target.closest('button');if(!b||!b.dataset.rsTab)return;
+    try{localStorage.setItem('rs-tab-req',b.dataset.rsTab);}catch(err){}
+    try{if(state.playing)await setPlaying(false);}catch(err){}
+    try{camera?.stop?.();}catch(err){}
+    let ref=null;try{ref=document.referrer?new URL(document.referrer):null;}catch(err){}
     if(ref&&ref.origin===location.origin&&!/\/mirrorview\//.test(ref.pathname)&&history.length>1){history.back();return;}
     location.href='../'+(/debug/.test(location.hash)?'#debug':'');
   });
@@ -88,6 +87,16 @@ bridge = r'''
     try{
       const loaded=await importFile(file);
       window.__mvHandoff.status=loaded?'opened':'not-opened';
+      if(loaded&&rec.meta&&rec.meta.body&&rec.meta.body.data&&rec.meta.body.n>2){
+        /* Riddim Swap already tracked this clip on every frame: use those poses as the reference (no second tracking) */
+        const B=rec.meta.body,S=1+33*3,out=[];
+        for(let i=0;i<B.n&&i<9000;i++){const o=i*S;const t=B.data[o];if(!Number.isFinite(t))continue;
+          out.push({t,points:Number.isFinite(B.data[o+1])?Array.from({length:33},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]})):null});}
+        if(out.length>2){state.poseSamples=out;state.poseSamplesVisual=out;state.refPose=true;state.refDisplay='both';state.style='both';state.cacheVersion++;
+          state.referenceAnalysis=`${out.filter(f=>f.points).length} / ${out.length} poses from Riddim Swap (every frame)`;
+          try{persistReferencePoses();}catch(e){}
+          const pm=$('pose-message');if(pm)pm.textContent=state.referenceAnalysis;window.__mvHandoff.body=out.length;updateUI();}
+      }
       if(loaded){try{await tx(db,'readwrite',st=>st.delete(id));}catch(e){}
         toast((rec.kind==='take'?'Opened your take':'Opened')+' “'+safe+'” from Riddim Swap.');}
     }catch(e){window.__mvHandoff.status='failed';setIssue('video',e);toast(e.message);}
