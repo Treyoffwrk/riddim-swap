@@ -481,6 +481,30 @@ h1,h2,#modal-title,.brand{font-family:'Bricolage Grotesque',Figtree,sans-serif}
 .rs-nav button.on::before{background:var(--hips)}
 body.practice-active .rs-nav,body.distance-mode .rs-nav{display:none!important}
 .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+
+/* quick controls on the video: big, labelled, always visible */
+.mv-dock{position:absolute;left:10px;right:10px;bottom:10px;z-index:30;display:flex;flex-wrap:wrap;gap:6px;align-items:center;pointer-events:none}
+.mv-dock>*{pointer-events:auto}
+.mv-dock button{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:0 13px;border-radius:999px;border:1px solid rgba(255,255,255,.14);background:rgba(14,16,20,.8);color:#F3F1EC;font:700 14px Figtree,sans-serif;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);box-shadow:none}
+.mv-dock button[aria-pressed="true"]{background:#6E8BFF;border-color:#6E8BFF;color:#0E1014}
+.mv-dock button.cut[aria-pressed="true"]{background:#F3F1EC;border-color:#F3F1EC;color:#0E1014}
+.mv-dock button:disabled{opacity:.5}
+.mv-dock svg{width:18px;height:18px}
+.mv-see{display:flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border-radius:999px;background:rgba(14,16,20,.8);border:1px solid rgba(255,255,255,.14);color:#F3F1EC;font:700 14px Figtree,sans-serif;flex:1 1 180px;max-width:320px}
+.mv-see input{flex:1;min-width:70px;accent-color:#6E8BFF}
+.mv-see b{font:700 14px 'JetBrains Mono',monospace;min-width:42px;text-align:right}
+body.practice-active .mv-dock{display:none!important}
+/* the beat card moves to the top of the video so it never sits under the quick controls */
+body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud{top:54px;bottom:auto;left:10px;width:auto;padding:4px 12px;border-radius:999px}
+body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud .pulse-hud-title,body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud .pulse-counts{display:none}
+body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud #pulse-current{font-size:22px}
+/* a slider that reads at a glance: thick track, filled part in blue, big thumb */
+.mv-see input[type=range]{-webkit-appearance:none;appearance:none;height:30px;min-height:30px;margin:0;background:transparent;border:0;padding:0}
+.mv-see input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:8px;background:linear-gradient(90deg,#6E8BFF var(--fill,50%),#3A4050 var(--fill,50%))}
+.mv-see input[type=range]::-moz-range-track{height:8px;border-radius:8px;background:#3A4050}
+.mv-see input[type=range]::-moz-range-progress{height:8px;border-radius:8px;background:#6E8BFF}
+.mv-see input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-8px;border-radius:50%;background:#F3F1EC;border:3px solid #6E8BFF;box-shadow:none}
+.mv-see input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#F3F1EC;border:3px solid #6E8BFF}
 </style>
 </head>
 <body>
@@ -623,6 +647,215 @@ body.practice-active .rs-nav,body.distance-mode .rs-nav{display:none!important}
 </defs></svg>
 
 <input accept="video/*,.mp4,.mov,.webm,.json" hidden="" id="body-file-input" type="file"/><div class="distance-dock" hidden="" id="distance-dock"><button class="dock-button controls-button" data-action="exit-focus">Exit</button><button class="dock-button controls-button" id="set-pause-button" data-action="pause-set" hidden>Pause</button><button class="dock-button start-button" data-action="finish-practice">Finish &amp; review</button></div><div aria-live="polite" class="countdown-overlay" hidden="" id="countdown-overlay" role="status"><span>STEP INTO YOUR SPACE</span><strong id="countdown-value">5</strong><p>Full body visible. Your move starts next.</p><button class="button secondary" data-action="exit-focus">Cancel</button></div><script>
+/*BODY-START*/
+/* Riddim Swap dance body: pose tracking for fast dance (dancehall, Philly) and the dance-body drawing.
+   Tracking: MediaPipe tasks-vision 0.10.18 (the same runtime MirrorView pins), pose_landmarker_full, IMAGE mode on every
+   decoded frame of a clip ("prepared"), so there is no tracking lag and no frames thinned out. Each sample keeps the
+   frame's own media time. Drawing looks up the pose for the exact frame on screen; nothing is filtered causally.
+   Drawing: torso shape, a pelvis shape that tilts and turns, thick limbs, head, the hips' path relative to the chest
+   (last second, scaled), and foot trails. */
+(function(root){
+  'use strict';
+  const CFG={
+    sdkURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs',
+    wasmURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
+    modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+    edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
+    maskW:120         /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
+  };
+  const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
+  let runtime=null, loading=null;
+
+  async function load(){
+    if(runtime)return runtime; if(loading)return loading;
+    loading=(async()=>{
+      const sdk=await import(CFG.sdkURL);
+      const files=await sdk.FilesetResolver.forVisionTasks(CFG.wasmURL);
+      const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
+      const model=new Uint8Array(await r.arrayBuffer());
+      /* person masks (segmentation) come from the same pass, for the cut-out */
+      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:document.createElement('canvas'),runningMode:'IMAGE',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
+      let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
+      try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
+      runtime={task,delegate}; return runtime;
+    })();
+    try{return await loading}catch(e){loading=null;throw e}
+  }
+
+  /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
+     skipped however slow the phone is. Each sample keeps the frame's own media time. */
+  async function track(url,opt){
+    opt=opt||{}; const rt=await load();
+    const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='auto';
+    v.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none'; document.body.append(v); v.src=url;
+    const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove()};
+    try{
+      await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('This video could not be read for body tracking.'))});
+      const W=v.videoWidth,H=v.videoHeight, sc=Math.min(1,CFG.edge/Math.max(W,H));
+      const cv=document.createElement('canvas'); cv.width=Math.round(W*sc); cv.height=Math.round(H*sc); const cx=cv.getContext('2d',{willReadFrequently:false});
+      const start=Math.max(0,opt.start||0), end=Math.min(v.duration||0,opt.end||v.duration||0);
+      const hasRVFC=typeof v.requestVideoFrameCallback==='function';
+      /* frame rate: play a moment and read the frame clock (falls back to 30) */
+      let fps=opt.fps||0;
+      if(!fps&&hasRVFC){const ts=[];await new Promise(res=>{let k=0;const cb=(now,m)=>{ts.push(m.mediaTime);if(++k<12)v.requestVideoFrameCallback(cb);else res()};v.requestVideoFrameCallback(cb);v.play().catch(res);setTimeout(res,1500)});v.pause();
+        const d=[];for(let i=1;i<ts.length;i++)if(ts[i]>ts[i-1])d.push(ts[i]-ts[i-1]);d.sort((a,b)=>a-b);const md=d.length?d[d.length>>1]:1/30;fps=Math.min(60,Math.max(15,Math.round(1/md)))}
+      fps=fps||30;
+      const seekTo=t=>new Promise(res=>{let done=false;const fin=m=>{if(done)return;done=true;res(m)};
+        if(hasRVFC)v.requestVideoFrameCallback((now,m)=>fin(m.mediaTime));
+        v.addEventListener('seeked',()=>setTimeout(()=>fin(null),hasRVFC?120:30),{once:true});
+        v.currentTime=t;});
+      const rows=[], masks=[]; let ms=0, n=0, last=-1;
+      const mw=CFG.maskW, mh=Math.max(8,Math.round(mw*H/W));
+      const total=Math.max(1,Math.floor((end-start)*fps+1e-6)+1);
+      for(let k=0;k<total;k++){
+        if(opt.signal&&opt.signal.aborted)break;
+        const want=start+(k+0.5)/fps; if(want>end)break;   /* aim at the middle of each frame's display interval */
+        const mt=await seekTo(want); const t=mt!=null?mt:want-0.5/fps;
+        if(t<=last+1e-4)continue; last=t;
+        cx.drawImage(v,0,0,cv.width,cv.height);
+        const s=performance.now(); let pts=null;
+        let mk=null;
+        rt.task.detect(cv,r=>{pts=r.landmarks&&r.landmarks[0]?r.landmarks[0]:null;
+          /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
+          const m=r.segmentationMasks&&r.segmentationMasks[0];
+          if(m&&pts){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
+            for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
+              for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
+                for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}
+          if(m&&m.close)try{m.close()}catch(e){}
+        });
+        ms+=performance.now()-s; n++;
+        const row=new Float32Array(STRIDE); row[0]=t;
+        if(pts)for(let j=0;j<N;j++){row[1+j*3]=pts[j].x;row[2+j*3]=pts[j].y;row[3+j*3]=pts[j].visibility??0}
+        else row.fill(NaN,1);
+        rows.push(row); masks.push(mk);
+        if(opt.onProgress)opt.onProgress(Math.min(1,(k+1)/total));
+      }
+      const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
+      const seen=rows.filter(r=>!isNaN(r[1])).length;
+      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
+      let mask=null; const withMask=masks.filter(Boolean).length;
+      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
+      return {v:1,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:smooth(data,rows.length),mask,seen,missed:Math.max(0,total-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end};
+    }finally{cleanup()}
+  }
+
+  /* Zero-phase light smoothing: each frame with its two neighbours (0.2 · 0.6 · 0.2). Centred, so it adds no lag;
+     skipped across gaps, low-visibility points and large jumps so fast accents keep their peak. */
+  function smooth(d,n){
+    const o=new Float32Array(d);
+    for(let i=1;i<n-1;i++){const a=(i-1)*STRIDE,b=i*STRIDE,c=(i+1)*STRIDE;
+      if(d[c]-d[a]>0.12)continue;
+      for(let j=0;j<N;j++){const x=1+j*3,y=x+1,vv=x+2;
+        if(isNaN(d[a+x])||isNaN(d[b+x])||isNaN(d[c+x])||d[b+vv]<0.5)continue;
+        const jump=Math.hypot(d[c+x]-d[a+x],d[c+y]-d[a+y]); if(jump>0.08)continue;
+        o[b+x]=0.2*d[a+x]+0.6*d[b+x]+0.2*d[c+x]; o[b+y]=0.2*d[a+y]+0.6*d[b+y]+0.2*d[c+y];}}
+    return o;
+  }
+
+  const tAt=(B,i)=>B.data[i*STRIDE];
+  function index(B,t){let lo=0,hi=B.n-1;if(hi<0)return -1;while(lo<hi){const m=(lo+hi)>>1;if(tAt(B,m)<t)lo=m+1;else hi=m}return lo}
+  /* pose at time t: the exact frame when one is within 20 ms, else interpolated between the two neighbours when they
+     are close (≤70 ms apart); never across gaps */
+  function poseAt(B,t){
+    if(!B||!B.n)return null; const i=index(B,t); const cand=[i-1,i].filter(k=>k>=0&&k<B.n);
+    let best=-1,bd=1e9;for(const k of cand){const dd=Math.abs(tAt(B,k)-t);if(dd<bd){bd=dd;best=k}}
+    const get=k=>{const o=k*STRIDE;if(isNaN(B.data[o+1]))return null;const p=new Array(N);for(let j=0;j<N;j++)p[j]=[B.data[o+1+j*3],B.data[o+2+j*3],B.data[o+3+j*3]];return p};
+    if(bd<=0.02)return get(best);
+    const a=i-1,b=i; if(a<0||b>=B.n)return null; const ta=tAt(B,a),tb=tAt(B,b); if(tb-ta>0.07||t<ta||t>tb)return bd<=0.04?get(best):null;
+    const A=get(a),Bp=get(b); if(!A||!Bp)return A||Bp; const u=(t-ta)/(tb-ta);
+    return A.map((p,j)=>[p[0]+(Bp[j][0]-p[0])*u,p[1]+(Bp[j][1]-p[1])*u,Math.min(p[2],Bp[j][2])]);
+  }
+  /* frames for the hit detector in analysis.js (RA.analyzePose) */
+  function framesOf(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],k:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>[B.data[o+1+j*3],B.data[o+2+j*3],B.data[o+3+j*3]])})}return out}
+
+  /* ---------- drawing ---------- */
+  const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
+  const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
+  /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
+  function draw(ctx,B,t,rect,o){
+    o=o||{}; const P=poseAt(B,t); if(!P)return false;
+    const X=p=>[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h], vis=j=>P[j][2]>=0.35;
+    const q=P.map(X), sh=mid(q[11],q[12]), hp=mid(q[23],q[24]), torso=Math.hypot(sh[0]-hp[0],sh[1]-hp[1])||40;
+    const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(3,torso*0.11);
+    ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
+    /* hips' path relative to the chest over the last second, drawn around the hips now (scaled so a whine reads) */
+    if(o.hipPath!==false){
+      const k=o.hipScale||2, pts=[];
+      for(let s=-1;s<=0.0001;s+=1/30){const Q=poseAt(B,t+s);if(!Q){pts.push(null);continue}const qq=Q.map(X),s2=mid(qq[11],qq[12]),h2=mid(qq[23],qq[24]);
+        pts.push([hp[0]+((h2[0]-s2[0])-(hp[0]-sh[0]))*k,hp[1]+((h2[1]-s2[1])-(hp[1]-sh[1]))*k])}
+      for(let i=1;i<pts.length;i++){if(!pts[i]||!pts[i-1])continue;ctx.strokeStyle=pink;ctx.globalAlpha=0.15+0.7*i/pts.length;ctx.lineWidth=Math.max(2,lw*0.35);ctx.beginPath();ctx.moveTo(...pts[i-1]);ctx.lineTo(...pts[i]);ctx.stroke()}
+      ctx.globalAlpha=1;
+    }
+    /* foot trails (last 0.6 s), dotted */
+    if(o.feet!==false){
+      ctx.setLineDash([2,lw*0.7]);ctx.strokeStyle=blue;ctx.lineWidth=Math.max(2,lw*0.3);
+      for(const j of [27,28]){ctx.beginPath();let on=false;for(let s=-0.6;s<=0.0001;s+=1/30){const Q=poseAt(B,t+s);if(!Q||Q[j][2]<0.35){on=false;continue}const p=X(Q[j]);if(!on){ctx.moveTo(...p);on=true}else ctx.lineTo(...p)}ctx.globalAlpha=0.7;ctx.stroke()}
+      ctx.setLineDash([]);ctx.globalAlpha=1;
+    }
+    /* torso */
+    ctx.fillStyle=blue;ctx.strokeStyle=blue;ctx.lineWidth=Math.max(2,lw*0.3);
+    ctx.globalAlpha=0.22;ctx.beginPath();[11,12,24,23].forEach((j,i)=>i?ctx.lineTo(...q[j]):ctx.moveTo(...q[j]));ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;ctx.stroke();
+    /* pelvis: from the waist (28% up towards the shoulders) to the hip joints pushed outwards, closed below the hips;
+       it narrows when the dancer turns side-on and tilts with the hip line */
+    const hw=Math.hypot(q[23][0]-q[24][0],q[23][1]-q[24][1]), ax=[(q[23][0]-q[24][0])/(hw||1),(q[23][1]-q[24][1])/(hw||1)];
+    const down=[sh[0]-hp[0],sh[1]-hp[1]].map(c=>-c/torso);
+    const wl=lerp2(q[23],q[11],0.28), wr=lerp2(q[24],q[12],0.28), push=Math.max(hw*0.12,torso*0.05);
+    const ol=[q[23][0]+ax[0]*push,q[23][1]+ax[1]*push], or_=[q[24][0]-ax[0]*push,q[24][1]-ax[1]*push];
+    const cr=[hp[0]+down[0]*torso*0.2,hp[1]+down[1]*torso*0.2];
+    ctx.fillStyle=pink;ctx.strokeStyle=pink;ctx.globalAlpha=0.55;ctx.beginPath();[wl,wr,or_,cr,ol].forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
+    /* limbs */
+    ctx.strokeStyle=blue;
+    const limb=(ids,w)=>{ctx.lineWidth=w;ctx.beginPath();let on=false;for(const j of ids){if(!vis(j)){on=false;continue}if(!on){ctx.moveTo(...q[j]);on=true}else ctx.lineTo(...q[j])}ctx.stroke()};
+    limb([11,13,15],lw*0.9);limb([12,14,16],lw*0.9);limb([23,25,27,31],lw);limb([24,26,28,32],lw);
+    /* head */
+    const hr=Math.max(6,Math.hypot(q[7][0]-q[8][0],q[7][1]-q[8][1])*0.75);
+    ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
+    ctx.restore(); return true;
+  }
+  /* ---------- person cut-out ----------
+     Draw the video frame for time t with everything but the dancer replaced by a background. The stored mask (nearest
+     frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
+  let mcv=null, mcx=null, ccv=null, ccx=null;
+  function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
+  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
+  function maskCanvas(B,k){
+    const M=B.mask,mw=M.w,mh=M.h;
+    if(!mcv){mcv=document.createElement('canvas');mcx=mcv.getContext('2d')}
+    if(mcv.width!==mw||mcv.height!==mh){mcv.width=mw;mcv.height=mh}
+    const img=mcx.createImageData(mw,mh),o=k*mw*mh;
+    for(let i=0;i<mw*mh;i++){const v=M.data[o+i]/255,a=Math.max(0,Math.min(1,(v-.35)/.3));img.data[i*4+3]=Math.round(a*a*(3-2*a)*255)}
+    mcx.putImageData(img,0,0); return mcv;
+  }
+  function cutout(ctx,B,t,video,rect,o){
+    o=o||{}; const k=maskIndex(B,t); if(k<0||!video||!video.videoWidth)return false;
+    const W=ctx.canvas.width,H=ctx.canvas.height;
+    if(!ccv){ccv=document.createElement('canvas');ccx=ccv.getContext('2d')}
+    if(ccv.width!==W||ccv.height!==H){ccv.width=W;ccv.height=H}
+    /* background */
+    ctx.save();
+    if(o.bg==='blur'){ctx.filter='blur('+Math.round(Math.max(W,H)/40)+'px) brightness(.55)';ctx.drawImage(video,rect.x,rect.y,rect.w,rect.h);ctx.filter='none';ctx.fillStyle='rgba(14,16,20,.35)';ctx.fillRect(0,0,W,H)}
+    else{ctx.fillStyle=o.bg==='colour'?(o.colour||'#2B2F6B'):(o.dark||'#08090C');ctx.fillRect(0,0,W,H)}
+    ctx.restore();
+    /* the dancer: frame, then keep only where the mask is */
+    ccx.clearRect(0,0,W,H);ccx.globalCompositeOperation='source-over';ccx.drawImage(video,rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='destination-in';ccx.imageSmoothingEnabled=true;ccx.imageSmoothingQuality='high';ccx.drawImage(maskCanvas(B,k),rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='source-over';
+    ctx.drawImage(ccv,0,0);
+    return true;
+  }
+  /* where a video frame sits inside a box with object-fit: contain */
+  function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
+  /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
+  function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
+  root.RB={CFG,load,track,poseAt,framesOf,draw,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,STRIDE,N};
+})(typeof window!=='undefined'?window:globalThis);
+/*BODY-END*/
+
+</script>
+<script>
 /*ANALYSIS-START*/
 /* ===== Riddim Swap beat analysis (pure functions, no page access) =====
    Music:  spectral-flux onset envelope -> autocorrelation tempo -> dynamic-programming beat tracker
@@ -3481,6 +3714,38 @@ async function riddimBeat(valid,blob,signal){
     timingWarning:(an.phaseConf??1)<.2?'Not sure whether the beat is here or half a beat later. Check it by ear.':an.conf<.5?'Low confidence: check the grid against the music.':''};
   valid.beatEngine='riddim-swap';valid.riddimBeats=beats;valid.riddimOffset=offset;valid.riddimCorr=bc;
 }
+
+/* Riddim Swap integration: prepared body tracking (poses + person masks for every frame) */
+let preparedBody=null, prepCut=null, prepCutCtx=null;
+function preparedReady(){return !!(preparedBody&&preparedBody.key===state.key&&typeof RB!=='undefined'&&RB.hasCutout(preparedBody));}
+function preparedCutout(t){
+  if(!state.maskRef||!preparedReady()||refVideo.readyState<2)return;
+  const k=RB.maskIndex(preparedBody,t);if(k<0){state.refCutout=null;return;}
+  const vw=refVideo.videoWidth,vh=refVideo.videoHeight;if(!vw||!vh)return;
+  const sc=Math.min(1,720/Math.max(vw,vh)),W=Math.round(vw*sc),H=Math.round(vh*sc);
+  if(!prepCut){prepCut=document.createElement('canvas');prepCutCtx=prepCut.getContext('2d');}
+  if(prepCut.width!==W||prepCut.height!==H){prepCut.width=W;prepCut.height=H;}
+  prepCutCtx.globalCompositeOperation='source-over';prepCutCtx.clearRect(0,0,W,H);prepCutCtx.drawImage(refVideo,0,0,W,H);
+  prepCutCtx.globalCompositeOperation='destination-in';prepCutCtx.imageSmoothingEnabled=true;prepCutCtx.imageSmoothingQuality='high';prepCutCtx.drawImage(RB.maskCanvas(preparedBody,k),0,0,W,H);
+  prepCutCtx.globalCompositeOperation='source-over';
+  state.refCutout=prepCut;state.refCutoutTime=t;
+}
+function usePreparedBody(B,label){
+  const S=1+33*3,out=[];
+  for(let i=0;i<B.n&&i<9000;i++){const o=i*S;const t=B.data[o];if(!Number.isFinite(t))continue;
+    out.push({t,points:Number.isFinite(B.data[o+1])?Array.from({length:33},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]})):null});}
+  if(out.length<3)return 0;
+  preparedBody={...B,key:state.key};
+  state.poseSamples=out;state.poseSamplesVisual=out;state.refPose=true;state.refDisplay='both';state.style='both';state.cacheVersion++;
+  state.referenceAnalysis=`${out.filter(f=>f.points).length} / ${out.length} poses ${label} (every frame)`;
+  try{persistReferencePoses();}catch(e){}
+  const pm=$('pose-message');if(pm)pm.textContent=state.referenceAnalysis;updateUI();return out.length;
+}
+async function trackHere(onProgress){
+  if(typeof RB==='undefined'||!state.source||state.demo)throw new Error('Load your own video first.');
+  const B=await RB.track(state.source,{onProgress});
+  return usePreparedBody(B,'tracked here');
+}
 function drawImageFit(ctx,img,area,alpha,mirror,fit='contain'){
   if(!img||alpha<=0)return null;
   const iw=img.videoWidth||img.width,ih=img.videoHeight||img.height;if(!(iw&&ih))return null;
@@ -5348,6 +5613,7 @@ async function setWorldlineStyle(style){
   updateUI();
 }
 async function toggleMask(channel){
+  if(channel==='reference'&&preparedReady()){state.maskRef=!state.maskRef;lastFrame.reference='';if(!state.maskRef){state.refCutout=null;}toast(state.maskRef?'Cut-out on: only the dancer shows.':'Cut-out off.');updateUI();return;}
   if(channel==='reference'&&state.demo){toast('Load your own video first. The demo is not a segmentation result.');return;}
   const request=++maskSequences[channel],generation=state.sourceGeneration;
   const key=channel==='reference'?'maskRef':'maskCam';state[key]=!state[key];lastFrame[channel]='';inferenceErrorShown=false;
@@ -5405,6 +5671,7 @@ function runLiveInference(now){
 function prepareDrawState(now,dt){
   const frameTime=refClock.time();
   if(state.refCutout&&Math.abs(state.refCutoutTime-frameTime)>.35*Math.max(1,state.speed)){state.refCutout.close?.();state.refCutout=null;}
+  preparedCutout(frameTime);
   state.referencePoseTime=frameTime;
   state.referencePoints=state.demo?null:referencePoseAtFrame(state.poseSamples,state.refLive,frameTime,{speed:state.speed,maskTime:state.maskRef&&state.refCutout?state.refCutoutTime:null});
   if(state.camCutout&&now/1000-state.camCutoutTime>.35){state.camCutout.close?.();state.camCutout=null;}
@@ -5669,6 +5936,39 @@ function initBuildWorkspace(){
     if(ref&&ref.origin===location.origin&&!/\/mirrorview\//.test(ref.pathname)&&history.length>1){history.back();return;}
     location.href='../'+(/debug/.test(location.hash)?'#debug':'');
   });
+  /* quick controls on the video */
+  const ico={body:'<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+    cut:'<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6.8 13.2L15 3M13.2 13.2L5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    mirror:'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v16M7 5L3 10l4 5M13 5l4 5-4 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'};
+  const dock=document.createElement('div');dock.className='mv-dock';dock.id='mv-dock';
+  dock.innerHTML='<label class="mv-see" id="dock-see"><span>See-through</span><input type="range" id="dock-opacity" min="0" max="0.9" step="0.05" aria-label="How see-through the dance video is"><b id="dock-op-val"></b></label>'
+    +'<button type="button" id="dock-body" data-action="ref-pose" aria-pressed="false">'+ico.body+'<span>Body</span></button>'
+    +'<button type="button" class="cut" id="dock-cut" aria-pressed="false">'+ico.cut+'<span>Cut out</span></button>'
+    +'<button type="button" id="dock-mirror" data-action="mirror-ref" aria-pressed="false">'+ico.mirror+'<span>Mirror</span></button>';
+  $('stage')?.append(dock);
+  const opIn=$('dock-opacity');
+  /* right = more see-through (the dance video fades so you can see yourself through it) */
+  opIn.addEventListener('input',()=>{const op=Math.max(.1,Math.min(1,1-Number(opIn.value))),o=$('overlay-opacity');if(o){o.value=String(op);o.dispatchEvent(new Event('input',{bubbles:true}));}else{state.overlayOpacity=op;updateUI();}$('dock-op-val').textContent=Math.round((1-op)*100)+'%';opIn.style.setProperty('--fill',(Number(opIn.value)/.9*100).toFixed(1)+'%');});
+  let cutBusy=false;
+  $('dock-cut').addEventListener('click',async()=>{
+    if(cutBusy)return;
+    if(preparedReady()){await toggleMask('reference');syncDock();return;}
+    if(state.demo||!state.source){toast('Load your own video first.');return;}
+    /* no masks yet: track this clip once (poses + masks), then cut out */
+    cutBusy=true;const b=$('dock-cut'),lab=b.querySelector('span');b.disabled=true;
+    try{await trackHere(p=>{lab.textContent='Getting ready '+Math.round(p*100)+'%';});state.maskRef=true;toast('Cut-out on: only the dancer shows.');}
+    catch(e){toast('Cut-out needs body tracking, which didn’t run: '+(e.message||e));}
+    finally{cutBusy=false;b.disabled=false;lab.textContent='Cut out';updateUI();syncDock();}
+  });
+  function syncDock(){
+    const overlay=state.mode==='overlay';$('dock-see').hidden=!overlay;
+    if(document.activeElement!==opIn)opIn.value=String(Math.max(0,Math.min(.9,1-state.overlayOpacity)));$('dock-op-val').textContent=Math.round((1-state.overlayOpacity)*100)+'%';opIn.style.setProperty('--fill',(Math.max(0,Math.min(.9,1-state.overlayOpacity))/.9*100).toFixed(1)+'%');
+    $('dock-body').setAttribute('aria-pressed',String(!!state.refPose));
+    if(!cutBusy)$('dock-cut').setAttribute('aria-pressed',String(!!state.maskRef&&preparedReady()));
+    $('dock-mirror').setAttribute('aria-pressed',String(!!state.mirrorRef));
+    dock.hidden=!!state.demo&&!state.source;
+  }
+  setInterval(syncDock,250);syncDock();
   const id=new URLSearchParams(location.search).get('handoff');
   if(!id)return;
   const clean=()=>{try{history.replaceState(history.state,'',location.pathname+location.hash);}catch(e){}};
@@ -5685,20 +5985,14 @@ function initBuildWorkspace(){
     if(!ok){toast('The clip from Riddim Swap was missing or not a video. Your current reference is unchanged.');return;}
     const safe=rec.name.replace(/[\\/:*?"<>|]+/g,' ').slice(0,120)||'Riddim Swap clip';
     const file=new File([rec.blob],safe,{type:rec.blob.type||'video/mp4',lastModified:rec.created||Date.now()});
-    window.__mvHandoff={id,kind:rec.kind,name:safe,meta:rec.meta||null,status:'importing'};
+    window.__mvHandoff={id,kind:rec.kind,name:safe,meta:rec.meta?{trim:rec.meta.trim,hits:rec.meta.hits,songBpm:rec.meta.songBpm}:null,status:'importing'};
     try{
       const loaded=await importFile(file);
-      window.__mvHandoff.status=loaded?'opened':'not-opened';
       if(loaded&&rec.meta&&rec.meta.body&&rec.meta.body.data&&rec.meta.body.n>2){
-        /* Riddim Swap already tracked this clip on every frame: use those poses as the reference (no second tracking) */
-        const B=rec.meta.body,S=1+33*3,out=[];
-        for(let i=0;i<B.n&&i<9000;i++){const o=i*S;const t=B.data[o];if(!Number.isFinite(t))continue;
-          out.push({t,points:Number.isFinite(B.data[o+1])?Array.from({length:33},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]})):null});}
-        if(out.length>2){state.poseSamples=out;state.poseSamplesVisual=out;state.refPose=true;state.refDisplay='both';state.style='both';state.cacheVersion++;
-          state.referenceAnalysis=`${out.filter(f=>f.points).length} / ${out.length} poses from Riddim Swap (every frame)`;
-          try{persistReferencePoses();}catch(e){}
-          const pm=$('pose-message');if(pm)pm.textContent=state.referenceAnalysis;window.__mvHandoff.body=out.length;updateUI();}
+        /* Riddim Swap already tracked this clip on every frame (poses + person masks): use them, no second tracking */
+        const n=usePreparedBody(rec.meta.body,'from Riddim Swap');if(n)window.__mvHandoff.body=n;window.__mvHandoff.masks=!!(rec.meta.body.mask);
       }
+      window.__mvHandoff.status=loaded?'opened':'not-opened';
       if(loaded){try{await tx(db,'readwrite',st=>st.delete(id));}catch(e){}
         toast((rec.kind==='take'?'Opened your take':'Opened')+' “'+safe+'” from Riddim Swap.');}
     }catch(e){window.__mvHandoff.status='failed';setIssue('video',e);toast(e.message);}
@@ -5706,7 +6000,7 @@ function initBuildWorkspace(){
   if(document.readyState==='complete')setTimeout(run,0);else window.addEventListener('load',()=>setTimeout(run,0),{once:true});
 })();
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__mv={state,importFile,seek,setPlaying,get practiceView(){return practiceView;},get music(){return music;}};
+if(/debug/.test(location.hash))window.__mv={state,importFile,seek,setPlaying,get preparedBody(){return preparedBody;},preparedReady,get practiceView(){return practiceView;},get music(){return music;}};
 
 })();
 </script>

@@ -124,11 +124,46 @@ The tests run in headless Chromium on the local build, served over HTTP. In the 
 | Body tracking accuracy on real dance | **Not verified** | No hand-labelled poses. The full model agrees with the heavy model to a few percent of torso length; that's agreement within one model family, not ground truth. |
 | iPhone speed, heat and real camera | **Not run** | |
 
+## Stage 3: clearer controls and a working person cut-out (Oct 2026)
+
+### What changed
+
+- **Quick controls on the video, in both apps.** Big labelled pill buttons sit on the stage, so the main switches aren't buried in settings.
+  - Riddim Swap: **Track body** (shows "Tracking 40%" while it works), then **Body**, **Hips** and **Cut out**. With Cut out on, three swatches choose the background: dark, colour or blurred video.
+  - MirrorView: **See-through** (a slider for the overlay; 0% is solid, 90% is almost clear), **Body**, **Cut out** and **Mirror**. See-through appears only in Overlay, where it means something. It drives MirrorView's existing Overlay opacity setting, so both stay in step.
+  - The Pulse beat card on MirrorView's stage shrinks to just the count, at the top, so it never sits under the controls or the dancer's feet.
+- **Person cut-out that works.** Before, MirrorView's cut-out only came from live tracking, which stops once poses are prepared, so on a prepared clip it showed the whole video. Now body tracking also saves a **person mask for every frame** (MediaPipe's segmentation output from the same pass, 120 px wide). The mask is stored with the poses and sent through the Body tab.
+  - Riddim Swap draws the cut-out on the stage, under the dance body (`RB.cutout`).
+  - MirrorView builds each drawn frame's cut-out from that frame's mask (`preparedCutout`), so it follows playback frame by frame.
+  - Opened in MirrorView alone, **Cut out** tracks the clip first (same `body.js`), then cuts out.
+- **Get started card.** A new project shows "Let's make a remix" with three numbered steps: add a dance video, add a song, press play. The next step is highlighted, finished steps get a tick, and each step has its own button. The card goes away once all three are done or a routine exists.
+
+### Evidence (headless Chromium, your clip 2, CPU tracking; `mv/tests/cutout_test.js`)
+
+| Test | Result | Notes |
+|---|---|---|
+| Get started card on a new project | Passed | Step 1 highlighted; steps update after the video is added. |
+| Quick controls appear on the video | Passed | "Track body" before tracking; Hips and Cut out after. |
+| A person mask for every tracked frame | Passed | 307–309 masks per run, one per pose (the clip has 312 real frames; the exact count varies by a frame or two between headless runs). |
+| Cut out removes the background, keeps the dancer | Passed | Background corner brightness 9.7/255 with the dark background; dancer area 69/255. |
+| Blurred background option | Passed | Corner brightness 9.7 → 60.4. |
+| Body tab sends poses and masks to MirrorView | Passed | Prepared masks are used, with no second tracking. |
+| See-through slider changes the overlay | Passed | 60% see-through → overlay opacity 0.40, and the Settings slider shows the same value. |
+| MirrorView cut-out from the prepared masks | Passed | The cut-out frame is within 20 ms of the playhead when paused, and within 36 ms during playback. |
+| Mirror button | Passed | |
+| MirrorView alone: Cut out tracks, then cuts out | Passed | |
+| Page errors | Passed | None in either app. |
+| Earlier suites after this change | Passed, with one rerun | Riddim Swap: `ui_tracking`, `ui_hits` and the end-to-end check passed (recording sound ±0 ms). MirrorView: body, Body tab, bottom bar, Pulse (99.5 BPM, F 1.0), camera, offline cache and hand-off all passed. MirrorView's own pose preparation ended early with 0 poses once during the full run on a loaded machine, then passed when rerun alone (91/91 frames). |
+| Pulse on a Riddim Swap take | Still failing | Same stage 1 gap (no MP4 edit list). |
+| Cut-out edge quality on real phones, hair and loose clothes | **Not verified** | The mask is 120 px wide and softened, so edges are soft rather than exact. |
+
 ## Known limits
 
 - **Takes in Pulse:** Pulse can't analyse a Riddim Swap take until the recorder writes MP4 edit lists (see above).
 - **Sound starts muted:** MirrorView keeps the reference muted until you unmute it. That's baseline behaviour, kept on purpose.
 - **Pose needs the network once:** MediaPipe and its model load from CDNs on first use. They aren't stored offline.
-- **Two beat engines:** they can disagree on the same song, as above. Nothing is merged yet.
+- **Beat engines:** since stage 2, Pulse takes its tempo and beat position from Riddim Swap's engine. MirrorView's own onset and frequency events are still its own.
+- **Cut-out edges are soft:** the per-frame mask is 120 px wide, so fine detail (hair, fingers, loose clothes) isn't exact.
+- **Tracking takes time:** Cut out and Body need the clip tracked once, frame by frame. That ran at about 140 ms a frame on the test machine's CPU; phone speed is unmeasured.
 - **Not in the claude.ai version:** MirrorView exists only in the installed or GitHub Pages app, not in the single-file claude.ai version.
 - **Untested on a phone:** physical iPhone behaviour, heat, real pose speed and camera prompts haven't been checked.

@@ -256,6 +256,28 @@ body.bv-calm .beats.s i.on{background:color-mix(in srgb,var(--song-hot) 35%,var(
 .okmsg{color:var(--ok)!important}
 .mv-only{display:none!important}
 html.rs-hosted .mv-only{display:revert!important}
+.dock{position:absolute;left:8px;right:8px;bottom:8px;z-index:4;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start;pointer-events:none}
+.dock button{pointer-events:auto;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.14);
+  background:rgba(14,16,20,.78);color:#F3F1EC;font:700 14px var(--f-body);cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.dock button svg{width:18px;height:18px;flex:0 0 auto}
+.dock button[aria-pressed="true"]{background:var(--dance);border-color:var(--dance);color:#0E1014}
+.dock button.hips[aria-pressed="true"]{background:var(--hips);border-color:var(--hips)}
+.dock button.cut[aria-pressed="true"]{background:#F3F1EC;border-color:#F3F1EC}
+.dock button:disabled{opacity:.45}
+.dock .bgpick{display:inline-flex;gap:4px;pointer-events:auto;align-items:center;background:rgba(14,16,20,.78);border-radius:999px;padding:4px;border:1px solid rgba(255,255,255,.14)}
+.dock .bgpick button{min-height:32px;width:32px;padding:0;justify-content:center;border-radius:50%}
+.dock .bgpick button[aria-pressed="true"]{outline:2px solid #F3F1EC;outline-offset:1px}
+html.rs-hosted .dock.mv-only{display:flex!important}
+html.rs-hosted .mv-only[hidden]{display:none!important}
+.start{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px 16px;display:grid;gap:10px}
+.start h2{font-family:var(--f-display);font-size:20px;font-weight:800;margin:0}
+.start ol{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.start li{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:600}
+.start li .n{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font:700 15px var(--f-mono);background:var(--sunk);border:1px solid var(--line);flex:0 0 auto}
+.start li.done{color:var(--muted)} .start li.done .n{background:var(--ok);border-color:var(--ok);color:#0E1014}
+.start li.done .n{font-size:0}.start li.done .n::after{content:'\2713';font-size:17px}
+.start li.next .n{background:var(--song);border-color:var(--song);color:#0E1014}
+.start li .go{margin-left:auto}
 .bodycv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
 .bodyrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 .hitstrip.edit{height:22px;cursor:pointer;touch-action:manipulation}
@@ -389,6 +411,16 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <label class="btn file">Choose dance video<input type="file" id="vidFile" accept="video/*"></label>
           </div>
           <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>
+          <div class="dock mv-only" id="dock" hidden>
+            <button type="button" id="dkBody" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg><span>Body</span></button>
+            <button type="button" class="hips" id="dkHips" aria-pressed="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 11c2-5 5 4 7 0s5-5 7 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg><span>Hips</span></button>
+            <button type="button" class="cut" id="dkCut" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6.8 13.2L15 3M13.2 13.2L5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Cut out</span></button>
+            <span class="bgpick" id="dkBg" hidden role="group" aria-label="Background behind the dancer">
+              <button type="button" data-bg="dark" aria-label="Dark background" aria-pressed="true" style="background:#08090C"></button>
+              <button type="button" data-bg="colour" aria-label="Colour background" aria-pressed="false" style="background:#2B2F6B"></button>
+              <button type="button" data-bg="blur" aria-label="Blurred background" aria-pressed="false" style="background:linear-gradient(135deg,#6b6f78,#2a2d33)"></button>
+            </span>
+          </div>
           <div class="recdot" id="recDot" hidden>Recording</div>
         </div>
         <div class="transport">
@@ -434,6 +466,14 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
     </div>
 
     <div class="col">
+      <section class="start" id="startCard" hidden aria-labelledby="h-start">
+        <h2 id="h-start">Let’s make a remix</h2>
+        <ol>
+          <li id="st1"><span class="n">1</span><span>Add a dance video</span><label class="btn sm go file">Choose<input type="file" id="stVid" accept="video/*" hidden></label></li>
+          <li id="st2"><span class="n">2</span><span>Add a song</span><label class="btn sm go file">Choose<input type="file" id="stSong" accept="audio/*,video/*" hidden></label></li>
+          <li id="st3"><span class="n">3</span><span>Press play and watch them together</span><button class="btn sm go" id="stPlay" type="button">Play</button></li>
+        </ol>
+      </section>
       <div class="tabs" role="tablist" aria-label="Settings">
         <button class="tab" role="tab" id="t-clip" aria-controls="p-clip" aria-selected="true"><span class="dot" style="background:var(--dance)"></span>Clip</button>
         <button class="tab" role="tab" id="t-song" aria-controls="p-song" aria-selected="false" tabindex="-1"><span class="dot" style="background:var(--song-hot)"></span>Song</button>
@@ -1170,7 +1210,8 @@ if(typeof module!=='undefined')module.exports=RA;
     sdkURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs',
     wasmURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
     modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
-    edge:640          /* longest side of the image given to the tracker (the person crop is resized from this) */
+    edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
+    maskW:120         /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
   let runtime=null, loading=null;
@@ -1182,7 +1223,8 @@ if(typeof module!=='undefined')module.exports=RA;
       const files=await sdk.FilesetResolver.forVisionTasks(CFG.wasmURL);
       const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
       const model=new Uint8Array(await r.arrayBuffer());
-      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},runningMode:'IMAGE',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+      /* person masks (segmentation) come from the same pass, for the cut-out */
+      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:document.createElement('canvas'),runningMode:'IMAGE',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
       let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
       try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
       runtime={task,delegate}; return runtime;
@@ -1212,7 +1254,8 @@ if(typeof module!=='undefined')module.exports=RA;
         if(hasRVFC)v.requestVideoFrameCallback((now,m)=>fin(m.mediaTime));
         v.addEventListener('seeked',()=>setTimeout(()=>fin(null),hasRVFC?120:30),{once:true});
         v.currentTime=t;});
-      const rows=[]; let ms=0, n=0, last=-1;
+      const rows=[], masks=[]; let ms=0, n=0, last=-1;
+      const mw=CFG.maskW, mh=Math.max(8,Math.round(mw*H/W));
       const total=Math.max(1,Math.floor((end-start)*fps+1e-6)+1);
       for(let k=0;k<total;k++){
         if(opt.signal&&opt.signal.aborted)break;
@@ -1221,17 +1264,29 @@ if(typeof module!=='undefined')module.exports=RA;
         if(t<=last+1e-4)continue; last=t;
         cx.drawImage(v,0,0,cv.width,cv.height);
         const s=performance.now(); let pts=null;
-        rt.task.detect(cv,r=>{pts=r.landmarks&&r.landmarks[0]?r.landmarks[0]:null});
+        let mk=null;
+        rt.task.detect(cv,r=>{pts=r.landmarks&&r.landmarks[0]?r.landmarks[0]:null;
+          /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
+          const m=r.segmentationMasks&&r.segmentationMasks[0];
+          if(m&&pts){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
+            for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
+              for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
+                for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}
+          if(m&&m.close)try{m.close()}catch(e){}
+        });
         ms+=performance.now()-s; n++;
         const row=new Float32Array(STRIDE); row[0]=t;
         if(pts)for(let j=0;j<N;j++){row[1+j*3]=pts[j].x;row[2+j*3]=pts[j].y;row[3+j*3]=pts[j].visibility??0}
         else row.fill(NaN,1);
-        rows.push(row);
+        rows.push(row); masks.push(mk);
         if(opt.onProgress)opt.onProgress(Math.min(1,(k+1)/total));
       }
       const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
       const seen=rows.filter(r=>!isNaN(r[1])).length;
-      return {v:1,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:smooth(data,rows.length),seen,missed:Math.max(0,total-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end};
+      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
+      let mask=null; const withMask=masks.filter(Boolean).length;
+      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
+      return {v:1,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:smooth(data,rows.length),mask,seen,missed:Math.max(0,total-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end};
     }finally{cleanup()}
   }
 
@@ -1310,11 +1365,42 @@ if(typeof module!=='undefined')module.exports=RA;
     ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
     ctx.restore(); return true;
   }
+  /* ---------- person cut-out ----------
+     Draw the video frame for time t with everything but the dancer replaced by a background. The stored mask (nearest
+     frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
+  let mcv=null, mcx=null, ccv=null, ccx=null;
+  function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
+  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
+  function maskCanvas(B,k){
+    const M=B.mask,mw=M.w,mh=M.h;
+    if(!mcv){mcv=document.createElement('canvas');mcx=mcv.getContext('2d')}
+    if(mcv.width!==mw||mcv.height!==mh){mcv.width=mw;mcv.height=mh}
+    const img=mcx.createImageData(mw,mh),o=k*mw*mh;
+    for(let i=0;i<mw*mh;i++){const v=M.data[o+i]/255,a=Math.max(0,Math.min(1,(v-.35)/.3));img.data[i*4+3]=Math.round(a*a*(3-2*a)*255)}
+    mcx.putImageData(img,0,0); return mcv;
+  }
+  function cutout(ctx,B,t,video,rect,o){
+    o=o||{}; const k=maskIndex(B,t); if(k<0||!video||!video.videoWidth)return false;
+    const W=ctx.canvas.width,H=ctx.canvas.height;
+    if(!ccv){ccv=document.createElement('canvas');ccx=ccv.getContext('2d')}
+    if(ccv.width!==W||ccv.height!==H){ccv.width=W;ccv.height=H}
+    /* background */
+    ctx.save();
+    if(o.bg==='blur'){ctx.filter='blur('+Math.round(Math.max(W,H)/40)+'px) brightness(.55)';ctx.drawImage(video,rect.x,rect.y,rect.w,rect.h);ctx.filter='none';ctx.fillStyle='rgba(14,16,20,.35)';ctx.fillRect(0,0,W,H)}
+    else{ctx.fillStyle=o.bg==='colour'?(o.colour||'#2B2F6B'):(o.dark||'#08090C');ctx.fillRect(0,0,W,H)}
+    ctx.restore();
+    /* the dancer: frame, then keep only where the mask is */
+    ccx.clearRect(0,0,W,H);ccx.globalCompositeOperation='source-over';ccx.drawImage(video,rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='destination-in';ccx.imageSmoothingEnabled=true;ccx.imageSmoothingQuality='high';ccx.drawImage(maskCanvas(B,k),rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='source-over';
+    ctx.drawImage(ccv,0,0);
+    return true;
+  }
   /* where a video frame sits inside a box with object-fit: contain */
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,containRect,toMirrorView,STRIDE,N};
+  root.RB={CFG,load,track,poseAt,framesOf,draw,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,STRIDE,N};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
@@ -2900,14 +2986,16 @@ function bodyOf(n){
 try{const v0=localStorage.getItem('rs-body');if(v0==='0')$('#bodyShow').checked=false;const h0=localStorage.getItem('rs-hip');if(h0==='0')$('#hipShow').checked=false}catch(e){}
 $('#bodyShow').addEventListener('change',e=>{try{localStorage.setItem('rs-body',e.target.checked?'1':'0')}catch(err){}});
 $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.target.checked?'1':'0')}catch(err){}});
-const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;
+const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 function drawBody(){
-  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=$('#bodyShow').checked&&!!B;
+  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
   if(!on){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false}return}
   const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);
   if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
-  RB.draw(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked});
+  const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
+  if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B'});
+  if($('#bodyShow').checked)RB.draw(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked});
   bodyDrawn=true;
 }
 /* hits from the body: stops and turns of the limbs and hips (RA.analyzePose); your own marked hits are kept */
@@ -2924,7 +3012,7 @@ $('#bodyTrack').addEventListener('click',async()=>{
   S.bodyBusy=true; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   try{
-    const B=await RB.track(n.url,{onProgress:p=>{bar.style.width=Math.round(p*100)+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+Math.round(p*100)+'%'}});
+    const B=await RB.track(n.url,{onProgress:p=>{S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%';dockUpdate()}});
     n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
     const got=hitsFromBody(n);
     $('#bodyInfo').textContent=`Body tracked on ${B.seen} of ${B.n} frames`+(B.missed?` (${B.missed} skipped while playing)`:'')+(got?'. Hits now come from the body.':'.');
@@ -2932,6 +3020,38 @@ $('#bodyTrack').addEventListener('click',async()=>{
   }catch(e){$('#bodyInfo').textContent='Body tracking didn’t run: '+((e&&e.message)||e)}
   finally{S.bodyBusy=false;$('#bodyProg').hidden=true;enable();renderDance();renderMoves();updateMatch();scheduleFit();drawHitStrip()}
 });
+
+/* ---------- quick controls on the video ---------- */
+S.cutOn=false; S.cutBg='dark'; try{S.everPlayed=localStorage.getItem('rs-played')==='1'}catch(e){}
+try{S.cutBg=localStorage.getItem('rs-cutbg')||'dark'}catch(e){}
+function dockUpdate(){
+  const n=srcById(S.cur), B=n&&bodyOf(n), show=!!(S.hasV&&window.RS_HOSTED);
+  $('#dock').hidden=!show; if(!show)return;
+  const bb=$('#dkBody');
+  if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%';bb.setAttribute('aria-pressed','false');bb.disabled=true}
+  else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
+  $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
+  const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
+  $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
+}
+$('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
+  if(!bodyOf(n)){$('#bodyTrack').click();return}
+  $('#bodyShow').checked=!$('#bodyShow').checked;$('#bodyShow').dispatchEvent(new Event('change'));dockUpdate()});
+$('#dkHips').addEventListener('click',()=>{$('#hipShow').checked=!$('#hipShow').checked;$('#hipShow').dispatchEvent(new Event('change'));dockUpdate()});
+$('#dkCut').addEventListener('click',()=>{S.cutOn=!S.cutOn;dockUpdate()});
+$$('#dkBg button').forEach(b=>b.addEventListener('click',()=>{S.cutBg=b.dataset.bg;try{localStorage.setItem('rs-cutbg',S.cutBg)}catch(e){}dockUpdate()}));
+/* get started: three steps for a new project */
+function startUpdate(){
+  const v=!!S.hasV, so=!!S.mainSong, played=!!S.everPlayed, card=$('#startCard');
+  card.hidden=(v&&so&&played)||!!S.seq.length;
+  $('#st1').className=v?'done':'next'; $('#st2').className=so?'done':(v?'next':''); $('#st3').className=played?'done':(v&&so?'next':'');
+  $('#st1 .go').hidden=v; $('#st2 .go').hidden=so; $('#stPlay').hidden=!(v&&so)||played;
+}
+$('#stVid').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const dt=new DataTransfer();dt.items.add(f);$('#vidFile').files=dt.files;$('#vidFile').dispatchEvent(new Event('change',{bubbles:true}));e.target.value=''});
+$('#stSong').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const dt=new DataTransfer();dt.items.add(f);$('#audFile').files=dt.files;$('#audFile').dispatchEvent(new Event('change',{bubbles:true}));e.target.value=''});
+$('#stPlay').addEventListener('click',()=>{if(!S.playing)$('#play').click()});
+/* keep the card and the dock right even when nothing is playing (the tick only runs with media) */
+startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
 
 /* ---------- MirrorView hand-off ----------
    MirrorView lives at ./mirrorview/ in the same installed app (same origin and storage). A clip or take is left in
@@ -2954,7 +3074,7 @@ async function sendClip(){
   if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
   const B=bodyOf(n);
   try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,
-      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data}:null});goMirror(id);return true}
+      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null}:null});goMirror(id);return true}
   catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').');return false}
 }
 $('#mvClip').addEventListener('click',sendClip);
@@ -3347,7 +3467,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody();
+  clickTick(); drawBody(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.sBase&&S.hasA&&!a.paused)s=beat(a.currentTime,S.sAnchor,S.sBase);

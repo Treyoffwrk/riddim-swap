@@ -38,6 +38,8 @@ exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_theme_block.py').rea
 
 exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_pulse_block.py').read_text(), 'mv_pulse_block.py', 'exec'))
 
+exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_simple_block.py').read_text(), 'mv_simple_block.py', 'exec'))
+
 # ---- bridge, inside MirrorView's own scope so it uses importFile/state/toast directly ----
 m = list(re.finditer(r'<script>([\s\S]*?)</script>', s))
 app = next(x for x in m if '// ---- math.js ----' in x.group(1))   # MirrorView's app script (analysis.js now loads before it)
@@ -67,6 +69,39 @@ bridge = r'''
     if(ref&&ref.origin===location.origin&&!/\/mirrorview\//.test(ref.pathname)&&history.length>1){history.back();return;}
     location.href='../'+(/debug/.test(location.hash)?'#debug':'');
   });
+  /* quick controls on the video */
+  const ico={body:'<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+    cut:'<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6.8 13.2L15 3M13.2 13.2L5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    mirror:'<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2v16M7 5L3 10l4 5M13 5l4 5-4 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'};
+  const dock=document.createElement('div');dock.className='mv-dock';dock.id='mv-dock';
+  dock.innerHTML='<label class="mv-see" id="dock-see"><span>See-through</span><input type="range" id="dock-opacity" min="0" max="0.9" step="0.05" aria-label="How see-through the dance video is"><b id="dock-op-val"></b></label>'
+    +'<button type="button" id="dock-body" data-action="ref-pose" aria-pressed="false">'+ico.body+'<span>Body</span></button>'
+    +'<button type="button" class="cut" id="dock-cut" aria-pressed="false">'+ico.cut+'<span>Cut out</span></button>'
+    +'<button type="button" id="dock-mirror" data-action="mirror-ref" aria-pressed="false">'+ico.mirror+'<span>Mirror</span></button>';
+  $('stage')?.append(dock);
+  const opIn=$('dock-opacity');
+  /* right = more see-through (the dance video fades so you can see yourself through it) */
+  opIn.addEventListener('input',()=>{const op=Math.max(.1,Math.min(1,1-Number(opIn.value))),o=$('overlay-opacity');if(o){o.value=String(op);o.dispatchEvent(new Event('input',{bubbles:true}));}else{state.overlayOpacity=op;updateUI();}$('dock-op-val').textContent=Math.round((1-op)*100)+'%';opIn.style.setProperty('--fill',(Number(opIn.value)/.9*100).toFixed(1)+'%');});
+  let cutBusy=false;
+  $('dock-cut').addEventListener('click',async()=>{
+    if(cutBusy)return;
+    if(preparedReady()){await toggleMask('reference');syncDock();return;}
+    if(state.demo||!state.source){toast('Load your own video first.');return;}
+    /* no masks yet: track this clip once (poses + masks), then cut out */
+    cutBusy=true;const b=$('dock-cut'),lab=b.querySelector('span');b.disabled=true;
+    try{await trackHere(p=>{lab.textContent='Getting ready '+Math.round(p*100)+'%';});state.maskRef=true;toast('Cut-out on: only the dancer shows.');}
+    catch(e){toast('Cut-out needs body tracking, which didn’t run: '+(e.message||e));}
+    finally{cutBusy=false;b.disabled=false;lab.textContent='Cut out';updateUI();syncDock();}
+  });
+  function syncDock(){
+    const overlay=state.mode==='overlay';$('dock-see').hidden=!overlay;
+    if(document.activeElement!==opIn)opIn.value=String(Math.max(0,Math.min(.9,1-state.overlayOpacity)));$('dock-op-val').textContent=Math.round((1-state.overlayOpacity)*100)+'%';opIn.style.setProperty('--fill',(Math.max(0,Math.min(.9,1-state.overlayOpacity))/.9*100).toFixed(1)+'%');
+    $('dock-body').setAttribute('aria-pressed',String(!!state.refPose));
+    if(!cutBusy)$('dock-cut').setAttribute('aria-pressed',String(!!state.maskRef&&preparedReady()));
+    $('dock-mirror').setAttribute('aria-pressed',String(!!state.mirrorRef));
+    dock.hidden=!!state.demo&&!state.source;
+  }
+  setInterval(syncDock,250);syncDock();
   const id=new URLSearchParams(location.search).get('handoff');
   if(!id)return;
   const clean=()=>{try{history.replaceState(history.state,'',location.pathname+location.hash);}catch(e){}};
@@ -83,20 +118,14 @@ bridge = r'''
     if(!ok){toast('The clip from Riddim Swap was missing or not a video. Your current reference is unchanged.');return;}
     const safe=rec.name.replace(/[\\/:*?"<>|]+/g,' ').slice(0,120)||'Riddim Swap clip';
     const file=new File([rec.blob],safe,{type:rec.blob.type||'video/mp4',lastModified:rec.created||Date.now()});
-    window.__mvHandoff={id,kind:rec.kind,name:safe,meta:rec.meta||null,status:'importing'};
+    window.__mvHandoff={id,kind:rec.kind,name:safe,meta:rec.meta?{trim:rec.meta.trim,hits:rec.meta.hits,songBpm:rec.meta.songBpm}:null,status:'importing'};
     try{
       const loaded=await importFile(file);
-      window.__mvHandoff.status=loaded?'opened':'not-opened';
       if(loaded&&rec.meta&&rec.meta.body&&rec.meta.body.data&&rec.meta.body.n>2){
-        /* Riddim Swap already tracked this clip on every frame: use those poses as the reference (no second tracking) */
-        const B=rec.meta.body,S=1+33*3,out=[];
-        for(let i=0;i<B.n&&i<9000;i++){const o=i*S;const t=B.data[o];if(!Number.isFinite(t))continue;
-          out.push({t,points:Number.isFinite(B.data[o+1])?Array.from({length:33},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]})):null});}
-        if(out.length>2){state.poseSamples=out;state.poseSamplesVisual=out;state.refPose=true;state.refDisplay='both';state.style='both';state.cacheVersion++;
-          state.referenceAnalysis=`${out.filter(f=>f.points).length} / ${out.length} poses from Riddim Swap (every frame)`;
-          try{persistReferencePoses();}catch(e){}
-          const pm=$('pose-message');if(pm)pm.textContent=state.referenceAnalysis;window.__mvHandoff.body=out.length;updateUI();}
+        /* Riddim Swap already tracked this clip on every frame (poses + person masks): use them, no second tracking */
+        const n=usePreparedBody(rec.meta.body,'from Riddim Swap');if(n)window.__mvHandoff.body=n;window.__mvHandoff.masks=!!(rec.meta.body.mask);
       }
+      window.__mvHandoff.status=loaded?'opened':'not-opened';
       if(loaded){try{await tx(db,'readwrite',st=>st.delete(id));}catch(e){}
         toast((rec.kind==='take'?'Opened your take':'Opened')+' “'+safe+'” from Riddim Swap.');}
     }catch(e){window.__mvHandoff.status='failed';setIssue('video',e);toast(e.message);}
@@ -104,7 +133,7 @@ bridge = r'''
   if(document.readyState==='complete')setTimeout(run,0);else window.addEventListener('load',()=>setTimeout(run,0),{once:true});
 })();
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__mv={state,importFile,seek,setPlaying,get practiceView(){return practiceView;},get music(){return music;}};
+if(/debug/.test(location.hash))window.__mv={state,importFile,seek,setPlaying,get preparedBody(){return preparedBody;},preparedReady,get practiceView(){return practiceView;},get music(){return music;}};
 '''
 new_app = end[:-len('})();')] + bridge + '\n})();\n'
 s = s[:app.start(1)] + new_app + s[app.end(1):]

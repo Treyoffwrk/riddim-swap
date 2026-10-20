@@ -11,7 +11,8 @@
     sdkURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs',
     wasmURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
     modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
-    edge:640          /* longest side of the image given to the tracker (the person crop is resized from this) */
+    edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
+    maskW:120         /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
   let runtime=null, loading=null;
@@ -23,7 +24,8 @@
       const files=await sdk.FilesetResolver.forVisionTasks(CFG.wasmURL);
       const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
       const model=new Uint8Array(await r.arrayBuffer());
-      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},runningMode:'IMAGE',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+      /* person masks (segmentation) come from the same pass, for the cut-out */
+      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:document.createElement('canvas'),runningMode:'IMAGE',numPoses:1,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
       let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
       try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
       runtime={task,delegate}; return runtime;
@@ -53,7 +55,8 @@
         if(hasRVFC)v.requestVideoFrameCallback((now,m)=>fin(m.mediaTime));
         v.addEventListener('seeked',()=>setTimeout(()=>fin(null),hasRVFC?120:30),{once:true});
         v.currentTime=t;});
-      const rows=[]; let ms=0, n=0, last=-1;
+      const rows=[], masks=[]; let ms=0, n=0, last=-1;
+      const mw=CFG.maskW, mh=Math.max(8,Math.round(mw*H/W));
       const total=Math.max(1,Math.floor((end-start)*fps+1e-6)+1);
       for(let k=0;k<total;k++){
         if(opt.signal&&opt.signal.aborted)break;
@@ -62,17 +65,29 @@
         if(t<=last+1e-4)continue; last=t;
         cx.drawImage(v,0,0,cv.width,cv.height);
         const s=performance.now(); let pts=null;
-        rt.task.detect(cv,r=>{pts=r.landmarks&&r.landmarks[0]?r.landmarks[0]:null});
+        let mk=null;
+        rt.task.detect(cv,r=>{pts=r.landmarks&&r.landmarks[0]?r.landmarks[0]:null;
+          /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
+          const m=r.segmentationMasks&&r.segmentationMasks[0];
+          if(m&&pts){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
+            for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
+              for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
+                for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}
+          if(m&&m.close)try{m.close()}catch(e){}
+        });
         ms+=performance.now()-s; n++;
         const row=new Float32Array(STRIDE); row[0]=t;
         if(pts)for(let j=0;j<N;j++){row[1+j*3]=pts[j].x;row[2+j*3]=pts[j].y;row[3+j*3]=pts[j].visibility??0}
         else row.fill(NaN,1);
-        rows.push(row);
+        rows.push(row); masks.push(mk);
         if(opt.onProgress)opt.onProgress(Math.min(1,(k+1)/total));
       }
       const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
       const seen=rows.filter(r=>!isNaN(r[1])).length;
-      return {v:1,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:smooth(data,rows.length),seen,missed:Math.max(0,total-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end};
+      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
+      let mask=null; const withMask=masks.filter(Boolean).length;
+      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
+      return {v:1,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:smooth(data,rows.length),mask,seen,missed:Math.max(0,total-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end};
     }finally{cleanup()}
   }
 
@@ -151,10 +166,41 @@
     ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
     ctx.restore(); return true;
   }
+  /* ---------- person cut-out ----------
+     Draw the video frame for time t with everything but the dancer replaced by a background. The stored mask (nearest
+     frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
+  let mcv=null, mcx=null, ccv=null, ccx=null;
+  function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
+  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
+  function maskCanvas(B,k){
+    const M=B.mask,mw=M.w,mh=M.h;
+    if(!mcv){mcv=document.createElement('canvas');mcx=mcv.getContext('2d')}
+    if(mcv.width!==mw||mcv.height!==mh){mcv.width=mw;mcv.height=mh}
+    const img=mcx.createImageData(mw,mh),o=k*mw*mh;
+    for(let i=0;i<mw*mh;i++){const v=M.data[o+i]/255,a=Math.max(0,Math.min(1,(v-.35)/.3));img.data[i*4+3]=Math.round(a*a*(3-2*a)*255)}
+    mcx.putImageData(img,0,0); return mcv;
+  }
+  function cutout(ctx,B,t,video,rect,o){
+    o=o||{}; const k=maskIndex(B,t); if(k<0||!video||!video.videoWidth)return false;
+    const W=ctx.canvas.width,H=ctx.canvas.height;
+    if(!ccv){ccv=document.createElement('canvas');ccx=ccv.getContext('2d')}
+    if(ccv.width!==W||ccv.height!==H){ccv.width=W;ccv.height=H}
+    /* background */
+    ctx.save();
+    if(o.bg==='blur'){ctx.filter='blur('+Math.round(Math.max(W,H)/40)+'px) brightness(.55)';ctx.drawImage(video,rect.x,rect.y,rect.w,rect.h);ctx.filter='none';ctx.fillStyle='rgba(14,16,20,.35)';ctx.fillRect(0,0,W,H)}
+    else{ctx.fillStyle=o.bg==='colour'?(o.colour||'#2B2F6B'):(o.dark||'#08090C');ctx.fillRect(0,0,W,H)}
+    ctx.restore();
+    /* the dancer: frame, then keep only where the mask is */
+    ccx.clearRect(0,0,W,H);ccx.globalCompositeOperation='source-over';ccx.drawImage(video,rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='destination-in';ccx.imageSmoothingEnabled=true;ccx.imageSmoothingQuality='high';ccx.drawImage(maskCanvas(B,k),rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='source-over';
+    ctx.drawImage(ccv,0,0);
+    return true;
+  }
   /* where a video frame sits inside a box with object-fit: contain */
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,containRect,toMirrorView,STRIDE,N};
+  root.RB={CFG,load,track,poseAt,framesOf,draw,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,STRIDE,N};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

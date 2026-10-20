@@ -1283,5 +1283,98 @@ rep("""  warn('Hits come from image motion, not body tracking: footwork hidden f
 rep("""  if(m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');""",
     """  if(m.source!=='pose'&&m.contrast<0.6)warn('Hits are hard to see: the dancer may be small in frame, lit poorly, or moving smoothly.');""")
 
+# ------------------------------------------------------------------ clearer, friendlier: quick controls on the video, person cut-out, get started
+rep(""".bodycv{position:absolute;""", """.dock{position:absolute;left:8px;right:8px;bottom:8px;z-index:4;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-start;pointer-events:none}
+.dock button{pointer-events:auto;display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.14);
+  background:rgba(14,16,20,.78);color:#F3F1EC;font:700 14px var(--f-body);cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.dock button svg{width:18px;height:18px;flex:0 0 auto}
+.dock button[aria-pressed="true"]{background:var(--dance);border-color:var(--dance);color:#0E1014}
+.dock button.hips[aria-pressed="true"]{background:var(--hips);border-color:var(--hips)}
+.dock button.cut[aria-pressed="true"]{background:#F3F1EC;border-color:#F3F1EC}
+.dock button:disabled{opacity:.45}
+.dock .bgpick{display:inline-flex;gap:4px;pointer-events:auto;align-items:center;background:rgba(14,16,20,.78);border-radius:999px;padding:4px;border:1px solid rgba(255,255,255,.14)}
+.dock .bgpick button{min-height:32px;width:32px;padding:0;justify-content:center;border-radius:50%}
+.dock .bgpick button[aria-pressed="true"]{outline:2px solid #F3F1EC;outline-offset:1px}
+html.rs-hosted .dock.mv-only{display:flex!important}
+html.rs-hosted .mv-only[hidden]{display:none!important}
+.start{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px 16px;display:grid;gap:10px}
+.start h2{font-family:var(--f-display);font-size:20px;font-weight:800;margin:0}
+.start ol{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.start li{display:flex;align-items:center;gap:12px;font-size:16px;font-weight:600}
+.start li .n{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font:700 15px var(--f-mono);background:var(--sunk);border:1px solid var(--line);flex:0 0 auto}
+.start li.done{color:var(--muted)} .start li.done .n{background:var(--ok);border-color:var(--ok);color:#0E1014}
+.start li.done .n{font-size:0}.start li.done .n::after{content:'\\2713';font-size:17px}
+.start li.next .n{background:var(--song);border-color:var(--song);color:#0E1014}
+.start li .go{margin-left:auto}
+.bodycv{position:absolute;""")
+rep("""          <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>""",
+"""          <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>
+          <div class="dock mv-only" id="dock" hidden>
+            <button type="button" id="dkBody" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg><span>Body</span></button>
+            <button type="button" class="hips" id="dkHips" aria-pressed="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 11c2-5 5 4 7 0s5-5 7 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg><span>Hips</span></button>
+            <button type="button" class="cut" id="dkCut" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6.8 13.2L15 3M13.2 13.2L5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Cut out</span></button>
+            <span class="bgpick" id="dkBg" hidden role="group" aria-label="Background behind the dancer">
+              <button type="button" data-bg="dark" aria-label="Dark background" aria-pressed="true" style="background:#08090C"></button>
+              <button type="button" data-bg="colour" aria-label="Colour background" aria-pressed="false" style="background:#2B2F6B"></button>
+              <button type="button" data-bg="blur" aria-label="Blurred background" aria-pressed="false" style="background:linear-gradient(135deg,#6b6f78,#2a2d33)"></button>
+            </span>
+          </div>""")
+rep("""      <div class="tabs" role="tablist" aria-label="Settings">""", """      <section class="start" id="startCard" hidden aria-labelledby="h-start">
+        <h2 id="h-start">Let’s make a remix</h2>
+        <ol>
+          <li id="st1"><span class="n">1</span><span>Add a dance video</span><label class="btn sm go file">Choose<input type="file" id="stVid" accept="video/*" hidden></label></li>
+          <li id="st2"><span class="n">2</span><span>Add a song</span><label class="btn sm go file">Choose<input type="file" id="stSong" accept="audio/*,video/*" hidden></label></li>
+          <li id="st3"><span class="n">3</span><span>Press play and watch them together</span><button class="btn sm go" id="stPlay" type="button">Play</button></li>
+        </ol>
+      </section>
+      <div class="tabs" role="tablist" aria-label="Settings">""")
+rep("""/* ---------- MirrorView hand-off ----------""", r"""/* ---------- quick controls on the video ---------- */
+S.cutOn=false; S.cutBg='dark'; try{S.everPlayed=localStorage.getItem('rs-played')==='1'}catch(e){}
+try{S.cutBg=localStorage.getItem('rs-cutbg')||'dark'}catch(e){}
+function dockUpdate(){
+  const n=srcById(S.cur), B=n&&bodyOf(n), show=!!(S.hasV&&window.RS_HOSTED);
+  $('#dock').hidden=!show; if(!show)return;
+  const bb=$('#dkBody');
+  if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%';bb.setAttribute('aria-pressed','false');bb.disabled=true}
+  else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
+  $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
+  const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
+  $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
+}
+$('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
+  if(!bodyOf(n)){$('#bodyTrack').click();return}
+  $('#bodyShow').checked=!$('#bodyShow').checked;$('#bodyShow').dispatchEvent(new Event('change'));dockUpdate()});
+$('#dkHips').addEventListener('click',()=>{$('#hipShow').checked=!$('#hipShow').checked;$('#hipShow').dispatchEvent(new Event('change'));dockUpdate()});
+$('#dkCut').addEventListener('click',()=>{S.cutOn=!S.cutOn;dockUpdate()});
+$$('#dkBg button').forEach(b=>b.addEventListener('click',()=>{S.cutBg=b.dataset.bg;try{localStorage.setItem('rs-cutbg',S.cutBg)}catch(e){}dockUpdate()}));
+/* get started: three steps for a new project */
+function startUpdate(){
+  const v=!!S.hasV, so=!!S.mainSong, played=!!S.everPlayed, card=$('#startCard');
+  card.hidden=(v&&so&&played)||!!S.seq.length;
+  $('#st1').className=v?'done':'next'; $('#st2').className=so?'done':(v?'next':''); $('#st3').className=played?'done':(v&&so?'next':'');
+  $('#st1 .go').hidden=v; $('#st2 .go').hidden=so; $('#stPlay').hidden=!(v&&so)||played;
+}
+$('#stVid').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const dt=new DataTransfer();dt.items.add(f);$('#vidFile').files=dt.files;$('#vidFile').dispatchEvent(new Event('change',{bubbles:true}));e.target.value=''});
+$('#stSong').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const dt=new DataTransfer();dt.items.add(f);$('#audFile').files=dt.files;$('#audFile').dispatchEvent(new Event('change',{bubbles:true}));e.target.value=''});
+$('#stPlay').addEventListener('click',()=>{if(!S.playing)$('#play').click()});
+/* keep the card and the dock right even when nothing is playing (the tick only runs with media) */
+startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
+
+/* ---------- MirrorView hand-off ----------""")
+# the cut-out goes under the dance body on the same canvas
+rep("""  const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
+  RB.draw(c,B,el.currentTime,""", """  const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
+  const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
+  if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B'});
+  if($('#bodyShow').checked)RB.draw(c,B,el.currentTime,""")
+rep("""  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=$('#bodyShow').checked&&!!B;""",
+    """  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;""")
+rep("""    const B=await RB.track(n.url,{onProgress:p=>{bar.style.width=Math.round(p*100)+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+Math.round(p*100)+'%'}});""",
+    """    const B=await RB.track(n.url,{onProgress:p=>{S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%';dockUpdate()}});""")
+rep("""      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data}:null});goMirror(id);return true}""",
+    """      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null}:null});goMirror(id);return true}""")
+rep("""  clickTick(); drawBody();""", """  clickTick(); drawBody(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}""")
+rep("""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;""","""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;""")
+
 P.write_text(s)
 print('patched', len(s))

@@ -51,6 +51,7 @@ const R=[];const rec=(name,status,detail)=>{R.push({name,status,detail});console
  await p.evaluate(()=>{const s=window.__mv.state;s.a=2;s.b=6;});
  await p.evaluate(()=>document.querySelector('[data-action="analyse-reference"]').click());
  let ps=null;for(let i=0;i<1400;i++){await p.waitForTimeout(500);ps=await p.evaluate(()=>{const s=window.__mv.state;const f=s.poseSamples||[];return {busy:s.busy,n:f.length,withPose:f.filter(x=>x.points).length,t0:f[0]&&+f[0].t.toFixed(2),t1:f.length&&+f.at(-1).t.toFixed(2)}});if(!ps.busy&&ps.n>0)break;if(!ps.busy&&i>20)break}
+ if(!ps.n)console.log('DIAG',JSON.stringify(await p.evaluate(()=>({msg:(document.getElementById('pose-message')||{}).textContent,analysis:window.__mv.state.referenceAnalysis,toast:(document.querySelector('.toast,#toast')||{}).textContent,refPose:window.__mv.state.refPose}))));
  const secs=(Date.now()-t0)/1000;
  rec('Real pose preparation on the real clip',ps.withPose>0.8*ps.n&&ps.n>10?'passed':'failed',`${ps.withPose}/${ps.n} frames with a skeleton, range ${ps.t0}–${ps.t1} s, ${secs.toFixed(0)} s in software rendering (not phone speed)`);
  const land=await p.evaluate(()=>{const f=window.__mv.state.poseSamples.find(x=>x.points);if(!f)return null;const P=f.points;const ok=P.filter(q=>q&&q.x>0&&q.x<1&&q.y>0&&q.y<1).length;return {t:f.t,points:P.length,inFrame:ok,nose:P[0]&&[+P[0].x.toFixed(2),+P[0].y.toFixed(2)],ankle:P[27]&&[+P[27].x.toFixed(2),+P[27].y.toFixed(2)]}});
