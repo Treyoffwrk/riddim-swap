@@ -167,3 +167,24 @@ The tests run in headless Chromium on the local build, served over HTTP. In the 
 - **Tracking takes time:** Cut out and Body need the clip tracked once, frame by frame. That ran at about 140 ms a frame on the test machine's CPU; phone speed is unmeasured.
 - **Not in the claude.ai version:** MirrorView exists only in the installed or GitHub Pages app, not in the single-file claude.ai version.
 - **Untested on a phone:** physical iPhone behaviour, heat, real pose speed and camera prompts haven't been checked.
+
+## Speed graph (Riddim Swap, Oct 2026)
+
+A curve on the Clip tab that sets how fast the clip plays at each moment, like an editor's speed ramp.
+
+- **How it works.** The curve is speed over the clip's own time, on a log scale from ¼× to 4×, multiplying the clip speed. Points have Bezier handles: tap to add a point, drag to move it (it snaps to 1×), drag a handle to bend the curve (the opposite handle stays opposite), double-tap or **Delete point** to remove one. There are quick shapes too: **Slow-mo here** (a dip at the playhead), **Speed up**, **Slow down** and **Normal**, plus **Undo**. The top strip moves through the clip. Blue ticks are the dance hits; orange ticks are the song's beats where they land with the current curve, so you can see hits and beats line up while you shape it.
+- **One time map.** The curve becomes the same source-to-output time map the "Aligned" routine already uses (knots every 1/40 s of clip time; `speed_block.py`). So playback speed, the song sync, recording and the beat-fit line all follow it with no separate code path. The song keeps its own speed. Saved per video in the project.
+- **Scope.** Whole-clip view only. In Routine mode the card says to switch to Clip.
+
+| Test (`dev/tests/speed_test.js`, headless Chromium) | Result | Notes |
+|---|---|---|
+| Card shows, off by default | Passed | |
+| Slow-mo here | Passed | 12.0 s clip → 13.05 s, 0.33× at the playhead |
+| Time map matches the curve | Passed | Map length equals the integral of 1/speed to 0.1 ms |
+| Tap to add, drag a point, drag a handle, undo | Passed | |
+| Video speed follows the curve while playing | Passed | 50 samples, 0.33–1.7×, 0.4% median error |
+| Song stays in time with the warped clip | Passed | 2 ms median, 10 ms at 90% |
+| Recorded take has the curve's length | Passed | 9.26 s take vs 9.24 s curve; recorder's sound check ±0 ms |
+| Off returns to normal speed; kept after reload; no page errors | Passed | |
+| Earlier suites | Passed | `ui_tracking` 23/23, `ui_hits` 10/10, end-to-end, cut-out 15/15. The plan check scored BAS 0.71 against true beats (0.81 last run); that run found 14 hits instead of 13, and the routine path wasn't changed. |
+| Slow sections on a phone | **Not run** | Below about ½× there's no frame blending, so slow-mo shows repeated frames (choppier at ¼×). Speeds are held between 0.2× and 4× overall. |

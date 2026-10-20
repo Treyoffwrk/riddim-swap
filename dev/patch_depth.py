@@ -1376,5 +1376,6 @@ rep("""      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data
 rep("""  clickTick(); drawBody();""", """  clickTick(); drawBody(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}""")
 rep("""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;""","""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;""")
 
+exec(compile(pathlib.Path(__file__).with_name('speed_block.py').read_text(),'speed_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))
