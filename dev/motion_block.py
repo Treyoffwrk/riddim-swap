@@ -21,7 +21,10 @@ MOTION_CSS = r"""
 .sheet:not([hidden]){animation:rs-sheet .45s var(--spring)}
 .sheet-back:not([hidden]){animation:rs-fade .3s ease;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .panel{will-change:transform}
-.swipe-col{overflow-x:clip}
+.swipe-col{overflow-x:clip;position:relative}
+html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
+.swipe-col.swiping{-webkit-user-select:none;user-select:none}
+.swipe-col.swiping .panel{pointer-events:none}
 /* full screen */
 .fsbtn{position:absolute;top:8px;right:8px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(14,16,20,.7);color:#F3F1EC;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:transform .25s var(--spring),opacity .3s}
 .fsbtn:active{transform:scale(.9)}
@@ -62,38 +65,82 @@ function panelIn(p,dir,from){
   const x0=from!=null?from:dir*36;
   requestAnimationFrame(()=>p.animate([{transform:`translateX(${x0}%)`,opacity:from!=null?1:0.2},{transform:'translateX(0)',opacity:1}],{duration:from!=null?320:420,easing:'cubic-bezier(.32,.72,0,1)'}));
 }
-/* swipe left or right on the settings to move between Clip, Song, Tempo, Moves and Routine */
+/* swipe left or right anywhere on the settings to move between Clip, Song, Tempo, Moves and Routine.
+   Taps on buttons still work; only controls that need a sideways drag keep it: sliders, the speed graph, routine
+   reorder handles, and rows that really scroll sideways (and only while they can still scroll that way).
+   The next page slides in beside the current one and follows the finger. */
 (function(){
   const col=$('.tabs').closest('.col'); if(!col)return; col.classList.add('swipe-col');
-  const NO='input:not([type=file]):not([type=checkbox]),textarea,select,canvas,video,.tray,.chips,.tl,.seg,.nudges,.sheet,.hitstrip,.spd-graph,[data-noswipe]';
-  let sw=null;
+  const KEEP='input[type=range],textarea,select,.spd-graph,.handle,.sheet,[data-noswipe]';
+  const GAP=16; let sw=null, eatClick=0;
   const cur=()=>tabs.findIndex(x=>x.getAttribute('aria-selected')==='true');
   const panelOf=i=>$('#'+tabs[i].getAttribute('aria-controls'));
+  /* would this sideways move scroll something inside the page? then the row gets it */
+  function scrollsX(t,dx){
+    for(let e=t;e&&e!==col;e=e.parentElement){
+      const cs=getComputedStyle(e);
+      if(/(auto|scroll)/.test(cs.overflowX)&&e.scrollWidth>e.clientWidth+2){
+        if(dx<0&&e.scrollLeft+e.clientWidth<e.scrollWidth-2)return true;
+        if(dx>0&&e.scrollLeft>2)return true;
+      }
+    }
+    return false;
+  }
+  function clear(p){if(!p)return;p.style.transition='';p.style.transform='';p.style.position='';p.style.top='';p.style.left='';p.style.width='';p.style.zIndex='';p.style.pointerEvents=''}
+  function placeNeighbour(dir){
+    const j=sw.i+dir; if(sw.nb&&sw.nbDir===dir)return; if(sw.nb){sw.nb.hidden=true;clear(sw.nb);sw.nb=null}
+    if(j<0||j>=tabs.length)return;
+    const p=panelOf(sw.i), q=panelOf(j);
+    q.hidden=false; q.style.position='absolute'; q.style.top=p.offsetTop+'px'; q.style.left=p.offsetLeft+'px'; q.style.width=p.offsetWidth+'px'; q.style.zIndex='1'; q.style.pointerEvents='none';
+    sw.nb=q; sw.nbDir=dir;
+  }
+  function paint(){
+    const p=panelOf(sw.i), W=sw.W;
+    p.style.transform=`translateX(${sw.dx}px)`;
+    if(sw.nb)sw.nb.style.transform=`translateX(${sw.dx+sw.nbDir*(W+GAP)}px)`;
+  }
   col.addEventListener('touchstart',e=>{
-    if(e.touches.length!==1||S.rec||$('.pin').classList.contains('fs'))return;
-    const t=e.target; if(!t.closest('.panel')||t.closest(NO))return;
-    const q=e.touches[0]; sw={x:q.clientX,y:q.clientY,t:performance.now(),mode:null,dx:0,i:cur()};
+    if(e.touches.length!==1||S.rec||$('.pin').classList.contains('fs')||(sw&&sw.anim))return;
+    const t=e.target; if(t.closest('.tabs')||t.closest(KEEP))return;
+    if(t.matches('input,button')&&t===document.activeElement&&t.matches('input:not([type=file]):not([type=checkbox])'))return;
+    const q=e.touches[0]; sw={x:q.clientX,y:q.clientY,t:performance.now(),mode:null,dx:0,i:cur(),target:t,W:col.clientWidth||360,hist:[]};
   },{passive:true});
   col.addEventListener('touchmove',e=>{
-    if(!sw)return; const q=e.touches[0], dx=q.clientX-sw.x, dy=q.clientY-sw.y;
-    if(!sw.mode){if(Math.abs(dx)<8&&Math.abs(dy)<8)return; sw.mode=Math.abs(dx)>Math.abs(dy)*1.2?'h':'v'; if(sw.mode==='v'){sw=null;return}}
+    if(!sw||sw.anim)return; const q=e.touches[0], dx=q.clientX-sw.x, dy=q.clientY-sw.y;
+    if(!sw.mode){
+      if(Math.hypot(dx,dy)<8)return;
+      if(Math.abs(dx)>Math.abs(dy)&&!scrollsX(sw.target,dx)){sw.mode='h';sw.x=q.clientX-Math.sign(dx)*1;col.classList.add('swiping')}
+      else{sw=null;return}
+    }
     e.preventDefault();
-    const i=sw.i, atEdge=(dx>0&&i<=0)||(dx<0&&i>=tabs.length-1);
-    sw.dx=atEdge?dx*0.25:dx;   /* rubber band at the ends */
-    const p=panelOf(i); p.style.transition='none'; p.style.transform=`translateX(${sw.dx}px)`;
+    const raw=q.clientX-sw.x, dir=raw<0?1:-1, j=sw.i+dir, edge=j<0||j>=tabs.length;
+    sw.dx=edge?raw/(1+Math.abs(raw)/90):raw;   /* rubber band past the first and last */
+    if(!edge)placeNeighbour(dir); else if(sw.nb){sw.nb.hidden=true;clear(sw.nb);sw.nb=null}
+    const p=panelOf(sw.i); p.style.transition='none'; if(sw.nb)sw.nb.style.transition='none';
+    sw.hist.push([performance.now(),q.clientX]); if(sw.hist.length>20)sw.hist.shift();
+    paint();
   },{passive:false});
   const end=()=>{
-    if(!sw||sw.mode!=='h'){sw=null;return}
-    const {i,dx}=sw, dt=performance.now()-sw.t, vel=Math.abs(dx)/Math.max(1,dt), p=panelOf(i), W=col.clientWidth||360;
-    const dir=dx<0?1:-1, j=i+dir, go=j>=0&&j<tabs.length&&(Math.abs(dx)>W*0.22||(vel>0.45&&Math.abs(dx)>30));
-    sw=null;
-    if(!go){p.style.transition='transform .4s cubic-bezier(.32,.72,0,1)';p.style.transform='translateX(0)';setTimeout(()=>{p.style.transition='';p.style.transform=''},420);return}
-    const left=dx/W*100;
-    p.style.transition='';p.style.transform='';
-    showTab(tabs[j],false,{from:dir*Math.max(30,100-Math.abs(left))});
-    if(navigator.vibrate)try{navigator.vibrate(8)}catch(_){}
+    if(!sw||sw.anim)return; if(sw.mode!=='h'){sw=null;return}
+    eatClick=performance.now();
+    const now=performance.now(), H=sw.hist.filter(h=>now-h[0]<120).concat(sw.hist.length?[]:[]), vel=H.length>1?(H[H.length-1][1]-H[0][1])/Math.max(1,H[H.length-1][0]-H[0][0]):0;   /* px per ms, + = right */
+    const {i,dx,W}=sw, p=panelOf(i), nb=sw.nb, dir=sw.nbDir;
+    const go=nb&&Math.sign(-dx)===dir&&(Math.abs(dx)>W*0.3||(Math.abs(vel)>0.35&&Math.sign(-vel)===dir));
+    const ease='transform .38s cubic-bezier(.32,.72,0,1)';
+    sw.anim=true; const S0=sw;
+    p.style.transition=ease; if(nb)nb.style.transition=ease;
+    if(go){p.style.transform=`translateX(${-dir*(W+GAP)}px)`;nb.style.transform='translateX(0)'}
+    else{p.style.transform='translateX(0)';if(nb)nb.style.transform=`translateX(${dir*(W+GAP)}px)`}
+    setTimeout(()=>{
+      clear(p); if(nb)clear(nb);
+      if(go){showTab(tabs[i+dir],false,{noAnim:true});if(navigator.vibrate)try{navigator.vibrate(8)}catch(_){}}
+      else if(nb)nb.hidden=true;
+      if(sw===S0)sw=null; col.classList.remove('swiping');
+    },390);
   };
   col.addEventListener('touchend',end); col.addEventListener('touchcancel',end);
+  /* a swipe that started on a button must not also press it */
+  col.addEventListener('click',e=>{if(performance.now()-eatClick<450){e.stopPropagation();e.preventDefault()}},true);
 })();
 /* the video bar gets a hairline and shadow once content scrolls under it */
 (function(){const pin=$('.pin');const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4);window.addEventListener('scroll',f,{passive:true});f()})();
