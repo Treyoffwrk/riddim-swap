@@ -1381,5 +1381,6 @@ exec(compile(pathlib.Path(__file__).with_name('motion_block.py').read_text(),'mo
 exec(compile(pathlib.Path(__file__).with_name('hips_block.py').read_text(),'hips_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('take_block.py').read_text(),'take_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('backup_block.py').read_text(),'backup_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('audio_block.py').read_text(),'audio_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))

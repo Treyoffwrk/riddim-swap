@@ -82,3 +82,17 @@ body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud #pulse-cu
 """
 i = s.rfind('</style>')
 s = s[:i] + DOCK_CSS + s[i:]
+
+# steady sound on iPhone: close the live audio engines when the app leaves the screen; a tap makes a fresh one
+rep("""resumeFromGesture(){
+    if(!this.enabled||!this.context)return Promise.resolve(false);""","""resumeFromGesture(){
+    if(this.enabled&&!this.context)return this.enable();   /* closed while the app was away: start a fresh one in this tap */
+    if(!this.enabled||!this.context)return Promise.resolve(false);""")
+rep("""document.addEventListener('visibilitychange',()=>{
+  lifecycleEvent('visibility',{hidden:document.hidden});
+  if(document.hidden)suspendPage();""","""document.addEventListener('visibilitychange',()=>{
+  lifecycleEvent('visibility',{hidden:document.hidden});
+  /* iOS can garble page audio when an engine comes back from the background at a different rate: close them now */
+  if(document.hidden){try{pulseAudio.pause();const c=pulseAudio.context;pulseAudio.context=null;c&&c.close&&c.close().catch(()=>{})}catch(e){}
+    try{const c=cueContext;cueContext=null;c&&c.close&&c.close().catch(()=>{})}catch(e){}}
+  if(document.hidden)suspendPage();""")

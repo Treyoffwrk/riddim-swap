@@ -1776,7 +1776,9 @@ a.preservesPitch=false; a.webkitPreservesPitch=false;
 const fmt=t=>{if(!isFinite(t))t=0;const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1)};
 const fmt2=t=>{const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2)};
 const clamp=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
-function getCtx(){if(!ctx){const C=window.AudioContext||window.webkitAudioContext;ctx=new C()}return ctx}
+function getCtx(){if(!ctx){const C=window.AudioContext||window.webkitAudioContext;ctx=new C({latencyHint:'interactive'});
+  /* a call, Siri or another app took the sound: drop this engine; a fresh one is made the next time it's needed */
+  ctx.onstatechange=()=>{if(ctx&&ctx.state==='interrupted'&&!S.rec)closeCtx()}}return ctx}
 function songDur(){return buf?buf.duration:(a.duration||0)}
 function songMsg(t,err){const m=$('#songMsg');m.textContent=t;m.classList.toggle('err',!!err)}
 function recMsg(t,err){const m=$('#recMsg');m.textContent=t||'';m.hidden=!t;m.classList.toggle('err',!!err)}
@@ -2008,6 +2010,8 @@ function setPlaying(p){
 }
 function play(){
   S.playAt=performance.now();
+  /* the beat click needs the live engine, started inside the tap */
+  if(S.clickOn){try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}catch(e){}}
   if(S.hasV&&broken(v)){healMedia(false);recMsg('Reloading the video… tap play again.');return}
   if(routineOn()){const gone=S.seq.map(x=>moveById(x.id)).filter(m=>m&&srcById(m.src)&&srcById(m.src).missing);
     if(gone.length){recMsg('Re-add "'+srcById(gone[0].src).name+'" first. Tap Projects.',true);return}}
@@ -2163,7 +2167,7 @@ function loadSong(f,which,restoring,meta){
   msg('Reading the sound…');
   const place=()=>{if(rt)S.rtSong=so;else S.mainSong=so;S.liveSong=undefined;syncSlot();syncSong(true);updateMissing()};
   f.arrayBuffer()
-    .then(ab=>new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej)))
+    .then(ab=>decodeAudio(ab))
     .then(b=>{
       if(id!==loadIds[slotKey])return;
       so.buf=b; so.dur=b.duration; so.blob=encodeWav(b); so.ready=true; place(); analyzeSongObj(so,!restoring);
@@ -2816,6 +2820,32 @@ async function bodiesFromBackup(bodies){
     const B={...o,data,world:b64ToF32(o.world),hips:b64ToF32(o.hips),mask:null};await mediaPut('body:'+key,B);k++}catch(e){}}
   return k;
 }
+
+/* ---------- sound that stays clean on iPhone ----------
+   Songs used to be decoded through the live audio engine (AudioContext) and re-saved at whatever rate the phone's
+   audio was running at. That rate drops (16 or 24 kHz) during a call or with a Bluetooth headset's microphone, and it
+   can change while the app is in the background, so the song file could come out muffled or scratchy. The engine
+   also stayed open for the whole session, and iOS is known to garble page audio when an engine comes back from the
+   background at a different rate. Now: songs are decoded offline at a fixed 44.1 kHz (no audio hardware involved);
+   the live engine exists only for the beat click and the fallback recorder, and is closed whenever the app leaves
+   the screen. */
+const SONG_RATE=44100;
+function decodeAudio(ab){
+  const O=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  if(!O)return new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej));
+  let oc;try{oc=new O(2,SONG_RATE,SONG_RATE)}catch(e){return new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej))}
+  return new Promise((res,rej)=>{const p=oc.decodeAudioData(ab,res,rej);if(p&&p.then)p.then(res,rej)});
+}
+function closeCtx(){
+  if(!ctx)return; const c=ctx; ctx=null; recDest=null; try{c.close().catch(()=>{})}catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(!S.rec)closeCtx();S.awayAt=Date.now();return}
+  /* back: the song player may have been interrupted while away; give it a fresh start when nothing is playing */
+  const away=S.awayAt?Date.now()-S.awayAt:0; S.awayAt=0;
+  if(away>3000&&!S.playing&&!S.rec&&S.liveSong&&S.liveSong.blob&&typeof refreshSong==='function')refreshSong();
+});
+window.addEventListener('pagehide',()=>{if(!S.rec)closeCtx()});
 /* fallback recorder */
 function recSongPos(){return recPos+(ctx.currentTime-recT)*S.ar}
 function recStopSong(){if(!recSrc)return;const s=recSrc;recSrc=null;try{s.stop()}catch(e){}s.disconnect()}
@@ -3011,7 +3041,6 @@ function healMedia(force){
   let n=0;
   S.sources.forEach(x=>{if(x.missing||!x.blob)return;if(force||broken(x.el)||broken(x.el2)){x.errs=0;refreshSource(x);n++}});
   if(S.liveSong&&S.liveSong.blob&&(force||broken(a))){refreshSong();n++}
-  if(ctx&&ctx.state!=='running')ctx.resume().catch(()=>{});
   S.primed=null; return n;
 }
 let hiddenAt=0;
@@ -3731,7 +3760,7 @@ function encComp(){try{return +(localStorage.getItem(encKey())||0)||0}catch(e){r
 async function verifyTake(blob,R){
   try{
     if(!buf)return;
-    const ab=await blob.arrayBuffer(); const dec=await new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej));
+    const ab=await blob.arrayBuffer(); const dec=await decodeAudio(ab);
     const SR=8000, take=dec.getChannelData(0), tsr=dec.sampleRate, song=buf.getChannelData(0), ssr=buf.sampleRate;
     const t0=0.2, t1=Math.min(4.2,dec.duration-0.3); if(t1-t0<1.2)return;
     const n=Math.floor((t1-t0)*SR), x=new Float32Array(n);
@@ -4209,7 +4238,7 @@ function hipGraph(){
 $('#hipCanvas').addEventListener('click',e=>{const n=srcById(S.cur),B=n&&bodyOf(n);if(!B||routineOn())return;const r=e.currentTarget.getBoundingClientRect();const t=(e.clientX-r.left)/r.width*(v.duration||1);if(S.playing)pause();S.segIdx=0;v.currentTime=Math.max(0,Math.min(v.duration||t,t));hipGraph()});
 (function hipLoop(){try{hipGraph()}catch(e){}requestAnimationFrame(hipLoop)})();
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__rs={S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;

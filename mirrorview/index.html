@@ -2059,6 +2059,7 @@ class PulseAudio {
     }catch(e){if(seq===this.sequence){this.enabled=false;this.onError(e);}return false;}
   }
   resumeFromGesture(){
+    if(this.enabled&&!this.context)return this.enable();   /* closed while the app was away: start a fresh one in this tap */
     if(!this.enabled||!this.context)return Promise.resolve(false);
     if(this.context.state==='running'){this.wake();return Promise.resolve(true);}
     if(this.resumePending)return this.resumePending;
@@ -6009,6 +6010,9 @@ refVideo.addEventListener('ended',()=>{if(state.loading||state.demo)return;if(pr
 refVideo.addEventListener('error',()=>{if(!state.loading&&!state.demo&&refVideo.error)setIssue('video',videoProblem(refVideo,'playback'));});
 document.addEventListener('visibilitychange',()=>{
   lifecycleEvent('visibility',{hidden:document.hidden});
+  /* iOS can garble page audio when an engine comes back from the background at a different rate: close them now */
+  if(document.hidden){try{pulseAudio.pause();const c=pulseAudio.context;pulseAudio.context=null;c&&c.close&&c.close().catch(()=>{})}catch(e){}
+    try{const c=cueContext;cueContext=null;c&&c.close&&c.close().catch(()=>{})}catch(e){}}
   if(document.hidden)suspendPage();
   else{lastNow=performance.now();renderRevision++;if(camera.stream)camera.resume().catch(err=>logMedia('camera-resume',err));updateRecoveryUI();}
 });

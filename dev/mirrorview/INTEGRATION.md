@@ -290,3 +290,26 @@ Measured first on your clips (`dev/poselab/`: the same MediaPipe model tracked w
 |---|---|
 | Full regression in one run | **All passed**: Riddim Swap suites, end-to-end (sound ±0 ms, take hits 12/12), body (311 frames tracked in 72 s, was 112 s), Body tab, bottom bar, Pulse, camera, offline pages, hand-off, cut-out, speed graph, full screen, swipe, hips (11/11), take with Pulse (8/8), offline tracker (3/3), backup with tracking (4/4). |
 | Phone speed of tracking | **Not run** |
+
+## Clean sound over a long session and after switching apps (Oct 2026)
+
+**Report:** after the app had been open a while, or after switching away and back, the song cut out and played scratchy.
+
+**Causes found in the code** (the glitch itself is iPhone behaviour and can't be reproduced in the test browser):
+- **Songs depended on the phone's audio rate.** A song was decoded through the live audio engine (AudioContext) and re-saved as a WAV at whatever rate the phone's audio was running at. The phone runs at 16 or 24 kHz during a call or with a Bluetooth headset's microphone, and the rate can change while the app is in the background, so the song file could come out degraded.
+- **The live engines never closed.** Riddim Swap's engine stayed open for the whole session, and so did MirrorView's beat-click and practice-cue engines. iOS is known to garble page audio when an engine comes back from the background at a different rate.
+
+**Changes:**
+- **Fixed-rate decoding.** Songs (and the recording self-check) are decoded offline at a fixed 44.1 kHz, which never touches the audio hardware.
+- **Live engines only when needed.** Riddim Swap opens its engine only for the beat click and the fallback recorder, starting it inside a tap. It closes when the app leaves the screen, or when iOS interrupts it (call, Siri, another app); the next tap makes a fresh one. MirrorView's two engines close the same way.
+- **Song player refresh.** Coming back after more than 3 seconds away gives the song player a fresh start, when nothing is playing.
+
+| Test (`dev/tests/audio_test.js`) | Result |
+|---|---|
+| Adding a song opens no live audio engine | Passed (before: one, kept forever) |
+| Song decoded and played at 44.1 kHz; beat analysis unchanged (99.51 BPM) | Passed |
+| Beat click opens the engine; leaving the app pauses and closes it | Passed |
+| Coming back: fresh song player, song in time (18 ms), click works again (new engine) | Passed |
+| 8 trips away and back: in time (14 ms), no engine left open | Passed |
+| On a real iPhone: no scratchy sound after calls, Bluetooth and app switching | **Not run** (needs your phone) |
+| Full regression | All passed in one run (16 suites, including recording sync ±0 ms and Pulse on takes) |
