@@ -334,3 +334,5 @@ Measured first on your clips (`dev/poselab/`: the same MediaPipe model tracked w
 | Start fresh: empty project, last one kept in Projects | Passed |
 | Erase everything: second tap needed; databases, settings and tracker cache gone; no projects left | Passed |
 | MirrorView reloads on return when a new version is out | Passed |
+
+**Fix (same day):** the header (title and **Projects**) couldn't be seen on phones. The solid strip added above the pinned video bar was drawn even at the top of the page, so it painted over the header. Taps still went through it, which is why the tests that clicked Projects didn't notice. The strip now appears only once the bar is actually pinned at the top. `dev/tests/header_test.js` checks what is drawn over the header at the top, slightly scrolled, scrolled down and back at the top (4/4). Motion, swipe, session and speed suites still pass.

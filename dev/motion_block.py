@@ -5,7 +5,8 @@ MOTION_CSS = r"""
 /* the video bar is part of the page: flush to the top, solid behind the status bar, nothing shows above it */
 @media (max-width:860px){
   .pin{top:0!important;padding-top:calc(env(safe-area-inset-top,0px) + 8px)!important;z-index:30!important;border-bottom:1px solid transparent!important;transition:box-shadow .35s var(--spring),border-color .35s}
-  .pin::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:100vh;background:var(--bg);pointer-events:none}
+  /* only once content has scrolled under the bar: at the top of the page the header (title, Projects) sits above it */
+  .pin.stuck::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:100vh;background:var(--bg);pointer-events:none}
   .pin.stuck{border-bottom-color:var(--line)!important;box-shadow:0 14px 28px -18px rgba(0,0,0,.9)}
   .tabs{background:rgba(14,16,20,.82)!important;-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px)}
   .tab::before{transition:background-color .3s var(--spring),transform .35s var(--spring);transform:scaleX(.4)}
@@ -143,7 +144,8 @@ function panelIn(p,dir,from){
   col.addEventListener('click',e=>{if(e.isTrusted&&performance.now()-eatClick<450){e.stopPropagation();e.preventDefault()}},true);
 })();
 /* the video bar gets a hairline and shadow once content scrolls under it */
-(function(){const pin=$('.pin');const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4);window.addEventListener('scroll',f,{passive:true});f()})();
+(function(){const pin=$('.pin');/* stuck = the bar is actually pinned at the top (the header has scrolled away), not merely scrolled a little */
+  const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4&&pin.getBoundingClientRect().top<=1);window.addEventListener('scroll',f,{passive:true});window.addEventListener('resize',f);f()})();
 /* full screen playback: the whole video bar (video, body, play and scrub) fills the screen. Uses the browser's
    full screen where it is allowed, and fills the window where it isn't (iPhone Safari, inside other apps). */
 (function(){
