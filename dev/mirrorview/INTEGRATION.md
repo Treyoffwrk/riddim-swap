@@ -336,3 +336,48 @@ Measured first on your clips (`dev/poselab/`: the same MediaPipe model tracked w
 | MirrorView reloads on return when a new version is out | Passed |
 
 **Fix (same day):** the header (title and **Projects**) couldn't be seen on phones. The solid strip added above the pinned video bar was drawn even at the top of the page, so it painted over the header. Taps still went through it, which is why the tests that clicked Projects didn't notice. The strip now appears only once the bar is actually pinned at the top. `dev/tests/header_test.js` checks what is drawn over the header at the top, slightly scrolled, scrolled down and back at the top (4/4). Motion, swipe, session and speed suites still pass.
+
+## Song cut-outs fixed at the source, hips on the beat, study loop, body on takes (Oct 2026)
+
+### The song cutting out
+
+The earlier sound fixes dealt with iOS's audio engine. The cut-outs themselves came from how the song followed the video:
+- **Chained jumps.** Drift over 80 ms jumped the song, at most every 1.5 s. After every jump, a check 0.4 s later jumped again if the song was still 30 ms off. A video running slightly slow therefore produced a chain of jumps every 0.4 s.
+- **Hiccups stopped the song.** In clip mode, every short video buffering hiccup paused the song and jumped it back in.
+- **The phone worked too hard.** The Hip moves graph, the speed graph and the body overlay redrew 60 times a second even with nothing changing, which makes a phone warm up and its video fall behind over a session.
+
+Changes:
+- **The song is the steady clock.** The video's speed is nudged (up to ±6%, invisible) to follow it, with a proportional and a slowly learned part, so a steadily slow video ends up exactly in time.
+- **The song only jumps for real seeks:** pressing play, scrubbing, looping, or drift over 0.35 s (0.5 s in a routine).
+- **Short hiccups (under 0.6 s) no longer stop the song.**
+- **Graphs and the body overlay redraw only when something changed,** and at most 15 times a second while playing.
+- **Recording keeps its own measured path** (unchanged).
+- **Sound report** in Projects for the last play: time in sync, largest gap, song jumps, video stalls.
+
+`dev/tests/sync_stress.js` simulates a struggling phone (CPU slowed 4×, every video 3% slower than asked, a short buffering hiccup every 3 s) over 20 s:
+
+| | Song jumps | Song pauses | Gap song/video (median, 90%) |
+|---|---|---|---|
+| Version on the phone (053b57e8c2) | 47–50 | 6–7 | 25–32 ms, 67–70 ms |
+| This version | 2–3 (the clip looping) | 0 | 3 ms, 10–11 ms |
+
+### Hips on the beat
+
+Hip hits are the moments a hip tilt stops sharply. They're marked on the Hip moves graph: green on the beat grid, pink off it. The card says whether they lock to the song.
+- **The measure:** each hit's position within the beat split into 1, 2 or 4 parts (whichever split is closest to how often the hips hit), treated as a direction on a circle. Hits that keep landing at the same point agree; random timing doesn't. The test is Rayleigh's: n·R² over 4 counts as some lock, over 7 strong, with the bar raised for trying more than one split. The average direction gives early or late.
+- **Why not a percentage on the beat:** at 129 BPM, a ±70 ms window around beats and "ands" covers 60% of all time, so a percentage would mostly be chance.
+- **On your clip with its own song:** tilt hits clustered above chance against independent beat tracking (R 0.27 against 0.22 at the 95% level, 17 ms early). With the app's own beat reading the score is 3.5, just under the bar, so it says "not clearly". An unrelated song scores 0.5.
+- **Where the truth is known:** hits placed 40 ms after each beat and "and" read as locked, 42 ms late. Random hits read as not locked.
+- **Side-to-side sway** didn't lock on that clip, so tilt is used.
+
+### Study ½×
+
+Next to Repeat. It loops 2 s around the playhead at half speed, and the song is slowed with its pitch kept. Nothing is saved; tapping again restores the clip, speeds and repeat. Recording or switching to the routine leaves study first. Tested: stays in the loop and comes round; video and song at 0.500×; song within 4 ms; everything restored.
+
+### Body on takes
+
+"Draw it on recorded takes" (Clip tab, body tracking) puts what the stage shows into each recorded frame: the cut-out if it's on, and the dance body with hips and meter if Body is on. Each frame uses the pose for that exact frame, at the take's resolution.
+- **Tested:** a plain take has none of the body's colours; with the option on, there is clear body blue and hip pink in the frames, and the sound check still reads ±0 ms.
+- **On the test machine:** the take with the body drawn on was 0.26 s shorter than the plain one (frames dropped at the end under the extra drawing).
+
+| Full regression | All 22 suites passed in one run. The routine take's hit check read 9 of 12 under load and 12 of 12 twice when run alone (recording sync is unchanged and still ±0 ms). |

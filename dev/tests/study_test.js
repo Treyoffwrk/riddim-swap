@@ -1,0 +1,25 @@
+/* Study a move: 2 s loop around the playhead at half speed, song slowed with pitch kept, nothing saved. Usage: node study_test.js <page> <video> <song> */
+const {chromium}=require('playwright');const [,,page,video,song]=process.argv;
+const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
+(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--autoplay-policy=no-user-gesture-required']});
+ const p=await (await b.newContext({viewport:{width:390,height:844}})).newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));
+ await p.goto(page+'#debug');await p.evaluate(()=>{indexedDB.deleteDatabase('riddim-swap');localStorage.clear()});await p.reload();
+ await p.setInputFiles('#vidFile',video);await p.setInputFiles('#audFile',song);await p.waitForTimeout(3000);
+ const before=await p.evaluate(()=>({vr:window.__rs.S.vr,ar:window.__rs.S.ar,loop:window.__rs.S.loop}));
+ await p.evaluate(()=>{window.__rs.v().currentTime=5});await p.waitForTimeout(400);
+ await p.click('#studyBtn');await p.waitForTimeout(800);
+ const st=await p.evaluate(()=>({study:window.__rs.S.study,tag:!document.getElementById('studyTag').hidden,playing:window.__rs.S.playing}));
+ rec('Study loops 2 s around the playhead and starts playing',st.study&&Math.abs(st.study.a-4)<0.01&&Math.abs(st.study.b-6)<0.01&&st.tag&&st.playing?'passed':'failed',JSON.stringify(st));
+ const s=await p.evaluate(async()=>{const a=document.getElementById('aud'),R=window.__rs,out=[];const t0=performance.now();
+   while(performance.now()-t0<6000){await new Promise(r=>setTimeout(r,150));const v=R.v();out.push({t:v.currentTime,vr:v.playbackRate,ar:a.playbackRate,pitch:a.preservesPitch,drift:a.paused?null:a.currentTime-(R.S.offset+((v.currentTime-R.S.cIn)/R.S.vr)*R.S.ar)})}return out});
+ const ts=s.map(x=>x.t),inLoop=ts.every(t=>t>=3.95&&t<=6.1),looped=ts.some((t,i)=>i&&t<ts[i-1]-0.5);
+ rec('It stays in the loop and comes round again',inLoop&&looped?'passed':'failed',`video ${Math.min(...ts).toFixed(2)}–${Math.max(...ts).toFixed(2)} s, looped: ${looped}`);
+ const mid=s.filter(x=>x.drift!=null).slice(3);const d=mid.map(x=>Math.abs(x.drift)).sort((a,b)=>a-b);
+ rec('Video and song both at half speed, song pitch kept, in time',s.every(x=>Math.abs(x.vr/before.vr-0.5)<0.07)&&s.every(x=>Math.abs(x.ar/before.ar-0.5)<0.01)&&s.every(x=>x.pitch)&&d[d.length>>1]<0.06?'passed':'failed',`video ${s[5].vr.toFixed(3)}×, song ${s[5].ar.toFixed(3)}×, pitch kept ${s[5].pitch}, gap median ${Math.round(d[d.length>>1]*1000)} ms`);
+ await p.click('#studyBtn');await p.waitForTimeout(500);
+ const after=await p.evaluate(()=>({study:window.__rs.S.study,vr:window.__rs.S.vr,ar:window.__rs.S.ar,loop:window.__rs.S.loop,pitch:document.getElementById('aud').preservesPitch,segs:window.__rs.segs().map(g=>[+g.s.toFixed(2),+g.e.toFixed(2)])}));
+ rec('Tap again: back to the whole clip, speeds and repeat as they were',!after.study&&after.vr===before.vr&&after.ar===before.ar&&after.loop===before.loop&&!after.pitch&&after.segs[0][0]===0?'passed':'failed',JSON.stringify(after));
+ await p.evaluate(()=>{window.__rs.v().currentTime=2});await p.click('#studyBtn');await p.waitForTimeout(600);await p.click('#recBtn');await p.waitForTimeout(800);
+ rec('Recording leaves study first',await p.evaluate(()=>!window.__rs.S.study)?'passed':'failed','');
+ await p.click('#recBtn').catch(()=>{});await p.waitForTimeout(500);
+ rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));await b.close()})();
