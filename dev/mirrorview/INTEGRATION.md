@@ -313,3 +313,24 @@ Measured first on your clips (`dev/poselab/`: the same MediaPipe model tracked w
 | 8 trips away and back: in time (14 ms), no engine left open | Passed |
 | On a real iPhone: no scratchy sound after calls, Bluetooth and app switching | **Not run** (needs your phone) |
 | Full regression | All passed in one run (16 suites, including recording sync ±0 ms and Pulse on takes) |
+
+## Sessions you can reset, and updates that arrive (Oct 2026)
+
+**Report:** sessions couldn't be cleared between uses, and the sound problem continued after the fix.
+
+**Cause:** on iPhone a Home Screen app isn't restarted when you leave and come back. iOS resumes the same page, sometimes for days. The fixed version was live, but the phone kept running the page it had loaded before. A new version only arrived on a real reload, and nothing in the app did one.
+
+**Changes:**
+- **Updates arrive by themselves.** Coming back to the app (and every 10 minutes) it checks whether a new version is out. On coming back, nothing is ever playing (the app pauses when you leave), so it saves and reloads straight away and the project comes back. If the 10-minute check finds one while you're playing, an **Update now** bar appears instead. MirrorView reloads on return the same way, unless it's playing, practising or has the camera on.
+- **Start fresh** (Projects): saves the project, restarts the app with new players and a new sound engine, and opens an empty project. The last one stays in Projects.
+- **Erase everything** (Projects): a second tap within 4 s confirms, with no pop-up. It deletes all projects, videos, songs, the hand-off store, settings, the app's saved files and the service worker, then reloads clean. Saving is switched off first, so leaving the page can't write the project back.
+- **Version:** Projects shows "This version: …", the same code as `sw.js`.
+
+| Test (`dev/tests/session_test.js`, `mv_update_test.js`) | Result |
+|---|---|
+| Version shown in Projects | Passed |
+| New version out, come back to the app: it reloads, project kept | Passed |
+| New version found while playing: Update now bar; tapping it reloads with the project | Passed |
+| Start fresh: empty project, last one kept in Projects | Passed |
+| Erase everything: second tap needed; databases, settings and tracker cache gone; no projects left | Passed |
+| MirrorView reloads on return when a new version is out | Passed |

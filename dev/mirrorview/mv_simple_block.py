@@ -96,3 +96,19 @@ rep("""document.addEventListener('visibilitychange',()=>{
   if(document.hidden){try{pulseAudio.pause();const c=pulseAudio.context;pulseAudio.context=null;c&&c.close&&c.close().catch(()=>{})}catch(e){}
     try{const c=cueContext;cueContext=null;c&&c.close&&c.close().catch(()=>{})}catch(e){}}
   if(document.hidden)suspendPage();""")
+
+# updates arrive in MirrorView too: on coming back, reload when a new version is out and nothing is playing
+MV_UPD = r"""
+/* Riddim Swap integration: iPhone resumes a Home Screen app instead of restarting it, so check for a new version on return */
+(function(){
+  const ver=async()=>{try{const r=await fetch('../sw.js?v='+Date.now(),{cache:'no-store'});if(!r.ok)return null;const m=(await r.text()).match(/VERSION='([^']+)'/);return m?m[1]:null}catch(e){return null}};
+  let boot=null,at=0;ver().then(v=>{boot=v;at=Date.now()});
+  document.addEventListener('visibilitychange',async()=>{
+    if(document.hidden||!boot||Date.now()-at<20000)return;at=Date.now();
+    const v=await ver();if(!v||v===boot)return;
+    const busy=state.playing||state.countdown||document.body.classList.contains('practice-active')||(typeof camera!=='undefined'&&camera.stream);
+    if(!busy)location.reload();else toast('A new version is ready: it loads next time you open MirrorView.');
+  });
+})();
+"""
+rep("function drawImageFit(ctx,img,area,alpha,mirror,fit='contain'){", MV_UPD + "function drawImageFit(ctx,img,area,alpha,mirror,fit='contain'){")
