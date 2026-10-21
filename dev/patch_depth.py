@@ -1372,11 +1372,12 @@ rep("""  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=$('#bodyShow')
 rep("""    const B=await RB.track(n.url,{onProgress:p=>{bar.style.width=Math.round(p*100)+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+Math.round(p*100)+'%'}});""",
     """    const B=await RB.track(n.url,{onProgress:p=>{S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%';dockUpdate()}});""")
 rep("""      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data}:null});goMirror(id);return true}""",
-    """      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null}:null});goMirror(id);return true}""")
+    """      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}""")
 rep("""  clickTick(); drawBody();""", """  clickTick(); drawBody(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}""")
 rep("""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;""","""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;""")
 
 exec(compile(pathlib.Path(__file__).with_name('speed_block.py').read_text(),'speed_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('motion_block.py').read_text(),'motion_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('hips_block.py').read_text(),'hips_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))

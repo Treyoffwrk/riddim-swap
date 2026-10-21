@@ -123,12 +123,16 @@ function danceBody2D(ctx,points,rect,mirror,colour,stroke){
   const hw=Math.hypot(q[23].x-q[24].x,q[23].y-q[24].y),ax={x:(q[23].x-q[24].x)/(hw||1),y:(q[23].y-q[24].y)/(hw||1)},dn={x:(hp.x-sh.x)/torso,y:(hp.y-sh.y)/torso};
   const wl=lerp(q[23],q[11],.28),wr=lerp(q[24],q[12],.28),push=Math.max(hw*.12,torso*.05);
   const ol={x:q[23].x+ax.x*push,y:q[23].y+ax.y*push},orr={x:q[24].x-ax.x*push,y:q[24].y-ax.y*push},cr={x:hp.x+dn.x*torso*.2,y:hp.y+dn.y*torso*.2};
-  ctx.fillStyle=HIPS;ctx.strokeStyle=HIPS;ctx.globalAlpha=.55;ctx.beginPath();[wl,wr,orr,cr,ol].forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fill();ctx.globalAlpha=1;ctx.stroke();
+  let hipInfo=null,prepB=null;try{if(colour===REF&&typeof preparedBody!=='undefined'&&preparedBody&&preparedBody.key===state.key){prepB=preparedBody;hipInfo=RB.hipsAt(prepB,state.time);if(hipInfo&&mirror)hipInfo={...hipInfo,tilt:hipInfo.tilt!=null?-hipInfo.tilt:null,turn:hipInfo.turn!=null?-hipInfo.turn:null}}}catch(e){}
+  if(typeof RB!=='undefined'&&RB.drawPelvis){RB.drawPelvis(ctx,{23:[q[23].x,q[23].y],24:[q[24].x,q[24].y]},hipInfo,{pink:HIPS,lw,torso,tiltGuide:colour===REF});}
+  else{ctx.fillStyle=HIPS;ctx.strokeStyle=HIPS;ctx.globalAlpha=.55;ctx.beginPath();[wl,wr,orr,cr,ol].forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fill();ctx.globalAlpha=1;ctx.stroke();}
   ctx.strokeStyle=colour;
   const limb=(ids,w)=>{ctx.lineWidth=w;ctx.beginPath();let on=false;for(const j of ids){if(!ok(j)){on=false;continue}if(!on){ctx.moveTo(q[j].x,q[j].y);on=true}else ctx.lineTo(q[j].x,q[j].y)}ctx.stroke()};
   limb([11,13,15],lw*.9);limb([12,14,16],lw*.9);limb([23,25,27,31],lw);limb([24,26,28,32],lw);
   if(ok(0)){const hr=ok(7)&&ok(8)?Math.max(6,Math.hypot(q[7].x-q[8].x,q[7].y-q[8].y)*.75):torso*.18;ctx.globalAlpha=.3;ctx.fillStyle=colour;ctx.beginPath();ctx.arc(q[0].x,q[0].y,hr,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*.3);ctx.stroke();}
-  ctx.restore();return true;
+  ctx.restore();
+  if(prepB&&typeof RB!=='undefined'&&RB.drawMeter&&rect.h/(window.devicePixelRatio||1)>=260)try{RB.drawMeter(ctx,prepB,state.time,rect,{hips:HIPS,mirror,corner:'tr',reserveTop:42*(window.devicePixelRatio||1),reserveBottom:58*(window.devicePixelRatio||1)})}catch(e){}
+  return true;
 }
 function danceHipPath(ctx,rect,mirror,hp,sh,lw){
   if(typeof state==='undefined'||!state.poseSamples?.length||state.demo)return;

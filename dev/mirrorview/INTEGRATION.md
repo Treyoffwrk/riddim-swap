@@ -205,3 +205,66 @@ A curve on the Clip tab that sets how fast the clip plays at each moment, like a
 | Earlier suites | Passed: end-to-end (beat F 0.99, hits F 1.0, sync ±0 ms), `ui_hits` 10/10, speed graph 13/13, `ui_tracking` 23/23 on two reruns. One run failed the "unsure beat never flashes" check once; it passed on both reruns, so it looks like a timing flake in the test. |
 | Swipe from anywhere (`dev/tests/swipe_test.js`): Beat lights switch, empty space beside the video list, a video chip, speed nudges; the next page shown mid-drag; slow drag springs back, quick flick changes page; sliders, speed graph and vertical scroll unaffected; the button under the finger isn't pressed | Passed, 13/13 |
 | Real iPhone: swipe feel, full screen in Safari and inside the Claude app | **Not run** |
+
+## Steadier skeleton and hips you can read (Oct 2026)
+
+Measured first on your clips (`dev/poselab/`: the same MediaPipe model tracked with several settings, then compared).
+
+### What was wrong
+
+- **It jumped between people.** The tracker looked for one person per frame, so in a clip with two dancers it switched to the other dancer (around 3 s and 14 s in your street clip) and lost the body in 64 of 600 frames.
+- **Jitter.** Each frame was tracked on its own with only light smoothing, so the hip line wobbled about 1.4° from frame to frame on a smooth movement. The tracker's built-in smoothing roughly halves that, but it trims fast peaks.
+- **Hips were a shape, not a measurement.** The pelvis tilted and narrowed, but nothing said how much, which way the hips faced, or what path they drew.
+- **Half the frames on a busy phone.** The frame-rate check read the frame clock while the phone was busy and could see 15 fps on a 30 fps clip, so only every other frame was tracked.
+
+### What changed (`body.js`, shared by both apps)
+
+- **Follows one dancer.** It looks for up to 3 people per frame and follows the same one, starting with the biggest and most central. Each frame it picks whoever is nearest to where that dancer should be, about the same size, and wearing the same colours (top and thighs, sampled from the frame). The colours are learned only from confident frames, so they can't drift onto someone else.
+  - **Someone walking in front:** when another person crosses in front, the followed dancer has no body for those frames rather than jumping onto the other person. After 1.5 s with nobody matching (a cut, or they left), it starts again with the biggest person.
+  - **Choose the dancer** (Clip tab): tap the person on the video, and tracking follows them from that frame forwards and backwards. A chosen dancer is never swapped for someone else.
+- **Cleaned over the whole clip, with no delay.** Every step looks both ways in time: undo left/right mix-ups (best labelling over each run), replace single-frame outliers, fill gaps of up to 6 frames, then zero-phase smoothing (window 5 for hands and feet, 7 for torso and hips, 11 for depth).
+- **Hip measures for every frame:**
+  - **Tilt:** the hip line against level, in degrees.
+  - **Tilt against the shoulders:** the hips moving on their own.
+  - **Sway:** hips sideways from the chest.
+  - **Turn and twist:** which way the hips face, from the tracker's 3D estimate.
+  - **Forward/back:** an estimate from depth, and the least certain.
+- **Drawing the hips:**
+  - A pink belt runs through the hip joints, with the raised side ringed in white.
+  - A hip bowl gets rounder as the hips turn.
+  - At 3° of tilt or more, a dashed level line appears, the angle is filled in and the degrees are shown.
+- **Hip meter on the video** (with Hips on): **Tilt**, **Sway** (the hips' path under the chest over 1.5 s, seen from above, so a whine draws a loop) and **Turn**. It sits in the black bars beside a tall video when it fits there, and over the top corner otherwise. MirrorView shows it when the video is big enough (Overlay, full screen).
+- **Hip moves graph** (Clip tab): tilt and sway over the whole clip, with the song's beats, the dance hits and the playhead. Tap it to jump there.
+- **Older tracks** are cleaned when loaded, and the app suggests Track again to get turn and following one dancer.
+- **Frame rate** is now checked by stepping frame by frame, so a busy phone can't halve it. Steps that show no new frame (variable-rate clips) are skipped instead of repeating a pose.
+- **Fixed a bug from the swipe change:** a tab opened from MirrorView (for example Routine) could be ignored if it arrived within half a second of the page loading.
+
+### Evidence
+
+| Measure (your clips, CPU, 30 fps, 600 frames each) | Before | After |
+|---|---|---|
+| Two-dancer clip: switches to the other dancer | 2 | 0 (no body for about 30 frames while the other dancer walks in front, 14.3–15.3 s) |
+| Jitter at the hips (frame-to-frame acceleration, torso lengths) | 0.035 | 0.011 |
+| Jitter at the wrists | 0.117 | 0.058 |
+| Hip-line wobble from frame to frame | 1.40° | 0.44° |
+| Movement kept over 0.13 s (hips, knees, ankles, wrists) | — | 93–98% of the raw track |
+| Movement kept over 0.07 s (wrists, hips) | — | about 82%: the fastest flicks are softened a little |
+| Left/right mix-ups put in on purpose (3 runs, 2–21 frames) | — | all undone |
+| Tracking time per frame on the test machine | 180 ms | 200 ms (looking for up to 3 people) |
+
+| Test (`dev/mirrorview/tests/hips_test.js`) | Result |
+|---|---|
+| Two dancers: follows one, and says so | Passed |
+| Someone walking in front (14.6–15.2 s) doesn't steal the track | Passed: 0 of 24 frames on the other dancer |
+| Choose the dancer: tap the other one at 2.7 s and it follows them (599 frames, no jumps) | Passed |
+| Tilt, sway, turn and forward/back on every frame; meter drawn; graph shown and tappable | Passed |
+| An older track still draws, cleaned on load | Passed |
+| Earlier suites after this change | Passed, with reruns. All passed in the full run (body tracking on every frame: 312 of 312 frames, Body tab, bottom bar, Pulse 99.5 BPM, camera, offline cache, hand-off, cut-out, speed graph, full screen, swipe, end-to-end recording ±0 ms) except two that were slow on the busy test machine: the cut-out lagged 107 ms during playback, and the recorded take's hit check matched 8 of 12 hits. Both passed when rerun alone (12 ms lag; 12 of 12 hits). |
+| Pulse on a Riddim Swap take | Still failing (stage 1 gap) |
+| MirrorView receives the hip measures | Passed |
+
+**Not verified:**
+- **Accuracy:** there are no hand-marked hip angles for these clips, so the tests show the readings are steadier and consistent, not that 12° is exactly 12°.
+- **Forward/back:** comes from the tracker's depth guess, which is noisy (about a third of its signal is above 6 Hz before smoothing).
+- **Facing away:** front and back can be confused when the dancer has their back to the camera.
+- **Speed on a phone:** not measured.

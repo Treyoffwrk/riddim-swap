@@ -72,7 +72,7 @@ function panelIn(p,dir,from){
 (function(){
   const col=$('.tabs').closest('.col'); if(!col)return; col.classList.add('swipe-col');
   const KEEP='input[type=range],textarea,select,.spd-graph,.handle,.sheet,[data-noswipe]';
-  const GAP=16; let sw=null, eatClick=0;
+  const GAP=16; let sw=null, eatClick=-1e9;
   const cur=()=>tabs.findIndex(x=>x.getAttribute('aria-selected')==='true');
   const panelOf=i=>$('#'+tabs[i].getAttribute('aria-controls'));
   /* would this sideways move scroll something inside the page? then the row gets it */
@@ -140,7 +140,7 @@ function panelIn(p,dir,from){
   };
   col.addEventListener('touchend',end); col.addEventListener('touchcancel',end);
   /* a swipe that started on a button must not also press it */
-  col.addEventListener('click',e=>{if(performance.now()-eatClick<450){e.stopPropagation();e.preventDefault()}},true);
+  col.addEventListener('click',e=>{if(e.isTrusted&&performance.now()-eatClick<450){e.stopPropagation();e.preventDefault()}},true);
 })();
 /* the video bar gets a hairline and shadow once content scrolls under it */
 (function(){const pin=$('.pin');const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4);window.addEventListener('scroll',f,{passive:true});f()})();
