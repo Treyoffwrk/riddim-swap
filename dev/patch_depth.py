@@ -1377,5 +1377,6 @@ rep("""  clickTick(); drawBody();""", """  clickTick(); drawBody(); if(S.playing
 rep("""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;""","""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;""")
 
 exec(compile(pathlib.Path(__file__).with_name('speed_block.py').read_text(),'speed_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('motion_block.py').read_text(),'motion_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))

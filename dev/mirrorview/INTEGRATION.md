@@ -188,3 +188,19 @@ A curve on the Clip tab that sets how fast the clip plays at each moment, like a
 | Off returns to normal speed; kept after reload; no page errors | Passed | |
 | Earlier suites | Passed | `ui_tracking` 23/23, `ui_hits` 10/10, end-to-end, cut-out 15/15. The plan check scored BAS 0.71 against true beats (0.81 last run); that run found 14 hits instead of 13, and the routine path wasn't changed. |
 | Slow sections on a phone | **Not run** | Below about ½× there's no frame blending, so slow-mo shows repeated frames (choppier at ¼×). Speeds are held between 0.2× and 4× overall. |
+
+## Full screen, swipe between modes, smoother motion (Riddim Swap, Oct 2026)
+
+- **Full screen.** A button on the video (top right) fills the screen with the video, the body drawing, play and the scrubber. Tap the video to play or pause; while playing, the controls fade after about 2.5 s and come back on a tap. It uses the browser's full screen where that's allowed (Android, desktop, iPad). Where it isn't (iPhone Safari, inside the Claude app), it fills the window instead, so it also works across routine cuts, which a single native video player couldn't do. The ✕ button or Escape exits.
+- **Swipe between modes.** Swipe left or right on a settings page to move between Clip, Song, Tempo, Moves and Routine. The page follows your finger, springs back on a short drag and rubber-bands past Routine. Swipes that start on a slider, segmented control, nudge row, timeline, tray, video chips or the speed graph are left alone, so those controls work as before.
+- **Video bar part of the page.** On phones the video bar is flush to the top, with solid background behind the status bar, so nothing scrolls into view above it. A hairline and shadow appear once content is under it. The bottom bar is translucent with a blur.
+- **Motion.** Pages slide in from the side they come from. Buttons ease when pressed. The Projects sheet slides up over a blurred backdrop, and new cards fade up. All of this is off with Reduce Motion.
+
+| Test (`dev/tests/motion_test.js`, phone-sized headless Chromium with touch) | Result |
+|---|---|
+| Swipe left/right moves between modes; a short drag springs back; nothing past Routine | Passed |
+| Dragging a slider or scrolling vertically doesn't change mode | Passed |
+| Video bar flush at the top after scrolling, nothing visible above it | Passed |
+| Full screen fills 390×844 with video, play and scrub; tap plays; controls fade and return; ✕ and Escape exit | Passed |
+| Earlier suites | Passed: end-to-end (beat F 0.99, hits F 1.0, sync ±0 ms), `ui_hits` 10/10, speed graph 13/13, `ui_tracking` 23/23 on two reruns. One run failed the "unsure beat never flashes" check once; it passed on both reruns, so it looks like a timing flake in the test. |
+| Real iPhone: swipe feel, full screen in Safari and inside the Claude app | **Not run** |
