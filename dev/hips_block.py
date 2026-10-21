@@ -82,3 +82,12 @@ $('#hipCanvas').addEventListener('click',e=>{const n=srcById(S.cur),B=n&&bodyOf(
 (function hipLoop(){try{hipGraph()}catch(e){}requestAnimationFrame(hipLoop)})();
 """
 rep("""/* test hook: only with #debug in the address */""", HIP_JS + """/* test hook: only with #debug in the address */""")
+
+# time left while tracking
+rep("""onProgress:p=>{S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%';dockUpdate()}""",
+    """onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}""")
+rep("""  S.bodyBusy=true; $('#bodyTrack').disabled=true;""","""  S.bodyBusy=true; S.bodyT0=null; S.bodyLeft=''; $('#bodyTrack').disabled=true;""")
+rep("""function bodyInfoText(n,B){""","""/* "about 1 min left": from the rate so far, once there is enough to go on */
+function etaText(t0,p){if(!t0||p-t0.p<0.03)return '';const el=(performance.now()-t0.t)/1000,left=el*(1-p)/(p-t0.p);if(!isFinite(left)||left<0)return '';
+  return left<45?'about '+Math.max(5,Math.round(left/5)*5)+' s left':'about '+Math.round(left/60)+' min left'}
+function bodyInfoText(n,B){""")

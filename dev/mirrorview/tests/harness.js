@@ -4,7 +4,7 @@ const {chromium}=require('playwright');const fs=require('fs');const path=require
 const TA='/home/claude/mv/testassets';
 async function launch(opts={}){
   const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--autoplay-policy=no-user-gesture-required','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader','--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});
-  const ctx=await b.newContext({viewport:opts.viewport||{width:390,height:844},permissions:['camera'],serviceWorkers:opts.sw?'allow':'block'});
+  const ctx=await b.newContext({viewport:opts.viewport||{width:390,height:844},acceptDownloads:true,permissions:['camera'],serviceWorkers:opts.sw?'allow':'block'});
   await ctx.route(/cdn\.jsdelivr\.net\/npm\/@mediapipe\/tasks-vision@0\.10\.18\/(.*)/,async r=>{const rel=r.request().url().split('tasks-vision@0.10.18/')[1].split('?')[0];
     const f=path.join(TA,'tasks-vision',rel);if(!fs.existsSync(f))return r.fulfill({status:404});
     const ct=rel.endsWith('.wasm')?'application/wasm':rel.endsWith('.mjs')||rel.endsWith('.js')?'text/javascript':'application/octet-stream';

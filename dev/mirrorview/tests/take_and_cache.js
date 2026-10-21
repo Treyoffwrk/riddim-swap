@@ -9,14 +9,18 @@ const [,,HOST,CLIP,SONG]=process.argv;const R=[];const rec=(n,s,d)=>{R.push({nam
   const tk=await p.evaluate(()=>({info:document.querySelector('#takeInfo').textContent,visible:!document.querySelector('#take').hidden}));
   rec('Riddim Swap records a take',tk.visible?'passed':'failed',tk.info);
   rec('Take panel offers MirrorView',await p.isVisible('#mvTake')?'passed':'failed','');
+  const songPos=await p.evaluate(()=>({offset:window.__rs.S.offset,ar:window.__rs.S.ar}));
   await p.click('#mvTake');await p.waitForURL(/mirrorview\//,{timeout:15000});
   let h=null;for(let i=0;i<60;i++){h=await p.evaluate(()=>window.__mvHandoff||null);if(h&&h.status!=='importing')break;await p.waitForTimeout(250)}
   const st=await p.evaluate(()=>{const s=window.__mv.state,v=document.getElementById('reference-source');return {name:s.name,dur:+s.duration.toFixed(2),w:v.videoWidth,h:v.videoHeight}});
   rec('Take opens in MirrorView with its song',h&&h.status==='opened'&&h.kind==='take'&&st.dur>10&&st.w>0?'passed':'failed',JSON.stringify(h)+' '+JSON.stringify(st));
   const pulse=await p.evaluate(async()=>{const op=document.querySelector('[data-music="open"]');op&&op.click();await new Promise(r=>setTimeout(r,800));
-   document.getElementById('music-analyse').click();for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,500));if(window.__mv.music.analysis)break}
-   const a=window.__mv.music.analysis;return a?{bpm:a.tempo.bpm,alts:a.tempo.alternatives.map(x=>x.bpm),conf:+a.tempo.confidence.toFixed(2)}:null});
-  rec('Pulse reads the take’s song (dembow 100 BPM test track)',pulse&&pulse.alts.some(x=>Math.abs(x-100)<3)?'passed':'failed',JSON.stringify(pulse));
+   await new Promise(r=>setTimeout(r,1500));if(!window.__mv.music.busy&&!window.__mv.music.analysis)document.getElementById('music-analyse').click();for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,500));if(window.__mv.music.analysis&&!window.__mv.music.busy)break}window.__pulseStatus=(document.getElementById('music-analysis-status')||{}).textContent;
+   const a=window.__mv.music.analysis;return a?{bpm:a.tempo.bpm,phase:a.tempo.phase,dur:a.duration,alts:a.tempo.alternatives.map(x=>x.bpm),conf:+a.tempo.confidence.toFixed(2)}:{status:window.__pulseStatus}});
+  if(pulse&&pulse.bpm){const T=JSON.parse(require('fs').readFileSync('/home/claude/tests/media/dembow100.json'));const per=60/pulse.bpm,grid=[];for(let t=pulse.phase;t<=pulse.dur;t+=per)grid.push(t);for(let t=pulse.phase-per;t>=0;t-=per)grid.unshift(t);
+    const truth=T.beats.map(b=>(b-songPos.offset)/songPos.ar).filter(t=>t>=0.3&&t<=pulse.dur-0.3);const off=truth.map(t=>Math.min(...grid.map(g=>Math.abs(g-t))));const hit=off.filter(d=>d<=0.07).length;off.sort((a,b)=>a-b);
+    rec('Pulse’s beats on the take sit on the song’s real beats',hit/truth.length>0.9?'passed':'failed',`${hit}/${truth.length} beats within 70 ms, median ${(off[off.length>>1]*1000).toFixed(0)} ms`)}
+  rec('Pulse reads the take’s song (dembow 100 BPM test track)',pulse&&pulse.alts&&pulse.alts.some(x=>Math.abs(x-100)<3)?'passed':'failed',JSON.stringify(pulse));
   rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));
   await b.close()}
  /* offline cache with the service worker on */

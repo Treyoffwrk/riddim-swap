@@ -159,9 +159,8 @@ The tests run in headless Chromium on the local build, served over HTTP. In the 
 
 ## Known limits
 
-- **Takes in Pulse:** Pulse can't analyse a Riddim Swap take until the recorder writes MP4 edit lists (see above).
 - **Sound starts muted:** MirrorView keeps the reference muted until you unmute it. That's baseline behaviour, kept on purpose.
-- **Pose needs the network once:** MediaPipe and its model load from CDNs on first use. They aren't stored offline.
+- **Pose needs the network once:** MediaPipe and its model load from CDNs on first use; after that they are saved and work offline.
 - **Beat engines:** since stage 2, Pulse takes its tempo and beat position from Riddim Swap's engine. MirrorView's own onset and frequency events are still its own.
 - **Cut-out edges are soft:** the per-frame mask is 120 px wide, so fine detail (hair, fingers, loose clothes) isn't exact.
 - **Tracking takes time:** Cut out and Body need the clip tracked once, frame by frame. That ran at about 140 ms a frame on the test machine's CPU; phone speed is unmeasured.
@@ -268,3 +267,26 @@ Measured first on your clips (`dev/poselab/`: the same MediaPipe model tracked w
 - **Forward/back:** comes from the tracker's depth guess, which is noisy (about a third of its signal is above 6 Hz before smoothing).
 - **Facing away:** front and back can be confused when the dancer has their back to the camera.
 - **Speed on a phone:** not measured.
+
+## Quicker tracking, takes in Pulse, offline tracker, tracking in backups (Oct 2026)
+
+- **Quicker body tracking.** Measured per frame on the test machine's CPU: about 72 ms went to jumping to the next frame and 113 ms to the tracker. The next frame's seek now starts as soon as the current frame is copied, so the video decoder works while the tracker runs.
+  - 195 → 139 ms per frame; a 20 s clip went from about 117 s to 84 s.
+  - Poses are identical to before on all 600 frames (`verify_frames.js`).
+  - On a phone the tracker runs on the graphics chip, so jumping between frames is probably a bigger share of the time and the saving may be larger. Not measured.
+  - Tracking also shows the time left ("about 40 s left").
+- **Takes in Pulse.** Takes now carry an MP4 edit list for the audio encoder's lead-in: Opus pre-skip from its header; for AAC, the usual priming of 2112 samples on Apple and 1024 elsewhere.
+  - MirrorView's Pulse reads takes now: 99.5 BPM on the 100 BPM test track, and 24 of 24 beats within 70 ms (median 25 ms) of where the song's beats really are in the take.
+  - The recording sound check still reads ±0 ms.
+  - The self-check's per-phone correction starts fresh (new storage key) because it was measured on files without the edit.
+  - Not verified: the AAC priming value on iPhone. If it's off, the self-check corrects playback after the first take, and Pulse accepts the file either way because the decoder applies the edit.
+- **Tracker offline.** The service worker saves MediaPipe's runtime (pinned 0.10.18) and pose model the first time they load, in a cache kept across app updates (`rs-runtime-1`; fonts moved there too, so they also survive updates).
+  - Tested: track once online, then cut the network completely (test copies switched off as well), reload, and tracking works (`offline_tracker.js`).
+- **Body tracking in backups.** The backup file now includes poses, 3D points and hip measures (about 0.2 MB for 15 s), but not the cut-out masks (about 15 MB). Opening a backup stores them under each video's key, so they reconnect when the same video is added again, and tracking already on the phone is never replaced.
+  - Tested: identical poses after wipe, open backup and re-add (`backup_body.js`).
+  - The tracking is gathered when the Projects sheet opens, so saving can still open the share sheet straight from the tap on iPhone.
+
+| Test | Result |
+|---|---|
+| Full regression in one run | **All passed**: Riddim Swap suites, end-to-end (sound ±0 ms, take hits 12/12), body (311 frames tracked in 72 s, was 112 s), Body tab, bottom bar, Pulse, camera, offline pages, hand-off, cut-out, speed graph, full screen, swipe, hips (11/11), take with Pulse (8/8), offline tracker (3/3), backup with tracking (4/4). |
+| Phone speed of tracking | **Not run** |

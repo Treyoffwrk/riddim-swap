@@ -1335,7 +1335,7 @@ function dockUpdate(){
   const n=srcById(S.cur), B=n&&bodyOf(n), show=!!(S.hasV&&window.RS_HOSTED);
   $('#dock').hidden=!show; if(!show)return;
   const bb=$('#dkBody');
-  if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%';bb.setAttribute('aria-pressed','false');bb.disabled=true}
+  if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%'+(S.bodyLeft?' · '+S.bodyLeft.replace('about ','').replace(' left',''):'');bb.setAttribute('aria-pressed','false');bb.disabled=true}
   else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
   $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
   const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
@@ -1379,5 +1379,7 @@ rep("""const bodyCv=$('#bodyCanvas'); let bodyDrawn=false;""","""const bodyCv=$(
 exec(compile(pathlib.Path(__file__).with_name('speed_block.py').read_text(),'speed_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('motion_block.py').read_text(),'motion_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('hips_block.py').read_text(),'hips_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('take_block.py').read_text(),'take_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('backup_block.py').read_text(),'backup_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))

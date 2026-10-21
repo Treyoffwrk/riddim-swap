@@ -469,7 +469,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
       <ul class="list" id="projList"></ul>
       <div class="empty-note" id="projEmpty">Nothing else saved yet.</div>
     </div>
-    <p class="hint">Projects stay in this app on this phone. The backup file keeps moves, trims and settings, but not the videos or songs themselves.</p>
+    <p class="hint">Projects stay in this app on this phone. The backup file keeps moves, trims, settings and body tracking, but not the videos, songs or cut-outs (track again for a cut-out).</p>
   </section>
 
   <div class="grid">
@@ -1377,34 +1377,40 @@ if(typeof module!=='undefined')module.exports=RA;
         order=[];for(let k=anchor;k<want.length;k++)order.push(k);for(let k=anchor-1;k>=0;k--)order.push(k)}
       const slot=new Array(want.length).fill(null); let ms=0, n=0, done=0, multi=0;
       let prev=null, lost=0, pickPose=null;
-      for(const k of order){
+      let pending=null;   /* the next frame's seek, started while the tracker works on this one */
+      for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(opt.signal&&opt.signal.aborted)break;
         if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0}   /* going backwards: start again from the tap */
         /* the frame clock must agree with where we asked to go; after a long jump (going backwards) it can report a
            stale frame, so ask once more, then fall back to the requested time */
+        const P0=performance.now();
         const tol=Math.max(1.5/fps,0.06);
-        let mt=await seekTo(want[k]); if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
+        let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null; if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
         /* no new frame showed (a variable-rate clip has fewer frames than the steps): nothing new to track here */
         if(mt==null&&hasRVFC){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
         const t=mt!=null?mt:want[k]-0.5/fps;
-        cx.drawImage(v,0,0,cv.width,cv.height);
+        const P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
+        /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
+        if(oi+1<order.length&&!(opt.signal&&opt.signal.aborted)){const nk=order[oi+1];pending={k:nk,p:seekTo(want[nk])}}
         const s=performance.now(); let cands=[], mk=null;
-        rt.task.detect(cv,r=>{
+        const PR={};const D0=performance.now();rt.task.detect(cv,r=>{const D1=performance.now();PR.det=D1-D0;
           const L=r.landmarks||[], Wl=r.worldLandmarks||[];
           cands=L.map((pts,i)=>({pts:pts.map(q=>[q.x,q.y,q.visibility??0]),w:Wl[i]?Wl[i].map(q=>[q.x,q.y,q.z]):null,i}));
           if(cands.length>1||(prev&&prev.app)||root.RB_DEBUG_ALL)cands.forEach(c=>{c.app=looks(cx,cv.width,cv.height,c.pts)});
+          PR.look=performance.now()-D1;
           if(root.RB_DEBUG_ALL)root.RB_DEBUG_ALL.push({k,cands:cands.map(c=>({pts:c.pts,app:c.app}))});
           const ch=choose(cands,prev,opt.pick&&!pickPose?opt.pick:null,asp,lost,!!opt.pick);
-          if(ch){const m=r.segmentationMasks&&r.segmentationMasks[ch.i];
+          const M0=performance.now();if(ch){const m=r.segmentationMasks&&r.segmentationMasks[ch.i];
             /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
             if(m){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
               for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
                 for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
                   for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}}
-          (r.segmentationMasks||[]).forEach(m=>{if(m&&m.close)try{m.close()}catch(e){}});
+          (r.segmentationMasks||[]).forEach(m=>{if(m&&m.close)try{m.close()}catch(e){}});PR.mask=performance.now()-M0;
           cands.chosen=ch;
         });
         ms+=performance.now()-s; n++; if(cands.length>1)multi++;
+        if(root.RB_PROF)root.RB_PROF.push({seek:P1-P0,draw:s-P1,total:performance.now()-s,n:cands.length,...PR});
         const ch=cands.chosen;
         if(ch){if(prev&&!ch.vel){const a=geom(prev.pts,asp),b2=geom(ch.pts,asp),k2=1+lost,nv=[(b2.hp[0]-a.hp[0])/k2,(b2.hp[1]-a.hp[1])/k2],ov=prev.vel||nv;ch.vel=[0.6*ov[0]+0.4*nv[0],0.6*ov[1]+0.4*nv[1]]}
           learnLooks(prev,ch);
@@ -2732,12 +2738,84 @@ async function finishCodecRec(R){
     chunks.forEach((c,i)=>R.muxer.addAudioChunkRaw(c.data,c.type,c.ts,c.dur,(i===0&&aCfg.mux==='opus'&&chunks.meta)?chunks.meta:undefined));
     if(R.failed)throw R.failed;
     R.muxer.finalize();
-    const outBlob=new Blob([R.target.buffer],{type:'video/mp4'});
+    let mp4=R.target.buffer;try{mp4=mp4AddAudioEdit(mp4,audioLeadSec(chunks.meta))}catch(e){mp4=R.target.buffer}
+    const outBlob=new Blob([mp4],{type:'video/mp4'});
     finishRecording(outBlob); verifyTake(outBlob,R);
   }catch(e){recMsg("Couldn't finish the video ("+((e&&e.message)||e)+").",true);if(S.takeWaiter){const w=S.takeWaiter;S.takeWaiter=null;w(null)}}
   finally{try{R.ve.close()}catch(e){}}
 }
 
+
+/* ---------- MP4 edit list for the audio's encoder lead-in ----------
+   Audio encoders put a short lead-in before the first real sample (Opus: the pre-skip in its header, 6.5 ms here;
+   AAC: about 1024–2112 samples). Players and decoders learn to skip it from the file's edit list. The muxer doesn't
+   write one, so tools that check the timing (MirrorView's Pulse) refused takes. This adds one edit to the audio
+   track: start at the lead-in, run to the end. The file is otherwise byte-identical (sizes and chunk offsets moved). */
+function mp4AddAudioEdit(buf,leadSec){
+  if(!(leadSec>0))return buf;
+  const u8=new Uint8Array(buf),v=new DataView(buf),n=u8.length,str=p=>String.fromCharCode(u8[p],u8[p+1],u8[p+2],u8[p+3]);
+  const boxes=(V,U,from,to)=>{const out=[];for(let p=from;p+8<=to&&out.length<5000;){let size=V.getUint32(p),h=8;if(size===1){size=Number(V.getBigUint64(p+8));h=16}else if(size===0)size=to-p;if(size<h||p+size>to)break;out.push({type:String.fromCharCode(U[p+4],U[p+5],U[p+6],U[p+7]),start:p,data:p+h,end:p+size,head:h});p+=size}return out};
+  const top=boxes(v,u8,0,n),moov=top.find(b=>b.type==='moov'),mdat=top.find(b=>b.type==='mdat');if(!moov)return buf;
+  const kids=b=>boxes(v,u8,b.data,b.end),kid=(b,t)=>kids(b).find(x=>x.type===t);
+  const time=b=>{const one=u8[b.data]===1,pos=b.data+(one?20:12);return {scale:v.getUint32(pos),dur:one?Number(v.getBigUint64(pos+4)):v.getUint32(pos+4)}};
+  const mv=kid(moov,'mvhd');if(!mv)return buf;const movie=time(mv);
+  let at=-1,trak=null,seg=0,mt=0;
+  for(const t of kids(moov).filter(b=>b.type==='trak')){const mdia=kid(t,'mdia'),hdlr=mdia&&kid(mdia,'hdlr');if(!hdlr||str(hdlr.data+8)!=='soun')continue;
+    if(kid(t,'edts'))return buf;const md=time(kid(mdia,'mdhd')),tk=kid(t,'tkhd');if(!tk||!md.scale)return buf;
+    mt=Math.round(leadSec*md.scale);if(mt<=0||mt>=md.dur)return buf;seg=Math.round((md.dur-mt)/md.scale*movie.scale);at=tk.end;trak=t}
+  if(at<0)return buf;
+  const E=36,out=new Uint8Array(n+E),ov=new DataView(out.buffer);
+  out.set(u8.subarray(0,at),0);out.set(u8.subarray(at),at+E);
+  ov.setUint32(at,36);out.set([101,100,116,115],at+4);ov.setUint32(at+8,28);out.set([101,108,115,116],at+12);
+  ov.setUint32(at+16,0);ov.setUint32(at+20,1);ov.setUint32(at+24,seg);ov.setInt32(at+28,mt);ov.setInt16(at+32,1);ov.setInt16(at+34,0);
+  const grow=b=>{if(b.head===8)ov.setUint32(b.start,ov.getUint32(b.start)+E);else ov.setBigUint64(b.start+8,ov.getBigUint64(b.start+8)+BigInt(E))};
+  grow(moov);grow(trak);
+  /* the samples live in mdat; when it comes after moov, every chunk offset moves by the inserted bytes */
+  if(mdat&&mdat.start>moov.start){
+    const U=out,V=ov,top2=boxes(V,U,0,U.length),moov2=top2.find(b=>b.type==='moov'),k2=b=>boxes(V,U,b.data,b.end),c2=(b,t)=>k2(b).find(x=>x.type===t);
+    for(const t of k2(moov2).filter(b=>b.type==='trak')){const st=c2(c2(c2(t,'mdia')||t,'minf')||t,'stbl');if(!st)continue;
+      const so=c2(st,'stco'),co=c2(st,'co64');
+      if(so){const cnt=V.getUint32(so.data+4);for(let i=0;i<cnt;i++){const q=so.data+8+i*4;V.setUint32(q,V.getUint32(q)+E)}}
+      if(co){const cnt=V.getUint32(co.data+4);for(let i=0;i<cnt;i++){const q=co.data+8+i*8;V.setBigUint64(q,V.getBigUint64(q)+BigInt(E))}}}
+  }
+  return out.buffer;
+}
+/* the encoder's lead-in, in seconds: Opus says it in its header (pre-skip at 48 kHz); AAC encoders don't, so use the
+   usual priming (Apple's 2112 samples, others 1024). The recording self-check corrects any remainder per phone. */
+function audioLeadSec(meta){
+  try{
+    if(aCfg.mux==='opus'){const d=meta&&meta.decoderConfig&&meta.decoderConfig.description;if(!d)return 312/48000;
+      const b=d instanceof ArrayBuffer?new Uint8Array(d):new Uint8Array(d.buffer,d.byteOffset,d.byteLength);
+      if(b.length>=12&&String.fromCharCode(...b.subarray(0,8))==='OpusHead')return (b[10]|(b[11]<<8))/48000;return 312/48000}
+    const apple=/Mac|iPhone|iPad/.test(navigator.platform||'')||/AppleWebKit/.test(navigator.userAgent)&&!/Chrome|Android/.test(navigator.userAgent);
+    return (apple?2112:1024)/aCfg.sampleRate;
+  }catch(e){return 0}
+}
+
+/* gather body tracking when the Projects sheet opens, so saving the backup can open the share sheet straight from the
+   tap (iPhone only allows that right after a tap) */
+$('#projBtn').addEventListener('click',()=>{S.bkBodies=null;bodiesForBackup().then(b=>{S.bkBodies=b}).catch(()=>{})});
+/* ---------- body tracking in backups ----------
+   Poses, 3D points and hip measures go into the backup as base64 (about 0.4 MB for 20 s of video); the per-frame
+   cut-out masks don't (about 15 MB). On opening a backup they are stored under the video's key, so they reconnect
+   as soon as the same video is added again. */
+const f32ToB64=a=>{if(!a)return null;const u=new Uint8Array(a.buffer,a.byteOffset,a.byteLength);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)};
+const b64ToF32=s=>{if(!s)return null;const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new Float32Array(u.buffer)};
+async function bodiesForBackup(){
+  const out={};
+  for(const n of S.sources){if(!n.key)continue;const B=n.body||await mediaGet('body:'+n.key);if(!B||!B.data||!B.n)continue;
+    out[n.key]={v:B.v||1,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,seen:B.seen,multi:B.multi||0,clean:B.clean||null,pick:B.pick||null,start:B.start,end:B.end,
+      data:f32ToB64(B.data),world:f32ToB64(B.world),hips:f32ToB64(B.hips)}}
+  return out;
+}
+async function bodiesFromBackup(bodies){
+  let k=0;if(!bodies||typeof bodies!=='object')return 0;
+  for(const [key,o] of Object.entries(bodies)){try{
+    if(!o||!o.n||typeof o.data!=='string')continue;const data=b64ToF32(o.data);if(!data||data.length!==o.n*RB.STRIDE)continue;
+    const have=await mediaGet('body:'+key);if(have&&have.data&&have.n)continue;   /* never replace tracking already on this phone */
+    const B={...o,data,world:b64ToF32(o.world),hips:b64ToF32(o.hips),mask:null};await mediaPut('body:'+key,B);k++}catch(e){}}
+  return k;
+}
 /* fallback recorder */
 function recSongPos(){return recPos+(ctx.currentTime-recT)*S.ar}
 function recStopSong(){if(!recSrc)return;const s=recSrc;recSrc=null;try{s.stop()}catch(e){}s.disconnect()}
@@ -3062,7 +3140,7 @@ $('#projNew').addEventListener('click',async()=>{
 $('#projExport').addEventListener('click',async()=>{
   if(!hasContent()){sheetMsg('Add a video or some moves first.',true);return}
   autosave(true);   /* not awaited: the share sheet must open straight from the tap */
-  const body=JSON.stringify({app:'riddim-swap',name:PJ.name||'Routine',saved:new Date().toISOString(),data:snapshot()});
+  const body=JSON.stringify({app:'riddim-swap',name:PJ.name||'Routine',saved:new Date().toISOString(),data:snapshot(),bodies:S.bkBodies||await bodiesForBackup()});
   const safe=(PJ.name||'routine').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')||'routine';
   const r=await saveFile(safe+'.riddim.json',body,'application/json');
   sheetMsg(r==='saved'||r==='shared'||r==='downloaded'?'Backup saved.':saveWords[r],r==='failed'||r==='busy');
@@ -3073,9 +3151,10 @@ $('#projImport').addEventListener('change',async e=>{
     const j=JSON.parse(await f.text()); if(j.app!=='riddim-swap'||!j.data)throw new Error('not ours');
     await autosave(true);
     const rec={id:'p'+Date.now().toString(36),name:(j.name||'Imported routine'),updated:Date.now(),data:JSON.stringify(j.data)};
+    const nb=await bodiesFromBackup(j.bodies);
     await projPut(rec); await restore(rec); renderProjects();
     const n=missingItems().length;
-    sheetMsg('Opened "'+rec.name+'".'+(n?' Re-add the '+n+' file'+(n===1?'':'s')+' listed above.':''));
+    sheetMsg('Opened "'+rec.name+'".'+(nb?' Body tracking for '+nb+' video'+(nb===1?'':'s')+' restored.':'')+(n?' Re-add the '+n+' file'+(n===1?'':'s')+' listed above.':''));
   }catch(err){sheetMsg("That file isn't a Riddim Swap backup.",true)}
 });
 (async()=>{
@@ -3356,10 +3435,10 @@ function hitsFromBody(n){
 }
 $('#bodyTrack').addEventListener('click',async()=>{
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
-  S.bodyBusy=true; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
+  S.bodyBusy=true; S.bodyT0=null; S.bodyLeft=''; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   try{
-    const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%';dockUpdate()}});
+    const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}});
     n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
     const got=hitsFromBody(n);
     $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
@@ -3375,7 +3454,7 @@ function dockUpdate(){
   const n=srcById(S.cur), B=n&&bodyOf(n), show=!!(S.hasV&&window.RS_HOSTED);
   $('#dock').hidden=!show; if(!show)return;
   const bb=$('#dkBody');
-  if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%';bb.setAttribute('aria-pressed','false');bb.disabled=true}
+  if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%'+(S.bodyLeft?' · '+S.bodyLeft.replace('about ','').replace(' left',''):'');bb.setAttribute('aria-pressed','false');bb.disabled=true}
   else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
   $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
   const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
@@ -3647,7 +3726,7 @@ $('#alignOff').addEventListener('click',()=>{if(S.rec)return;pause();S.rt.alignO
 $('#maxStretch').addEventListener('input',e=>{S.rt.maxStretch=(+e.target.value)/100;S.rt.set=true;$('#maxStretchOut').textContent='±'+e.target.value+'%'});
 
 /* ---------- recording self-check: decode the file just made and line its sound up with the song ---------- */
-function encKey(){return 'rs-enccomp-'+(aCfg&&aCfg.codec||'x')}
+function encKey(){return 'rs-enccomp2-'+(aCfg&&aCfg.codec||'x')}
 function encComp(){try{return +(localStorage.getItem(encKey())||0)||0}catch(e){return 0}}
 async function verifyTake(blob,R){
   try{
@@ -4082,6 +4161,9 @@ function panelIn(p,dir,from){
 })();
 
 /* ---------- hips you can read ---------- */
+/* "about 1 min left": from the rate so far, once there is enough to go on */
+function etaText(t0,p){if(!t0||p-t0.p<0.03)return '';const el=(performance.now()-t0.t)/1000,left=el*(1-p)/(p-t0.p);if(!isFinite(left)||left<0)return '';
+  return left<45?'about '+Math.max(5,Math.round(left/5)*5)+' s left':'about '+Math.round(left/60)+' min left'}
 function bodyInfoText(n,B){
   let t=`Body tracked on ${B.seen} of ${B.n} frames.`;
   if(B.v<2)t+=' Tracked with the older tracker: Track again for steadier tracking, hip turn and following one dancer.';
