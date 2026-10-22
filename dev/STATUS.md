@@ -45,7 +45,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-REGRESSION_RESULTS
+**Last full regression:** 34 suites, all passed, at version rs-c39b3bf328 (22 Oct 2026).
 
 **Measured so far**
 

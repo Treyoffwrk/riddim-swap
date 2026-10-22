@@ -247,8 +247,8 @@ input[type=range]{width:100%;accent-color:var(--ink);margin:0}
 /* beat lights: Off / Calm / Flash */
 body.bv-off #pulses{display:none!important}
 body.bv-calm .beats i{transition:background .35s ease,color .35s ease,border-color .35s ease}
-body.bv-calm .beats.d i.on{background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
-body.bv-calm .beats.s i.on{background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
+body.bv-calm .beats.d i.on{background:#2E3A63;background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
+body.bv-calm .beats.s i.on{background:#5A4527;background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
 .beats.unsure i{border-style:dashed;opacity:.5}
 .beats.unsure b::after{content:" ?"}
 #songCard.cleared .row>:not(#beatFind),#songCard.cleared .warnlist,#songCard.cleared .hint.ear{display:none}
@@ -346,7 +346,7 @@ html.rs-hosted .mv-only[hidden]{display:none!important}
 .sheet:not([hidden]){animation:rs-sheet .45s var(--spring)}
 .sheet-back:not([hidden]){animation:rs-fade .3s ease;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
 .panel{will-change:transform}
-.swipe-col{overflow-x:clip;position:relative}
+.swipe-col{overflow-x:hidden;overflow-x:clip;position:relative}   /* clip needs iOS 16; hidden is the fallback */
 html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 .swipe-col.swiping{-webkit-user-select:none;user-select:none}
 .swipe-col.swiping .panel{pointer-events:none}
@@ -436,6 +436,16 @@ html.rs-hosted .tab.mv-only,html.rs-hosted .bodyrow.mv-only{display:flex!importa
   .tab[aria-selected="true"]{color:var(--ink);font-weight:700}
   .tab[aria-selected="true"]::before{background:var(--tabc,var(--dance))}
 }
+.phone-check{width:100%;box-sizing:border-box;margin:8px 0 4px;padding:10px;border-radius:10px;border:1px solid var(--line,rgba(255,255,255,.1));background:var(--sunk);color:inherit;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;min-height:120px}
+#storeBox .store-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--sunk);margin:2px 0 8px}
+#storeBox .store-bar i{display:block;height:100%;transition:width .4s cubic-bezier(.2,.8,.2,1)}
+#storeBox .u-media{background:var(--song-hot,#E8A33D)}#storeBox .u-body{background:var(--dance,#5B7CFA)}#storeBox .u-unused{background:#E0567A}#storeBox .u-other{background:#5d6170}#storeBox .u-proj{background:#9AA0B4}
+#storeBox .store-list{list-style:none;margin:0 0 8px;padding:0;font-size:13px}
+#storeBox .store-list li{display:flex;align-items:center;gap:8px;padding:3px 0}
+#storeBox .store-list li span{flex:1}#storeBox .store-list li b{font-weight:600;font-variant-numeric:tabular-nums}
+#storeBox .store-list .dot{width:8px;height:8px;border-radius:50%;flex:none}
+#storeBox .store-list .tot{border-top:1px solid var(--line,rgba(255,255,255,.1));margin-top:4px;padding-top:6px}
+#storeBox .store-list .warn span,#storeBox .store-list .ok span{opacity:.75;font-size:12px}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -488,6 +498,15 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
       <label class="btn file">Open backup or shared routine<input type="file" id="projImport"></label>
     </div>
     <p class="hint" id="projMsg" hidden></p>
+    <div class="field" id="storeBox">
+      <span class="label">Storage on this phone</span>
+      <div class="store-bar" id="storeBar" aria-hidden="true"><i class="u-media"></i><i class="u-body"></i><i class="u-unused"></i><i class="u-other"></i></div>
+      <ul class="store-list" id="storeList"><li>Checking…</li></ul>
+      <div class="row">
+        <button class="btn" id="storeClean" disabled>Clear unused</button>
+      </div>
+      <p class="hint" id="storeHint">Unused means videos, songs and dance tracking that no saved project uses any more. Your projects are not touched.</p>
+    </div>
     <div class="field" id="freshBox">
       <span class="label">Start again</span>
       <div class="row">
@@ -497,6 +516,9 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
       <p class="hint" id="freshHint">Start fresh saves this project, then restarts the app with new players and sound, on an empty project. Use it if sound or video starts acting up.</p>
       <p class="hint" id="appVer"></p>
       <p class="hint" id="sndReport"></p>
+      <div class="row"><button class="btn" id="phoneCheck">Copy phone check</button></div>
+      <textarea id="phoneCheckOut" class="phone-check" readonly hidden aria-label="Phone check"></textarea>
+      <p class="hint">Copies the app version, this phone and browser, how takes are recorded, tracking speed, the last sound check, storage and recent errors. No video, names or personal details. Paste it into a message when something goes wrong.</p>
     </div>
     <div class="field">
       <span class="label">Saved projects</span>
@@ -1758,7 +1780,7 @@ if(typeof module!=='undefined')module.exports=RA;
   /* ---------- person cut-out ----------
      Draw the video frame for time t with everything but the dancer replaced by a background. The stored mask (nearest
      frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
-  let mcv=null, mcx=null, ccv=null, ccx=null;
+  let mcv=null, mcx=null, ccv=null, ccx=null, bcv=null, bcx=null;
   function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
   function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
   function maskCanvas(B,k){
@@ -1776,7 +1798,11 @@ if(typeof module!=='undefined')module.exports=RA;
     if(ccv.width!==W||ccv.height!==H){ccv.width=W;ccv.height=H}
     /* background */
     ctx.save();
-    if(o.bg==='blur'){ctx.filter='blur('+Math.round(Math.max(W,H)/40)+'px) brightness(.55)';ctx.drawImage(video,rect.x,rect.y,rect.w,rect.h);ctx.filter='none';ctx.fillStyle='rgba(14,16,20,.35)';ctx.fillRect(0,0,W,H)}
+    /* blurred background: shrink the frame to a few dozen pixels, then draw it back up smoothly. Works on every phone
+       (canvas blur filters only arrived in Safari 18), and is cheaper than a blur filter. */
+    if(o.bg==='blur'){if(!bcv){bcv=document.createElement('canvas');bcx=bcv.getContext('2d')}const sw=Math.max(8,Math.round(rect.w/24)),sh=Math.max(8,Math.round(rect.h/24));
+      if(bcv.width!==sw||bcv.height!==sh){bcv.width=sw;bcv.height=sh}bcx.imageSmoothingEnabled=true;bcx.imageSmoothingQuality='high';bcx.drawImage(video,0,0,sw,sh);
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(bcv,rect.x,rect.y,rect.w,rect.h);ctx.fillStyle='rgba(8,9,12,.55)';ctx.fillRect(0,0,W,H)}
     else{ctx.fillStyle=o.bg==='colour'?(o.colour||'#2B2F6B'):(o.dark||'#08090C');ctx.fillRect(0,0,W,H)}
     ctx.restore();
     /* the dancer: frame, then keep only where the mask is */
@@ -2093,7 +2119,7 @@ function setPlaying(p){
   $('#play').setAttribute('aria-label',p?'Pause':'Play');
 }
 function play(){
-  S.playAt=performance.now(); S.snd={jumps:0,maxLate:0,frames:0,within:0,started:performance.now()}; S.vNudge=0; S.vI=0;
+  S.playAt=performance.now(); if(S.snd&&S.snd.frames>10){S.snd.endAt=S.snd.endAt||performance.now();S.sndLast=S.snd} S.snd={jumps:0,maxLate:0,frames:0,within:0,started:performance.now()}; S.vNudge=0; S.vI=0;
   /* the beat click needs the live engine, started inside the tap */
   if(S.clickOn){try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}catch(e){}}
   if(S.hasV&&broken(v)){healMedia(false);recMsg('Reloading the video… tap play again.');return}
@@ -2109,7 +2135,7 @@ function play(){
   if(S.hasV)v.play().then(()=>{S.stalled=false;syncSong(true);recSync(true);primeNext()}).catch(err=>{setPlaying(false);a.pause();
     if(!err||err.name!=='AbortError'){if(healMedia(false))recMsg('Reloaded the video. Tap play again.')}});
 }
-function pause(){S.stopAtT=null;setPlaying(false);v.pause();a.pause();recStopSong()}
+function pause(){S.stopAtT=null;if(S.snd&&!S.snd.endAt&&S.playing)S.snd.endAt=performance.now();setPlaying(false);v.pause();a.pause();recStopSong()}
 function toggle(){if(S.rec){stopRecording();return}S.playing?pause():play()}
 
 function enable(){
@@ -3038,7 +3064,7 @@ function startRecording(){
   if(!useCodecs&&!(window.MediaRecorder&&cv.captureStream)){recMsg("This browser can't record video.",true);return}
   pause(); S.preview=null; S.segIdx=0; recMsg(''); updateTrim();
   const L=segs(), len=segStart(L.length,L);
-  try{S.rec=useCodecs?startCodecRec():startMrRec();if(/debug/.test(location.hash))window.__lastRecMode=S.rec&&S.rec.mode}
+  try{S.rec=useCodecs?startCodecRec():startMrRec();S.recLast=S.rec&&S.rec.mode;if(/debug/.test(location.hash))window.__lastRecMode=S.rec&&S.rec.mode}
   catch(e){S.rec=null;recMsg("Couldn't start recording on this device.",true);return}
   toStart(); if(useCodecs)S.switchPending=true;
   play();
@@ -3296,16 +3322,64 @@ async function renderProjects(){
 }
 /* remove stored media that no project uses any more */
 async function cleanMedia(){
+  let n=0;
   try{
-    const keep=new Set(); S.sources.forEach(n=>n.key&&keep.add(n.key)); [S.mainSong,S.rtSong].forEach(so=>so&&so.key&&keep.add(so.key));
-    (await projAll()).forEach(p=>{try{const d=JSON.parse(p.data);(d.sources||[]).forEach(m=>keep.add(m.key));[d.mainSong,d.rtSong].forEach(m=>m&&keep.add(m.key))}catch(e){}});
+    if(S.wiping)return 0; try{await autosave(true)}catch(e){}       /* the open project counts as saved before anything goes */
+    const keep=await mediaKeep();
     const keys=await idbDo('media','readonly',st=>st.getAllKeys());
-    for(const k of keys||[])if(!keep.has(k)&&!(String(k).startsWith('body:')&&keep.has(String(k).slice(5))))await mediaDel(k);
+    for(const k of keys||[])if(!isKept(keep,k)){await mediaDel(k);n++}
   }catch(e){}
+  return n;
+}
+$('#storeClean').addEventListener('click',async()=>{const b=$('#storeClean');b.disabled=true;const before=storeLast&&storeLast.unused;
+  const n=await cleanMedia();sheetMsg(n?'Cleared '+n+' unused item'+(n>1?'s':'')+(before?' ('+fmtMB(before)+')':'')+'.':'Nothing to clear.');renderStorage()});
+/* what to keep: everything the open project or any saved project points at */
+async function mediaKeep(){
+  const keep=new Set(); S.sources.forEach(n=>n.key&&keep.add(n.key)); [S.mainSong,S.rtSong].forEach(so=>so&&so.key&&keep.add(so.key));
+  (await projAll()).forEach(p=>{try{const d=JSON.parse(p.data);(d.sources||[]).forEach(m=>m&&m.key&&keep.add(m.key));[d.mainSong,d.rtSong].forEach(m=>m&&m.key&&keep.add(m.key))}catch(e){}});
+  return keep;
+}
+const isKept=(keep,k)=>keep.has(k)||(String(k).startsWith('body:')&&keep.has(String(k).slice(5)));
+function sizeOf(v){
+  if(!v)return 0; if(typeof Blob!=='undefined'&&v instanceof Blob)return v.size;
+  if(v.data&&v.data.byteLength!=null){let s=2048;for(const f of ['data','world','hips'])if(v[f]&&v[f].byteLength)s+=v[f].byteLength;return s}
+  if(v.byteLength!=null)return v.byteLength;
+  try{return JSON.stringify(v).length}catch(e){return 0}
+}
+/* walk the media store with a cursor so nothing is read twice; blobs stay on disk, only their size is asked */
+async function storageScan(){
+  const keep=await mediaKeep(), out={media:0,body:0,unused:0,unusedN:0,projects:0,projectsN:0,total:null,quota:null,persisted:null};
+  await idb().then(d=>new Promise((res,rej)=>{const t=d.transaction('media','readonly'),r=t.objectStore('media').openCursor();
+    r.onsuccess=()=>{const c=r.result;if(!c)return;const k=String(c.key),sz=sizeOf(c.value);
+      if(!isKept(keep,k)){out.unused+=sz;out.unusedN++}else if(k.startsWith('body:'))out.body+=sz;else out.media+=sz;c.continue()};
+    t.oncomplete=res;t.onerror=()=>rej(t.error)})).catch(()=>{});
+  (await projAll()).forEach(p=>{out.projectsN++;out.projects+=(p.data||'').length*2});
+  try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();out.total=e.usage;out.quota=e.quota}}catch(e){}
+  try{if(navigator.storage&&navigator.storage.persisted)out.persisted=await navigator.storage.persisted()}catch(e){}
+  return out;
+}
+const fmtMB=b=>b==null?'?':b<1048576*0.1?(b/1024).toFixed(0)+' KB':b<1073741824?(b/1048576).toFixed(b<10485760?1:0)+' MB':(b/1073741824).toFixed(2)+' GB';
+let storeLast=null;
+async function renderStorage(){
+  const list=$('#storeList');if(!list)return;
+  let r;try{r=await storageScan()}catch(e){list.innerHTML='<li>Couldn’t read storage on this browser.</li>';return}
+  storeLast=r;
+  if(r.total!=null)r.total=Math.max(r.total,r.media+r.body+r.unused+r.projects);   /* the browser's figure can lag behind fresh writes */
+  const ours=r.media+r.body+r.unused+r.projects, other=r.total!=null?Math.max(0,r.total-ours):0, all=Math.max(1,ours+other);
+  const bar=$('#storeBar').children; [r.media,r.body,r.unused,other].forEach((v,i)=>{bar[i].style.width=(100*v/all).toFixed(2)+'%'});
+  const li=(c,t,v)=>`<li><i class="dot ${c}"></i><span>${t}</span><b>${v}</b></li>`;
+  list.innerHTML=li('u-media','Videos and songs',fmtMB(r.media))+li('u-body','Dance tracking',fmtMB(r.body))
+    +li('u-unused','Unused'+(r.unusedN?' ('+r.unusedN+' item'+(r.unusedN>1?'s':'')+')':''),fmtMB(r.unused))
+    +li('u-proj','Projects ('+r.projectsN+')',fmtMB(r.projects))
+    +(r.total!=null?li('u-other','App and tracker files, about',fmtMB(other)):'')
+    +(r.total!=null?`<li class="tot"><span>In use${r.quota?' of about '+fmtMB(r.quota)+' allowed':''}</span><b>${fmtMB(r.total)}</b></li>`:'')
+    +(r.persisted===false?'<li class="warn"><span>The browser may clear these files if the phone runs low on space. Adding the app to your Home Screen makes that less likely.</span></li>':'')
+    +(r.persisted===true?'<li class="ok"><span>Kept safe: the browser won’t clear these on its own.</span></li>':'');
+  const b=$('#storeClean');b.disabled=!r.unusedN;b.textContent=r.unusedN?'Clear unused ('+fmtMB(r.unused)+')':'Nothing unused';
 }
 function sheetMsg(t,err){const m=$('#projMsg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('err',!!err)}
 let sheetFrom=null;
-function openSheet(){sheetFrom=document.activeElement;$('#sheet').hidden=false;$('#sheetBack').hidden=false;sheetMsg('');$('#projName').value=PJ.name||'';renderProjects();updateMissing();$('#sheetClose').focus()}
+function openSheet(){sheetFrom=document.activeElement;renderStorage();$('#sheet').hidden=false;$('#sheetBack').hidden=false;sheetMsg('');$('#projName').value=PJ.name||'';renderProjects();updateMissing();$('#sheetClose').focus()}
 function closeSheet(){$('#sheet').hidden=true;$('#sheetBack').hidden=true;if(sheetFrom&&sheetFrom.focus)sheetFrom.focus()}
 $('#projBtn').addEventListener('click',openSheet);
 $('#missFix').addEventListener('click',openSheet);
@@ -4479,10 +4553,41 @@ $('#wipeBtn').addEventListener('click',async()=>{
   location.replace(location.pathname);
 });
 /* sound report for the last play (Projects): helps tell what a phone actually did */
-function soundReport(){const s=S.snd;if(!s||!s.frames)return '';
+const ERRS=[];
+const noteErr=(m)=>{try{m=String(m||'').slice(0,160);if(!m)return;ERRS.push(new Date().toISOString().slice(11,19)+' '+m);if(ERRS.length>6)ERRS.shift()}catch(e){}};
+window.addEventListener('error',e=>noteErr((e.message||'error')+(e.filename?' @'+String(e.filename).split('/').pop()+':'+e.lineno:'')));
+window.addEventListener('unhandledrejection',e=>noteErr('promise: '+((e.reason&&(e.reason.message||e.reason.name))||e.reason)));
+function soundReport(){const s=(S.snd&&S.snd.frames>10)?S.snd:S.sndLast;if(!s||!s.frames)return '';
   const secs=(performance.now()-s.started)/1000,pct=Math.round(100*s.within/s.frames);
-  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(secs)} s).`}
+  const span=((s.endAt||performance.now())-s.started)/1000, fps=span>0.5?Math.round(s.frames/span):0;
+  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).`}
 $('#projBtn').addEventListener('click',()=>{$('#sndReport').textContent=soundReport()});
+async function phoneCheck(){
+  const L=[],add=(k,v)=>{if(v!=null&&v!=='')L.push(k+': '+v)};
+  L.push('Riddim Swap phone check');
+  add('Version',(UPD&&UPD.boot)||'unknown'); add('When',new Date().toISOString().slice(0,16).replace('T',' ')+' UTC');
+  add('Browser',navigator.userAgent);
+  const sa=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+  add('Screen',`${screen.width}×${screen.height} @${(window.devicePixelRatio||1).toFixed(1)}x, ${sa?'Home Screen app':'in the browser'}, ${navigator.hardwareConcurrency||'?'} cores${navigator.deviceMemory?', '+navigator.deviceMemory+' GB':''}`);
+  let mr='none';try{if(window.MediaRecorder){const t=['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm'].find(x=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(x));mr=t||'yes (no listed type)'}}catch(e){}
+  add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
+  const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
+  const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
+  else add('Tracking','no video tracked in this project');
+  add('Sound',soundReport()||'no play measured yet');
+  try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`)}catch(e){}
+  try{const r=await storageScan();const t=r.total!=null?Math.max(r.total,r.media+r.body+r.unused+r.projects):null;
+    add('Storage',`${fmtMB(t)} in use${r.quota?' of '+fmtMB(r.quota):''} · media ${fmtMB(r.media)} · tracking ${fmtMB(r.body)} · unused ${fmtMB(r.unused)} · ${r.projectsN} project${r.projectsN===1?'':'s'} · ${r.persisted?'kept safe':'may be cleared by the browser'}`)}catch(e){add('Storage','couldn’t read')}
+  add('Errors',ERRS.length?'\n  '+ERRS.join('\n  '):'none this session');
+  return L.join('\n');
+}
+$('#phoneCheck').addEventListener('click',async()=>{const b=$('#phoneCheck'),out=$('#phoneCheckOut');b.disabled=true;
+  let txt='';try{txt=await phoneCheck()}catch(e){txt='Phone check failed: '+(e&&e.message)}
+  out.value=txt;out.hidden=false;out.style.height='';out.style.height=Math.min(320,out.scrollHeight+4)+'px';
+  let ok=false;try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(txt);ok=true}}catch(e){}
+  if(!ok){try{out.focus();out.select();ok=document.execCommand&&document.execCommand('copy')}catch(e){}}
+  sheetMsg(ok?'Phone check copied. Paste it into a message.':'Select the text below and copy it.');b.disabled=false});
 
 /* ---------- hips on the beat ----------
    Hip hits: the moments a hip tilt stops sharply (tilt speed falls to under half of its peak in the last 0.2 s, the
