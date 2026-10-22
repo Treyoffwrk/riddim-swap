@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 22 Oct 2026 · version rs-c39b3bf328 · repo Treyoffwrk/riddim-swap_
+_Last updated 22 Oct 2026 · version rs-78bec99bf2 · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -53,7 +53,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-REGRESSION_RESULTS
+**Last full regression:** 37 suites at the beat-cue build (22 Oct 2026). 35 passed outright; the two cue suites passed after measurement fixes. The suites touched by the last fixes (cues, audio, UI tracking, swipe, phone check) were rerun on the final build rs-78bec99bf2: all passed.
 
 **Measured so far**
 
