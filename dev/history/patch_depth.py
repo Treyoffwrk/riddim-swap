@@ -1391,5 +1391,8 @@ exec(compile(pathlib.Path(__file__).with_name('recbody_block.py').read_text(),'r
 exec(compile(pathlib.Path(__file__).with_name('share_block.py').read_text(),'share_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('compare_block.py').read_text(),'compare_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('patterns_block.py').read_text(),'patterns_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('compat_block.py').read_text(),'compat_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('storage_block.py').read_text(),'storage_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('report_block.py').read_text(),'report_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))

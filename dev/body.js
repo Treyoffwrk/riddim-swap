@@ -418,7 +418,7 @@
   /* ---------- person cut-out ----------
      Draw the video frame for time t with everything but the dancer replaced by a background. The stored mask (nearest
      frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
-  let mcv=null, mcx=null, ccv=null, ccx=null;
+  let mcv=null, mcx=null, ccv=null, ccx=null, bcv=null, bcx=null;
   function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
   function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
   function maskCanvas(B,k){
@@ -436,7 +436,11 @@
     if(ccv.width!==W||ccv.height!==H){ccv.width=W;ccv.height=H}
     /* background */
     ctx.save();
-    if(o.bg==='blur'){ctx.filter='blur('+Math.round(Math.max(W,H)/40)+'px) brightness(.55)';ctx.drawImage(video,rect.x,rect.y,rect.w,rect.h);ctx.filter='none';ctx.fillStyle='rgba(14,16,20,.35)';ctx.fillRect(0,0,W,H)}
+    /* blurred background: shrink the frame to a few dozen pixels, then draw it back up smoothly. Works on every phone
+       (canvas blur filters only arrived in Safari 18), and is cheaper than a blur filter. */
+    if(o.bg==='blur'){if(!bcv){bcv=document.createElement('canvas');bcx=bcv.getContext('2d')}const sw=Math.max(8,Math.round(rect.w/24)),sh=Math.max(8,Math.round(rect.h/24));
+      if(bcv.width!==sw||bcv.height!==sh){bcv.width=sw;bcv.height=sh}bcx.imageSmoothingEnabled=true;bcx.imageSmoothingQuality='high';bcx.drawImage(video,0,0,sw,sh);
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(bcv,rect.x,rect.y,rect.w,rect.h);ctx.fillStyle='rgba(8,9,12,.55)';ctx.fillRect(0,0,W,H)}
     else{ctx.fillStyle=o.bg==='colour'?(o.colour||'#2B2F6B'):(o.dark||'#08090C');ctx.fillRect(0,0,W,H)}
     ctx.restore();
     /* the dancer: frame, then keep only where the mask is */

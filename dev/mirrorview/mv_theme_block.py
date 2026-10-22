@@ -89,6 +89,10 @@ h1,h2,#modal-title,.brand{font-family:'Bricolage Grotesque',Figtree,sans-serif}
 .rs-nav button.on::before{background:var(--hips)}
 body.practice-active .rs-nav,body.distance-mode .rs-nav{display:none!important}
 .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
+
+/* Safari before 18 needs the prefixed blur */
+.space-switch{-webkit-backdrop-filter:blur(8px)}
+dialog::backdrop{-webkit-backdrop-filter:blur(7px)}
 """
 i = s.rfind('</style>')
 s = s[:i] + THEME_CSS + s[i:]
