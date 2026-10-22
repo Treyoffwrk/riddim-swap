@@ -14,7 +14,7 @@ const [,,HOST,CLIP,SONG,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUp
  console.log(txt);
  const has=k=>new RegExp('^'+k+': ','m').test(txt);
  rec('Copied to the clipboard and shown in the sheet',txt.length>100&&txt===shown&&/copied/.test(msg)?'passed':'failed',msg);
- rec('Has version, browser, screen, recording, tracking, sound, audio, storage and errors',['Version','Browser','Screen','Recording','Tracking','Sound','Audio','Storage','Errors'].every(has)?'passed':'failed',['Version','Browser','Screen','Recording','Tracking','Sound','Audio','Storage','Errors'].filter(k=>!has(k)).join(',')||'all there');
+ rec('Has version, browser, screen, recording, tracking, sound, audio, storage and errors',['Version','Browser','Screen','Recording','Tracking','Sound','Cues','Audio','Storage','Errors'].every(has)?'passed':'failed',['Version','Browser','Screen','Recording','Tracking','Sound','Cues','Audio','Storage','Errors'].filter(k=>!has(k)).join(',')||'all there');
  rec('Version is the real one',/^Version: rs-[0-9a-f]{10}$/m.test(txt)?'passed':'failed',(txt.match(/^Version: .*$/m)||[''])[0]);
  rec('Tracking speed and delegate are there',/^Tracking: 1 video tracked · \d+ ms\/frame · CPU/m.test(txt)?'passed':'failed',(txt.match(/^Tracking: .*$/m)||[''])[0]);
  rec('Says which recorder the last take used',/last take used (WebCodecs|MediaRecorder)/.test(txt)&&/^Last take: /m.test(txt)?'passed':'failed',(txt.match(/^Recording: .*$/m)||[''])[0]);

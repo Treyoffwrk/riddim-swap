@@ -246,9 +246,10 @@ input[type=range]{width:100%;accent-color:var(--ink);margin:0}
 .tblwrap{overflow-x:auto}
 /* beat lights: Off / Calm / Flash */
 body.bv-off #pulses{display:none!important}
-body.bv-calm .beats i{transition:background .35s ease,color .35s ease,border-color .35s ease}
-body.bv-calm .beats.d i.on{background:#2E3A63;background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
-body.bv-calm .beats.s i.on{background:#5A4527;background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
+body.bv-calm .beats i,body.bv-ball .beats i{transition:background .3s ease,color .3s ease,border-color .3s ease}
+.beats i.on{transition:none!important}
+body.bv-calm .beats.d i.on,body.bv-ball .beats.d i.on{background:#2E3A63;background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
+body.bv-calm .beats.s i.on,body.bv-ball .beats.s i.on{background:#5A4527;background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
 .beats.unsure i{border-style:dashed;opacity:.5}
 .beats.unsure b::after{content:" ?"}
 #songCard.cleared .row>:not(#beatFind),#songCard.cleared .warnlist,#songCard.cleared .hint.ear{display:none}
@@ -279,6 +280,9 @@ html.rs-hosted .mv-only[hidden]{display:none!important}
 .start li.next .n{background:var(--song);border-color:var(--song);color:#0E1014}
 .start li .go{margin-left:auto}
 .bodycv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.cuecv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.delaycv{width:120px;height:44px;border-radius:8px;background:var(--sunk)}
+.sel.sm{height:32px;border-radius:8px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:inherit;font-size:13px;padding:0 6px}
 .bodyrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 .hitstrip.edit{height:22px;cursor:pointer;touch-action:manipulation}
 #hitLevel{grid-template-columns:repeat(3,auto)}
@@ -539,6 +543,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <label class="btn file">Choose dance video<input type="file" id="vidFile" accept="video/*"></label>
           </div>
           <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>
+          <canvas class="cuecv" id="cueCanvas" aria-hidden="true"></canvas>
           <button class="fsbtn" id="fsBtn" type="button" aria-label="Full screen" hidden><svg class="ico-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="ico-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
           <div class="dock mv-only" id="dock" hidden>
             <button type="button" id="dkBody" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg><span>Body</span></button>
@@ -716,7 +721,8 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="row">
             <button class="btn sm" id="beatHalf">Shift beat ½</button>
             <button class="btn sm" id="beatUseDet">Use detected beat</button>
-            <label class="check"><input type="checkbox" id="clickOn"> Click on each beat</label>
+            <label class="check"><input type="checkbox" id="clickOn"> Click</label>
+            <select id="clickWhat" class="sel sm" aria-label="What the click plays on"><option value="beat">on each beat</option><option value="riddim">on the riddim</option></select>
           </div>
           <div class="row">
             <button class="btn sm" id="beatCheck">Tap to check</button>
@@ -726,7 +732,8 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           </div>
           <p class="hint" id="beatCheckMsg"></p>
           <ul class="warnlist" id="songWarn"></ul>
-          <p class="hint ear">Turn on the click and play: if the clicks don't sit on the kick, try another tempo or shift by half a beat. Your ear decides.</p>
+          <p class="hint" id="riddimMsg"></p>
+          <p class="hint ear">Turn on the click and play. On the beat: if the clicks don't sit on the kick, try another tempo or shift by half a beat. On the riddim: a low click for each kick or bass hit, a high one for each snare, clap or rim; this is what the ball lands on. Your ear decides.</p>
         </div>
         <p class="hint" id="songMsg">MP3, M4A or a video. For a video, only its sound is used.</p>
         <div class="field">
@@ -748,14 +755,25 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
 
       <!-- TEMPO -->
       <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
-        <div class="field">
-          <div class="subhead"><span class="label">Beat lights</span>
-            <div class="seg" id="bvSeg" role="group" aria-label="Beat lights" style="grid-template-columns:repeat(3,auto)">
+        <div class="field" id="cueBox">
+          <div class="subhead"><span class="label">Beat cues</span>
+            <div class="seg" id="bvSeg" role="group" aria-label="Beat cues" style="grid-template-columns:repeat(3,auto)">
               <button data-bv="off" aria-pressed="false" style="padding:0 12px">Off</button>
-              <button data-bv="calm" aria-pressed="true" style="padding:0 12px">Calm</button>
-              <button data-bv="flash" aria-pressed="false" style="padding:0 12px">Flash</button>
+              <button data-bv="calm" aria-pressed="false" style="padding:0 12px">Count</button>
+              <button data-bv="ball" aria-pressed="true" style="padding:0 12px">Ball</button>
             </div></div>
-          <p class="hint">Calm shows the count under the video without flashing the frame. When the app isn't sure of a beat, its lights go dim with a "?", and they never flash.</p>
+          <p class="hint">Ball: over the video, the left ball lands on each hit of the riddim (big amber ring for a kick or bass hit, white for a snare, clap or rim) and the right ball lands on each of the dancer's hits (it appears once they're found: Find hits in the Clip tab, or body tracking). Watch it fall to see the hit coming. When both land together, a line joins them. Count shows 1 2 3 4 under the video. When the app isn't sure, the cues go dim with a "?".</p>
+        </div>
+        <div class="field" id="delayBox">
+          <div class="field-top"><span class="label">Sound delay</span><span class="val" id="delayOut">0 ms</span></div>
+          <div class="seg" id="delaySeg" role="group" aria-label="Sound delay" style="grid-template-columns:repeat(3,auto)">
+            <button data-d="0" aria-pressed="true" style="padding:0 10px">Speaker / wired</button>
+            <button data-d="200" aria-pressed="false" style="padding:0 10px">Bluetooth</button>
+            <button data-d="custom" aria-pressed="false" style="padding:0 10px">Custom</button>
+          </div>
+          <input type="range" id="delay" min="-100" max="400" step="5" value="0" aria-label="Sound delay in milliseconds">
+          <div class="row"><button class="btn sm" id="delayTest" aria-pressed="false">Check it</button><canvas id="delayCv" class="delaycv" aria-hidden="true" hidden></canvas></div>
+          <p class="hint" id="delayHint">Bluetooth headphones and speakers play sound later than the screen shows it (often 150–250 ms). This shifts the ball and the dancer video to match what you hear. Check it: a click plays and the ball should land on it; move the slider until it does.</p>
         </div>
         <div class="pair">
           <div class="field">
@@ -1348,12 +1366,113 @@ const RA=(function(){
   }
 
   /* beats + half-beats with weights, from beat times and downbeat times */
+  /* ---------- riddim: the drum pattern (kick and snare), snapped to a steady grid ----------
+     A beat cue is only as steady as its grid. smoothBeats replaces each detected beat with a local straight-line fit
+     over the beats around it: it follows real tempo changes (live or pitched tracks) but drops the ±20 ms wobble of
+     single-beat picks. A fixed tempo number can't do this; it falls behind by a little every bar. */
+  function smoothBeats(bt,R){
+    R=R||4; const n=bt.length; if(n<4)return bt.slice();
+    /* 1. a robust tempo line over the 25 beats around each beat (median of pairwise slopes, Theil-Sen): where the tracker
+          slips (in a drum break it can follow the off-beat chords for a few bars), the slipped beats are the minority
+          and don't move the line */
+    const W=14, fit=new Array(n), per=new Array(n); let ok=new Array(n).fill(true);
+    for(let pass=0;pass<3;pass++){   /* passes 2 and 3 leave out the beats that slipped, so they can't tilt the line */
+      for(let i=0;i<n;i++){const lo=Math.max(0,Math.min(i-W,n-1-2*W)),hi=Math.min(n-1,Math.max(i+W,2*W));const sl=[];
+        for(let j=lo;j<=hi;j++)if(ok[j])for(let k=j+3;k<=hi;k++)if(ok[k])sl.push((bt[k]-bt[j])/(k-j));
+        sl.sort((x,y)=>x-y);const m=sl.length?sl[sl.length>>1]:(bt[Math.min(n-1,i+1)]-bt[Math.max(0,i-1)])/2;
+        const ic=[];for(let j=lo;j<=hi;j++)if(ok[j])ic.push(bt[j]-m*j);ic.sort((x,y)=>x-y);fit[i]=(ic.length?ic[ic.length>>1]:bt[i]-m*i)+m*i;per[i]=m}
+      ok=bt.map((t,i)=>Math.abs(t-fit[i])<0.18*per[i])}
+    /* 2. keep the beats that sit on that line; 3. a local straight-line fit through the kept beats (follows real tempo
+          changes, drops the ±20 ms wobble of single picks); a stretch with too few kept beats takes the robust line */
+    const o=new Array(n);
+    for(let i=0;i<n;i++){let sk=0,st=0,skk=0,skt=0,m=0;
+      for(let k=Math.max(0,i-R);k<=Math.min(n-1,i+R);k++)if(ok[k]){sk+=k;st+=bt[k];skk+=k*k;skt+=k*bt[k];m++}
+      const den=m*skk-sk*sk; o[i]=(m>=4&&den)?((st*skk-sk*skt)+(m*skt-sk*st)*i)/den:fit[i]}
+    return o;
+  }
+  /* Drum pattern: kick = a rise in BOTH the sub band (35-100 Hz) and the punch band (100-250 Hz), so a bass note
+     (sub only) or a snare's body (punch only) doesn't count. Snare/clap/rim = a rise at 1-5 kHz that is noisy (flat
+     spectrum), so chord stabs and vocals (tonal) don't count. Each bar is cut into 16 slots on the smoothed grid;
+     a slot gets a cue when this bar really has a hit there AND the slot is part of the loop around it (8 bars),
+     or the hit is very strong (a fill or accent). Breaks with no drums give no cues. */
+  function riddim(chans,sr,beats,down,opt){
+    opt=opt||{}; if(!beats||beats.length<8)return null;
+    const d=Math.max(1,Math.round(sr/22050)), sr2=sr/d, N=1024, H=128, n0=Math.floor(chans[0].length/d);
+    const x=new Float32Array(n0+N);
+    for(let i=0;i<n0;i++){let s=0;for(let c=0;c<chans.length;c++){const ch=chans[c];for(let k=0;k<d;k++)s+=ch[i*d+k]||0}x[i+N/2]=s/(d*chans.length)}
+    const fft=makeFFT(N), win=new Float64Array(N); for(let i=0;i<N;i++)win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
+    const fps=sr2/H, frames=Math.max(0,Math.floor(n0/H)), bin=f=>Math.round(f*N/sr2);
+    const B={sub:[bin(35),bin(100)],pun:[bin(100),bin(250)],sn:[bin(1000),bin(5000)]};
+    const subF=new Float32Array(frames),punF=new Float32Array(frames),hiF=new Float32Array(frames),rlA=new Float32Array(frames),lowA=new Float32Array(frames),flatA=new Float32Array(frames),rfA=new Float32Array(frames);
+    const re=new Float64Array(N),im=new Float64Array(N), P=new Float64Array(N/2+1); let prev=new Float64Array(N/2+1), L=new Float64Array(N/2+1), first=true;
+    const a0=B.sn[0],a1=B.sn[1], nb1=a1-a0+1;
+    for(let f=0;f<frames;f++){const o=f*H;for(let i=0;i<N;i++){re[i]=x[o+i]*win[i];im[i]=0}fft(re,im);
+      for(let k=0;k<=N/2;k++){P[k]=re[k]*re[k]+im[k]*im[k];L[k]=Math.log1p(1e4*P[k])}
+      {let e=0;for(let k=B.sub[0];k<=B.pun[1];k++)e+=P[k];lowA[f]=Math.sqrt(e)}
+      if(!first){const pos=(lo,hi)=>{let s=0;for(let k=lo;k<=hi;k++){const dd=L[k]-prev[k];if(dd>0)s+=dd}return s/(hi-lo+1)};
+        subF[f]=pos(B.sub[0],B.sub[1]); punF[f]=pos(B.pun[0],B.pun[1]); hiF[f]=pos(a0,a1);
+        let lg=0,ar=0,rs=0,rl=0;for(let k=a0;k<=a1;k++){lg+=Math.log(P[k]+1e-12);ar+=P[k];const dd=Math.max(0,L[k]-prev[k])+0.05;rs+=dd;rl+=Math.log(dd)}
+        flatA[f]=ar>0?Math.exp(lg/nb1)/(ar/nb1):0;            /* noisy (flat) spectrum */
+        rfA[f]=Math.exp(rl/nb1)/(rs/nb1);
+        let ls=0,ll=0;const l0=B.sub[0],l1=B.pun[1];for(let k=l0;k<=l1;k++){const dd=Math.max(0,L[k]-prev[k])+0.05;ls+=dd;ll+=Math.log(dd)}rlA[f]=Math.exp(ll/(l1-l0+1))/(ls/(l1-l0+1))}  /* a kick's pitch drop fills every low bin; bass + chord only a few */                    /* the rise spreads evenly (noise hit), not just at a chord's notes */
+      first=false; const t=prev;prev=L;L=t}
+    const norm=a=>{const ma=movingAvg(a,Math.round(fps*0.3)),o=new Float32Array(a.length);for(let i=0;i<a.length;i++)o[i]=Math.max(0,a[i]-ma[i]);
+      const nz=Array.from(o).filter(v=>v>0).sort((p,q)=>p-q);const sc=nz.length?nz[Math.floor(nz.length*0.98)]:1;for(let i=0;i<o.length;i++)o[i]/=sc||1;return o};
+    const sub=norm(subF),pun=norm(punF),hi=norm(hiF);
+    /* kick: rise in sub AND punch, minus what a snare's noise leaks into the low end */
+    /* per-bin rises compared directly: a noise hit (snare) rises about equally in every band, a kick much more in the
+       low bands than at 1-5 kHz, and a hi-hat on top of a kick doesn't cancel it */
+    /* low hits (kick or bass): rise in low-band LOUDNESS. Linear, not log: a quiet hi-hat or a snare's noise carries
+       almost no energy below 250 Hz, so it can't pass for a low hit */
+    const kr=new Float32Array(frames);for(let i=2;i<frames;i++)kr[i]=Math.max(0,lowA[i]-Math.max(lowA[i-1],lowA[i-2]));
+    const kick=norm(kr);
+    /* snare/clap/rim: high rise, weighted by noisiness, body (punch) and an even rise */
+    const sn=new Float32Array(frames);for(let i=0;i<frames;i++)sn[i]=hi[i]*Math.sqrt(clamp(flatA[i]/0.5,0,1))*(0.45+0.55*clamp(pun[i]/0.5,0,1))*clamp((rfA[i]-0.45)/0.25,0,1);
+    /* grid: 16 slots per bar on the smoothed beats */
+    const bt=smoothBeats(beats,opt.R||4), nb=bt.length;
+    let i0=0; if(down&&down.length){let best=1e9;bt.forEach((t,i)=>{const dd=Math.abs(t-down[0]);if(dd<best){best=dd;i0=i}})}
+    const rad=Math.max(2,Math.round(0.035*fps)), peak=(a,t)=>{const c=Math.round(t*fps);let m=0,mi=c;for(let k=c-rad;k<=c+rad;k++)if(k>=0&&k<a.length&&a[k]>m){m=a[k];mi=k}return [m,mi/fps]};
+    const slots=[];
+    for(let i=0;i<nb;i++){const p=i<nb-1?bt[i+1]-bt[i]:bt[i]-bt[i-1];const pos=(((i-i0)%4)+4)%4, bar=Math.floor((i-i0)/4);
+      for(let q=0;q<4;q++){const t=bt[i]+p*q/4;if(t<0)continue;const [kv,kt]=peak(kick,t),[sv,st]=peak(sn,t);
+        const sl={t,bar,s:pos*4+q,k:kv,sn:sv,kt,st};if(opt.debug){sl.sub=peak(sub,t)[0];sl.pun=peak(pun,t)[0];sl.hi=peak(hi,t)[0];const fi=Math.round(st*fps);sl.flat=flatA[fi]||0;sl.rf=rfA[fi]||0;sl.rl=rlA[Math.round(kt*fps)]||0}slots.push(sl)}}
+    const bars={};for(const sl of slots)(bars[sl.bar]||(bars[sl.bar]=[])).push(sl);
+    const barIds=Object.keys(bars).map(Number).sort((a,b)=>a-b);
+    const W=opt.window||4, out=[];
+    const med=a=>{if(!a.length)return 0;const b=a.slice().sort((p,q)=>p-q),h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2};
+    /* level of a band's hits in some bars: the k-th strongest slot, k = number of bars (a part that plays at all
+       plays at least once a bar), so sparse riddims (one-drop: one kick a bar) still get a fair level */
+    const level=(ids,band)=>{const v=ids.flatMap(x=>bars[x].map(z=>z[band])).sort((p,q)=>q-p);return v[Math.min(v.length-1,Math.max(0,ids.length-1))]||0};
+    const songLevel={k:level(barIds,'k'),sn:level(barIds,'sn')};
+    for(const b of barIds){
+      const near=barIds.filter(x=>x>=b-W&&x<=b+W-1);
+      for(const band of ['k','sn']){
+        const top=level(near,band); if(top<0.3*songLevel[band]||top<0.05)continue;   /* this part is silent around here (a break) */
+        /* the loop around this bar: 1-bar repeats (all bars nearby) or 2-bar repeats (every other bar), whichever
+           holds this slot more strongly; many riddims answer themselves across two bars */
+        const at=(x,s)=>{const sl=bars[x]&&bars[x].find(z=>z.s===s);return sl?sl[band]:0};
+        const near2=barIds.filter(x=>x>=b-2*W&&x<=b+2*W&&((x-b)%2===0));
+        const p1=new Array(16).fill(0),p2=new Array(16).fill(0);for(let s=0;s<16;s++){p1[s]=med(near.map(x=>at(x,s)));p2[s]=med(near2.map(x=>at(x,s)))}
+        const m1=Math.max(...p1),m2=Math.max(...p2), prof=p1.map((v,s)=>Math.max(v/(m1||1),p2[s]/(m2||1))*Math.max(m1,m2)), pmax=Math.max(m1,m2);
+        for(const sl of bars[b]){const v=sl[band];
+          const T=opt.th||[0.45,0.5,0.3,1.5];
+          const loop=prof[sl.s]>=T[1]*pmax&&prof[sl.s]>=T[2]*top, accent=v>=T[3]*top, present=v>=T[0]*top;
+          if((present&&loop)||accent){sl[band==='k'?'isK':'isS']=true;sl[band==='k'?'wk':'ws']=v/(top||1)}}
+      }
+    }
+    for(const sl of slots)if(sl.isK||sl.isS)out.push({t:+sl.t.toFixed(4),kind:sl.isK&&sl.isS?'both':sl.isK?'kick':'snare',bar:sl.bar,slot:sl.s,w:+Math.min(2,Math.max(sl.wk||0,sl.ws||0)).toFixed(2),
+      raw:+((sl.isK?sl.kt:sl.st)).toFixed(4)});
+    /* a riddim the detector can't see (no clear drums) gives very few cues: say so instead of guessing */
+    const perBar=out.length/Math.max(1,barIds.length);
+    return {events:out,grid:bt,perBar,sure:perBar>=0.75,slots:opt.debug?slots:undefined};
+  }
+
   function grid(bt,down){
     const g=[];const ds=new Set((down||[]).map(t=>t.toFixed(3)));
     for(let i=0;i<bt.length;i++){g.push({t:bt[i],w:ds.has(bt[i].toFixed(3))?1.2:1});if(i<bt.length-1)g.push({t:(bt[i]+bt[i+1])/2,w:0.6})}
     return g;
   }
-  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,analyzePose,mergeHits,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
+  return {riddim,smoothBeats,onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,analyzePose,mergeHits,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
 })();
 if(typeof module!=='undefined')module.exports=RA;
 /*ANALYSIS-END*/
@@ -2072,7 +2191,7 @@ function syncSong(force){
 }
 
 function syncSteady(force){
-  const e=expected(), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
+  const e=expected()+(S.rec?0:(S.sndDelay||0)*S.ar), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
   const setV=n=>{S.vNudge=n;const g=segs()[S.segIdx];if(!g||S.switchPending)return;const r=vNudged(rateAt(g,v.currentTime));if(Math.abs(v.playbackRate-r)>0.006)v.playbackRate=r};
   if(!live||e<0||e>=d){
     if(S.vNudge)setV(0);
@@ -3437,6 +3556,8 @@ function analyzeSongObj(so,apply){
       const an=RA.analyzeSong(songChans(so.buf),so.buf.sampleRate,{forceBpm:so.forceBpm||undefined,noPhaseFix:false});
       if(so.beatShift){const h=30/an.bpm;an.beats=an.beats.map(t=>t+h).filter(t=>t<so.buf.duration);an.downbeats=an.beats.filter((t,i)=>i%4===((an.phase||0)%4))}
       setOne(so,an);
+      an.grid=RA.smoothBeats(an.beats);
+      try{const R=RA.riddim(songChans(so.buf),so.buf.sampleRate,an.beats,an.downbeats);an.riddim=R?{events:R.events.map(e=>({t:e.t,kind:e.kind,w:e.w})),sure:R.sure,perBar:R.perBar}:null}catch(e){an.riddim=null}
       so.an=an;
     }catch(e){so.an=null}
     if(so===S.mainSong&&!so.cleared){if(apply)S.beatSrc='detected';if(S.beatSrc!=='tapped')applyDetectedBeat(so)}
@@ -3444,6 +3565,10 @@ function analyzeSongObj(so,apply){
     if(so._after){const f=so._after;so._after=null;f()}
   },30);
 }
+function riddimText(so){const R=so&&so.an&&so.an.riddim;if(!R)return '';
+  if(!R.sure)return 'Riddim: no clear drums found, so the ball lands on the beat instead.';
+  const k=R.events.filter(e=>e.kind!=='snare').length,s=R.events.filter(e=>e.kind!=='kick').length;
+  return `Riddim: ${k} low hits (kick or bass) and ${s} snare, clap or rim hits found, about ${R.perBar.toFixed(1)} a bar. Turn the click to "on the riddim" to hear them.`}
 function applyDetectedBeat(so){
   if(!so||!so.an)return;
   S.beatSrc='detected'; S.sBase=+so.an.bpm.toFixed(2); S.sAnchor=(so.an.downbeats[0]??so.an.beats[0])||0;
@@ -3470,6 +3595,7 @@ function renderSongCard(){
   card.classList.toggle('cleared',!!so.cleared);
   if(so.cleared){$('#songDet').textContent='Beat tracking cleared';return}
   $('#songDet').textContent=an.bpm.toFixed(1)+' BPM · '+(so.confirmed?'checked by your taps ✓':songSure()?'sure':'not sure')+(S.beatSrc==='tapped'?' · using your taps':'');
+  $('#riddimMsg').textContent=riddimText(so);
   const box=$('#songCands'); box.textContent='';
   const all=[{bpm:+an.bpm.toFixed(1)}].concat((an.candidates||[]).filter(c=>Math.abs(c.bpm-an.bpm)/an.bpm>0.05)).slice(0,4);
   all.forEach((c,i)=>{const b=el('button','btn sm cand'+(i===0?' on':''),c.bpm.toFixed(1));b.setAttribute('aria-label','Use '+c.bpm.toFixed(1)+' BPM');
@@ -3484,20 +3610,6 @@ function renderSongCard(){
 $('#beatHalf').addEventListener('click',()=>{const so=S.mainSong;if(!so)return;so.beatShift=so.beatShift?0:0.5;so.confirmed=false;S.beatSrc='detected';analyzeSongObj(so,true)});
 $('#beatUseDet').addEventListener('click',()=>{const so=S.mainSong;if(so&&so.an)applyDetectedBeat(so);renderSongCard();scheduleFit()});
 $('#clickOn').addEventListener('change',e=>{S.clickOn=e.target.checked;if(S.clickOn){const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}});
-/* click track: a short tick each time the song passes a beat (downbeats higher) */
-let lastClickT=-1;
-function clickTick(){
-  if(!S.clickOn||a.paused||!S.hasA){lastClickT=-1;return}
-  const G=liveGrid(); if(!G)return; const t=a.currentTime;
-  if(lastClickT<0||t<lastClickT||t-lastClickT>0.5){lastClickT=t;return}
-  const hit=G.beats.find(b=>b>lastClickT&&b<=t+0.012); lastClickT=t;
-  if(hit==null)return;
-  const c=getCtx(); if(c.state!=='running')return;
-  const down=G.down.some(d=>Math.abs(d-hit)<0.02);
-  const o=c.createOscillator(),g=c.createGain(); o.frequency.value=down?1600:1000; g.gain.setValueAtTime(0.35,c.currentTime); g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.05);
-  o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+0.06);
-}
-
 /* ---------- trust, beat lights setting, clearing, tap to check ---------- */
 function songSure(){
   if(S.beatSrc==='tapped')return true;
@@ -3513,12 +3625,12 @@ function danceSure(){
   return (m.contrast??1)>=0.6&&(m.shake||0)<0.6;
 }
 function setBeatView(v0,save){
-  S.beatView=v0; document.body.classList.remove('bv-off','bv-calm','bv-flash'); document.body.classList.add('bv-'+v0);
+  S.beatView=v0; document.body.classList.remove('bv-off','bv-calm','bv-flash','bv-ball'); document.body.classList.add('bv-'+v0);
   $$('#bvSeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bv===v0)));
-  if(save)try{localStorage.setItem('rs-beatview',v0)}catch(e){}
+  if(save)try{localStorage.setItem('rs-cues',v0)}catch(e){}
 }
-(()=>{let v0=null;try{v0=localStorage.getItem('rs-beatview')}catch(e){}
-  if(!['off','calm','flash'].includes(v0)){let rm=false;try{rm=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}v0=rm?'off':'calm'}
+(()=>{let v0=null;try{v0=localStorage.getItem('rs-cues')}catch(e){}
+  if(!['off','calm','ball'].includes(v0)){let rm=false;try{rm=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}v0=rm?'off':'ball'}
   setBeatView(v0,false)})();
 $$('#bvSeg button').forEach(b=>b.addEventListener('click',()=>setBeatView(b.dataset.bv,true)));
 /* the dancer's "1": downbeats are every 4th beat counting from the beat nearest to where they pressed */
@@ -4576,6 +4688,7 @@ async function phoneCheck(){
   if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
+  try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
   try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`)}catch(e){}
   try{const r=await storageScan();const t=r.total!=null?Math.max(r.total,r.media+r.body+r.unused+r.projects):null;
     add('Storage',`${fmtMB(t)} in use${r.quota?' of '+fmtMB(r.quota):''} · media ${fmtMB(r.media)} · tracking ${fmtMB(r.body)} · unused ${fmtMB(r.unused)} · ${r.projectsN} project${r.projectsN===1?'':'s'} · ${r.persisted?'kept safe':'may be cleared by the browser'}`)}catch(e){add('Storage','couldn’t read')}
@@ -4797,7 +4910,160 @@ function patFilterUI(){
   if(S.patFilter!=='all'&&!have.includes(S.patFilter)){S.patFilter='all'}
 }
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__rs={patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+/* ---------- beat cues: a ball that lands on each hit of the riddim, and one that lands on each of the dancer's hits ----------
+   Everything runs on one clock: the song position you HEAR (smoothed, minus the sound delay, plus one frame because what's
+   drawn now is seen on the next frame). The riddim's hits are in song seconds; the dancer's hits are mapped into song
+   seconds the same way the player lines the video up with the song, so the two balls and the video agree. */
+const CUE={delay:0,clock:{mt:0,pt:0,last:-1},col:null,colAt:0,dKey:'',dEv:[],drawn:false,stillKey:'',test:null};
+try{const d=localStorage.getItem('rs-snddelay');CUE.delay=d!=null?clamp((+d||0)/1000,-0.1,0.4):0}catch(e){}
+const cueCv=$('#cueCanvas');
+/* smoothed song position: a.currentTime can update in coarse steps on some phones; predict between updates */
+function songNow(){
+  const now=performance.now(), raw=a.currentTime, r=a.playbackRate||1, c=CUE.clock;
+  if(a.paused||!S.hasA){c.last=-1;return raw}
+  if(raw!==c.last){const est=c.last<0?raw:c.mt+(now-c.pt)/1000*r, err=raw-est;
+    if(c.last<0||Math.abs(err)>0.08){c.mt=raw;c.pt=now}else{c.mt=est+err*0.2;c.pt=now} c.last=raw}
+  return c.mt+(now-c.pt)/1000*r;
+}
+const heardNow=()=>{const r=a.playbackRate||1;return songNow()-CUE.delay*r+r/60};
+function cueCols(){const now=performance.now();if(!CUE.col||now-CUE.colAt>3000){CUE.col={song:tok('--song-hot'),dance:tok('--dance'),ink:'#F3F1EC'};CUE.colAt=now}return CUE.col}
+/* the riddim's hits (song seconds) — or the steady beat when the riddim can't be seen or the beat was tapped */
+function riddimEvents(){
+  const so=S.liveSong, an=so&&so.an, G=liveGrid(); if(!G)return {ev:[],label:'Beat',sure:false,beat:0.6};
+  const beat=60/(G.bpm||100);
+  if(!G.tapped&&an&&an.riddim&&an.riddim.sure&&an.riddim.events.length)return {ev:an.riddim.events,label:'Riddim',sure:songSure(),beat};
+  const bt=G.tapped?G.beats:(an&&an.grid)||G.beats, down=new Set((G.down||[]).map(t=>Math.round(t*100)));
+  if(!CUE.bEv||CUE.bEvSrc!==bt){CUE.bEvSrc=bt;CUE.bEv=bt.map(t=>({t,kind:down.has(Math.round(t*100))?'one':'beat',w:1}))}
+  return {ev:CUE.bEv,label:'Beat',sure:songSure(),beat};
+}
+/* the dancer's hits in song seconds, the same mapping as expected(): song = offset + shift + (output time + avComp) × song speed */
+function dancerEvents(){
+  const ro=routineOn(), L=segs(), n=srcById(S.cur);
+  const key=[ro,S.cur,S.study?S.study.a+':'+S.study.b+':'+S.study.rate:0,S.offset,S.ar,S.vr,S.cIn,clipEnd(),S.avComp||0,S.variant&&S.variant.shift||0,S.hitLevel,
+    L.map(g=>g.src+':'+g.s+':'+g.e+':'+(g.k?g.k.length+':'+g.k[g.k.length-1][1]:g.r)).join(','),L.map(g=>{const m=srcById(g.src);return m&&m.motion?m.motion.beats.length+(m.motion.edited?'e':''):0}).join(',')].join('|');
+  if(key===CUE.dKey)return CUE.dEv; CUE.dKey=key;
+  const out=[], base=S.offset+(S.variant&&S.variant.shift||0), av=S.avComp||0;
+  if(S.study&&n){for(const h of hitsOf(n))if(h.t>=S.study.a&&h.t<=S.study.b)out.push({t:S.offset+((h.t-S.cIn)/S.vr+av)*S.ar,kind:'dance',w:h.w||1})}
+  else{let T=0;for(const g of L){const hs=motionIn(g.src,g.s,g.e)||[];for(const h of hs)out.push({t:base+(T+toOut(g,h.t)+av)*S.ar,kind:'dance',w:h.w||1});T+=segLen(g)}}
+  out.sort((x,y)=>x.t-y.t); CUE.dEv=out; return out;
+}
+/* where a lane's ball is at heard time H: height 0..1 (lands exactly on each hit), the last landing, the next hit */
+function lane(E,H,beat){
+  let lo=0,hi=E.length;while(lo<hi){const m=(lo+hi)>>1;if(E[m].t<=H)lo=m+1;else hi=m}
+  const nx=E[lo], pv=E[lo-1];
+  let y=0, nearNext=0;
+  if(nx){const gap=pv?nx.t-pv.t:beat, D=Math.max(0.06,Math.min(gap,beat)), u=(H-(nx.t-D))/D;
+    if(u>0&&u<1)y=4*u*(1-u)*Math.sqrt(Math.min(1,D/beat)); nearNext=clamp(1-(nx.t-H)/beat,0,1)}
+  const land=pv&&H-pv.t<0.22?{age:H-pv.t,kind:pv.kind,w:pv.w,t:pv.t}:null;
+  return {y,land,nearNext,next:nx};
+}
+function cueBall(c,x,floor,R,hop,L,col,unsure){
+  const lift=L.y*hop, ag=L.land?L.land.age:1, sq=ag<0.07?1-ag/0.07:0;
+  /* shadow: sharpens as the ball comes down, so the landing can be read before it happens */
+  c.fillStyle=`rgba(0,0,0,${0.18+0.32*(1-L.y)})`;c.beginPath();c.ellipse(x,floor+R*0.15,R*(1.25-0.5*L.y),R*0.32*(1-0.5*L.y),0,0,Math.PI*2);c.fill();
+  /* landing ring: what kind of hit it was */
+  if(L.land&&ag<0.22){const k=L.land.kind,p=ag/0.22, big=k==='kick'||k==='both'||k==='one';
+    const rr=R*(1.1+p*(big?2.6:1.9))*(k==='dance'?0.7+0.3*clamp(L.land.w,0.3,1.5):1);
+    c.lineWidth=R*(big?0.42:0.26)*(1-p);c.strokeStyle=k==='snare'?`rgba(243,241,236,${1-p})`:col;c.globalAlpha=k==='snare'?1:(1-p);
+    c.beginPath();c.ellipse(x,floor,rr,rr*0.42,0,0,Math.PI*2);c.stroke();
+    if(k==='both'){c.strokeStyle=`rgba(243,241,236,${1-p})`;c.globalAlpha=1;c.lineWidth=R*0.2*(1-p);c.beginPath();c.ellipse(x,floor,rr*0.7,rr*0.3,0,0,Math.PI*2);c.stroke()}
+    c.globalAlpha=1}
+  /* the ball: squashes for a moment when it lands */
+  const sx=1+0.28*sq, sy=1-0.3*sq, cy=floor-R*sy-lift;
+  c.save();c.translate(x,cy);c.scale(sx,sy);c.beginPath();c.arc(0,0,R,0,Math.PI*2);
+  if(unsure){c.lineWidth=R*0.22;c.strokeStyle=col;c.globalAlpha=0.55;c.stroke()}else{c.fillStyle=col;c.fill();c.fillStyle='rgba(255,255,255,.35)';c.beginPath();c.arc(-R*0.3,-R*0.32,R*0.32,0,Math.PI*2);c.fill()}
+  c.restore();c.globalAlpha=1;
+}
+function cueLabel(c,x,floor,R,txt,col){c.font=`700 ${Math.round(R*0.78)}px Figtree,system-ui,sans-serif`;c.textAlign='center';c.textBaseline='top';
+  c.fillStyle='rgba(8,9,12,.55)';const w=c.measureText(txt).width+R*0.7;c.beginPath();if(c.roundRect)c.roundRect(x-w/2,floor+R*0.55,w,R*1.15,R*0.5);else c.rect(x-w/2,floor+R*0.55,w,R*1.15);c.fill();
+  c.fillStyle=col;c.fillText(txt,x,floor+R*0.7)}
+function drawCues(){
+  const on=S.beatView==='ball';
+  const playing=S.playing&&!a.paused;
+  if(!on||!S.hasA||!liveGrid()){if(CUE.drawn){const c=cueCv.getContext('2d');c.clearRect(0,0,cueCv.width,cueCv.height);CUE.drawn=false;CUE.stillKey=''}return}
+  const r=cueCv.getBoundingClientRect(); if(!r.width||!r.height)return;
+  const H=playing?heardNow():a.currentTime;
+  /* paused: draw once, not every frame */
+  const still=[Math.round(H*50),Math.round(r.width),Math.round(r.height),S.cur,routineOn(),CUE.dKey,S.beatView].join('|');
+  if(!playing&&still===CUE.stillKey)return; CUE.stillKey=playing?'':still;
+  const dpr=window.devicePixelRatio||1, w=Math.round(r.width*dpr), h=Math.round(r.height*dpr);
+  if(cueCv.width!==w||cueCv.height!==h){cueCv.width=w;cueCv.height=h}
+  const c=cueCv.getContext('2d');c.clearRect(0,0,w,h);CUE.drawn=true;
+  const el=curVid(), rect=S.hasV&&el.videoWidth?RB.containRect(w,h,el.videoWidth,el.videoHeight):{x:0,y:0,w,h};
+  const col=cueCols(), side0=rect.x, R=clamp(Math.max(Math.min(rect.w,rect.h)*0.05,Math.min(side0*0.22,h*0.06)),11*dpr,28*dpr), pad=R*1.7;   /* big enough to read from across the room */
+  const dock=$('#dock'), dockH=dock&&!dock.hidden?dock.getBoundingClientRect().height*dpr+10*dpr:0;
+  const floor=Math.min(rect.y+rect.h,h-dockH)-R*2.2, hop=clamp(Math.min(rect.h,h)*0.42,60*dpr,260*dpr);
+  const side=rect.x, inBars=side>=R*4.2;
+  const xL=inBars?side/2:rect.x+pad, xR=inBars?w-side/2:rect.x+rect.w-pad;
+  const rid=riddimEvents(), dEv=S.hasV?dancerEvents():[];
+  const Lr=lane(rid.ev,H,rid.beat);
+  cueBall(c,xL,floor,R,hop,Lr,col.song,!rid.sure); cueLabel(c,xL,floor,R,rid.label+(rid.sure?'':' ?'),col.song);
+  if(dEv.length){const Ld=lane(dEv,H,rid.beat);
+    cueBall(c,xR,floor,R,hop,Ld,col.dance,!danceSure()); cueLabel(c,xR,floor,R,'Dancer'+(danceSure()?'':' ?'),col.dance);
+    /* both landed together (within 60 ms): join them */
+    if(Lr.land&&Ld.land&&Math.abs(Lr.land.t-Ld.land.t)<0.06&&Ld.land.age<0.2){const p=Ld.land.age/0.2;c.strokeStyle=`rgba(243,241,236,${0.85*(1-p)})`;c.lineWidth=R*0.22*(1-p);
+      c.beginPath();c.moveTo(xL+R*1.3,floor);c.lineTo(xR-R*1.3,floor);c.stroke()}}
+}
+/* the count lights follow the smoothed beat list (not a fixed tempo, which drifts a little every bar) */
+function countAt(H){
+  const G=liveGrid(); if(!G)return {idx:-1,pulse:false};
+  const so=S.liveSong, bt=G.tapped?G.beats:(so&&so.an&&so.an.grid)||G.beats; if(!bt.length||H<bt[0]-0.05)return {idx:-1,pulse:false};
+  if(CUE.cSrc!==bt||CUE.cDown!==(G.down||[])[0]){CUE.cSrc=bt;CUE.cDown=(G.down||[])[0];let i0=0,bd=1e9;if(CUE.cDown!=null)for(let k=0;k<bt.length;k++){const dd=Math.abs(bt[k]-CUE.cDown);if(dd<bd){bd=dd;i0=k}}CUE.cI0=i0}
+  let lo=0,hi=bt.length;while(lo<hi){const m=(lo+hi)>>1;if(bt[m]<=H)lo=m+1;else hi=m}const i=Math.max(0,lo-1);
+  const per=(bt[i+1]||bt[i]+0.6)-bt[i];
+  return {idx:((i-CUE.cI0)%4+4)%4,pulse:H-bt[i]<per*0.14};
+}
+/* the click: scheduled a little ahead on the sound engine's own clock, so it lands on time (polling every frame could be
+   a frame late, and jittery) */
+const CLK={sched:new Set(),last:-1,nodes:[]};
+/* stop clicks already queued for later (pause, seek, switching song) */
+function clickCancel(){const c=ctx;for(const n of CLK.nodes){try{if(!c||n.at>c.currentTime)n.o.stop()}catch(e){}}CLK.nodes=[];CLK.sched.clear()}
+function clickTick(){
+  if(!S.clickOn||a.paused||!S.hasA){if(CLK.last>=0||CLK.nodes.length)clickCancel();CLK.last=-1;return}
+  const c=ctx; if(!c||c.state!=='running'){if(S.clickOn){const cc=getCtx();if(cc.state!=='running')cc.resume().catch(()=>{})}return}
+  const now=songNow(), r=a.playbackRate||1; if(CLK.last>=0&&(now<CLK.last-0.05||now-CLK.last>0.5))clickCancel(); CLK.last=now;
+  const what=$('#clickWhat')?$('#clickWhat').value:'beat';
+  let ev; if(what==='riddim'){const R=riddimEvents();ev=R.ev}else{const G=liveGrid();if(!G)return;const so=S.liveSong,bt=G.tapped?G.beats:(so&&so.an&&so.an.grid)||G.beats,dn=new Set((G.down||[]).map(t=>Math.round(t*100)));
+    if(CLK.bSrc!==bt){CLK.bSrc=bt;CLK.bEv=bt.map(t=>({t,kind:dn.has(Math.round(t*100))?'one':'beat'}))}ev=CLK.bEv}
+  const ahead=0.3;   /* far enough ahead that a slow frame can't make a click late */
+  let lo=0,hi=ev.length;while(lo<hi){const m=(lo+hi)>>1;if(ev[m].t<now-0.005)lo=m+1;else hi=m}
+  for(let i=lo;i<ev.length&&ev[i].t<now+ahead*r;i++){const e=ev[i],id=Math.round(e.t*1000);if(CLK.sched.has(id))continue;CLK.sched.add(id);
+    const when=c.currentTime+Math.max(0,(e.t-now)/r);
+    const o=c.createOscillator(),g=c.createGain();
+    const f=e.kind==='kick'?520:e.kind==='snare'?2100:e.kind==='both'?900:e.kind==='one'?1600:1000;
+    o.frequency.value=f; g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime(e.kind==='kick'?0.5:0.32,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+(e.kind==='kick'?0.09:0.05));
+    o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.1);CLK.nodes.push({o,at:when})}
+  if(CLK.nodes.length>64)CLK.nodes=CLK.nodes.filter(n=>n.at>c.currentTime-0.2);
+  if(CLK.sched.size>400)CLK.sched=new Set([...CLK.sched].slice(-100));
+}
+/* sound delay: presets, fine slider, and a check (a click on the sound engine with a ball that should land on it) */
+function setDelay(ms,save){
+  CUE.delay=clamp(ms,-100,400)/1000; S.sndDelay=CUE.delay; $('#delay').value=String(Math.round(ms)); $('#delayOut').textContent=Math.round(ms)+' ms';
+  const preset=ms===0?'0':ms===200?'200':'custom'; $$('#delaySeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.d===preset)));
+  if(save)try{localStorage.setItem('rs-snddelay',String(Math.round(ms)))}catch(e){}
+  if(S.playing)syncSong(true);
+}
+setDelay(Math.round(CUE.delay*1000),false);
+$$('#delaySeg button').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.d==='custom'){$('#delay').focus();return}setDelay(+b.dataset.d,true)}));
+$('#delay').addEventListener('input',e=>setDelay(+e.target.value,true));
+function delayTestStop(){const T=CUE.test;if(!T)return;CUE.test=null;cancelAnimationFrame(T.raf);$('#delayTest').setAttribute('aria-pressed','false');$('#delayTest').textContent='Check it';$('#delayCv').hidden=true}
+$('#delayTest').addEventListener('click',()=>{
+  if(CUE.test){delayTestStop();return}
+  const c=getCtx(); if(c.state!=='running')c.resume().catch(()=>{});
+  const cv=$('#delayCv'); cv.hidden=false; $('#delayTest').setAttribute('aria-pressed','true'); $('#delayTest').textContent='Stop';
+  const per=0.6, t0=c.currentTime+0.3, T={t0,per,raf:0,until:t0+per*24}; CUE.test=T;
+  for(let k=0;k<24;k++){const when=t0+k*per,o=c.createOscillator(),g=c.createGain();o.frequency.value=k%4===0?1600:1000;
+    g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime(0.4,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+0.06);o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.08)}
+  const ev=[];for(let k=0;k<24;k++)ev.push({t:t0+k*per,kind:k%4===0?'one':'beat',w:1});
+  const loop=()=>{if(CUE.test!==T)return;const dpr=window.devicePixelRatio||1,r=cv.getBoundingClientRect(),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
+    const x=cv.getContext('2d');x.clearRect(0,0,w,h);
+    /* the same rule as the song: the playback clock, minus the sound delay, plus one frame */
+    const Hh=c.currentTime-CUE.delay+1/60, R=8*dpr, L=lane(ev,Hh,per);
+    cueBall(x,w/2,h-R*1.4,R,h-R*4,L,cueCols().song,false);
+    if(ct>T.until+0.3){delayTestStop();return}T.raf=requestAnimationFrame(loop)};
+  T.raf=requestAnimationFrame(loop);
+});
+if(/debug/.test(location.hash))window.__rs={expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
@@ -4837,10 +5103,10 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
+  clickTick(); drawBody(); drawCues(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
-  if(S.sBase&&S.hasA&&!a.paused)s=beat(a.currentTime,S.sAnchor,S.sBase);
+  if(S.hasA&&!a.paused)s=countAt(heardNow());
   const bv=S.beatView, sOk=songSure(), dOk=danceSure();
   dBeatsEl.classList.toggle('unsure',!dOk); sBeatsEl.classList.toggle('unsure',!sOk);
   dLights.forEach((l,i)=>l.classList.toggle('on',bv!=='off'&&i===d.idx));

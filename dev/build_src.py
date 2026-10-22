@@ -6,6 +6,7 @@
   analysis.js      tempo and beat analysis   (shared with MirrorView)
   body.js          body tracking and drawing (shared with MirrorView and the pose labs)
   src/app.js       the app
+  src/cues.js      beat cues (ball, count, click, sound delay), placed into app.js at its /*@cues*/ marker
   src/tail.html    closing tags
 
 Writes riddim-swap.html (the artifact page), then runs build_app.py for the installable app and MirrorView.
@@ -19,7 +20,7 @@ rd = lambda p: p.read_text()
 page = (rd(src/'head.html') + rd(src/'style.css') + rd(src/'markup.html')
         + '\n' + rd(R/'analysis.js') + '\n</script>\n<script>'
         + '\n' + rd(R/'body.js') + '\n</script>\n<script>'
-        + rd(src/'app.js') + rd(src/'tail.html'))
+        + rd(src/'app.js').replace('/*@cues*/\n', rd(src/'cues.js'), 1) + rd(src/'tail.html'))
 if '--check' in sys.argv:
     want = pathlib.Path(sys.argv[sys.argv.index('--check') + 1]).read_text()
     if page == want: print('identical', len(page), 'chars'); sys.exit(0)

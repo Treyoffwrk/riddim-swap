@@ -22,7 +22,7 @@ const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
   await swipe(r.x+r.w*0.8,r.y+r.h/2,r.x+r.w*0.8-260,r.y+r.h/2);
   rec('Swipe on the Beat lights switch moves to the next mode',await tab()==='t-moves'?'passed':'failed','Tempo → '+await tab());
   const bv=await p.evaluate(()=>[...document.querySelectorAll('#bvSeg button')].find(x=>x.getAttribute('aria-pressed')==='true').dataset.bv);
-  rec('…and doesn’t press the button it started on',bv==='calm'?'passed':'failed','beat lights still '+bv);
+  rec('…and doesn’t press the button it started on',bv==='ball'?'passed':'failed','beat cues still '+bv);
   /* 2. on the empty space beside the video chips (your second screenshot), and on a chip itself */
   r=await at('#p-moves .srcChips');
   await swipe(r.x+r.w-20,r.y+r.h/2,r.x+r.w-280,r.y+r.h/2);

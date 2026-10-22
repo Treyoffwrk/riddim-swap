@@ -225,9 +225,10 @@ input[type=range]{width:100%;accent-color:var(--ink);margin:0}
 .tblwrap{overflow-x:auto}
 /* beat lights: Off / Calm / Flash */
 body.bv-off #pulses{display:none!important}
-body.bv-calm .beats i{transition:background .35s ease,color .35s ease,border-color .35s ease}
-body.bv-calm .beats.d i.on{background:#2E3A63;background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
-body.bv-calm .beats.s i.on{background:#5A4527;background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
+body.bv-calm .beats i,body.bv-ball .beats i{transition:background .3s ease,color .3s ease,border-color .3s ease}
+.beats i.on{transition:none!important}
+body.bv-calm .beats.d i.on,body.bv-ball .beats.d i.on{background:#2E3A63;background:color-mix(in srgb,var(--dance) 35%,var(--sunk));border-color:var(--dance);color:var(--ink)}
+body.bv-calm .beats.s i.on,body.bv-ball .beats.s i.on{background:#5A4527;background:color-mix(in srgb,var(--song-hot) 35%,var(--sunk));border-color:var(--song-hot);color:var(--ink)}
 .beats.unsure i{border-style:dashed;opacity:.5}
 .beats.unsure b::after{content:" ?"}
 #songCard.cleared .row>:not(#beatFind),#songCard.cleared .warnlist,#songCard.cleared .hint.ear{display:none}
@@ -258,6 +259,9 @@ html.rs-hosted .mv-only[hidden]{display:none!important}
 .start li.next .n{background:var(--song);border-color:var(--song);color:#0E1014}
 .start li .go{margin-left:auto}
 .bodycv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.cuecv{position:absolute;inset:0;width:100%;height:100%;z-index:3;pointer-events:none}
+.delaycv{width:120px;height:44px;border-radius:8px;background:var(--sunk)}
+.sel.sm{height:32px;border-radius:8px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:inherit;font-size:13px;padding:0 6px}
 .bodyrow{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
 .hitstrip.edit{height:22px;cursor:pointer;touch-action:manipulation}
 #hitLevel{grid-template-columns:repeat(3,auto)}

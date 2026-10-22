@@ -1564,12 +1564,113 @@ const RA=(function(){
   }
 
   /* beats + half-beats with weights, from beat times and downbeat times */
+  /* ---------- riddim: the drum pattern (kick and snare), snapped to a steady grid ----------
+     A beat cue is only as steady as its grid. smoothBeats replaces each detected beat with a local straight-line fit
+     over the beats around it: it follows real tempo changes (live or pitched tracks) but drops the ±20 ms wobble of
+     single-beat picks. A fixed tempo number can't do this; it falls behind by a little every bar. */
+  function smoothBeats(bt,R){
+    R=R||4; const n=bt.length; if(n<4)return bt.slice();
+    /* 1. a robust tempo line over the 25 beats around each beat (median of pairwise slopes, Theil-Sen): where the tracker
+          slips (in a drum break it can follow the off-beat chords for a few bars), the slipped beats are the minority
+          and don't move the line */
+    const W=14, fit=new Array(n), per=new Array(n); let ok=new Array(n).fill(true);
+    for(let pass=0;pass<3;pass++){   /* passes 2 and 3 leave out the beats that slipped, so they can't tilt the line */
+      for(let i=0;i<n;i++){const lo=Math.max(0,Math.min(i-W,n-1-2*W)),hi=Math.min(n-1,Math.max(i+W,2*W));const sl=[];
+        for(let j=lo;j<=hi;j++)if(ok[j])for(let k=j+3;k<=hi;k++)if(ok[k])sl.push((bt[k]-bt[j])/(k-j));
+        sl.sort((x,y)=>x-y);const m=sl.length?sl[sl.length>>1]:(bt[Math.min(n-1,i+1)]-bt[Math.max(0,i-1)])/2;
+        const ic=[];for(let j=lo;j<=hi;j++)if(ok[j])ic.push(bt[j]-m*j);ic.sort((x,y)=>x-y);fit[i]=(ic.length?ic[ic.length>>1]:bt[i]-m*i)+m*i;per[i]=m}
+      ok=bt.map((t,i)=>Math.abs(t-fit[i])<0.18*per[i])}
+    /* 2. keep the beats that sit on that line; 3. a local straight-line fit through the kept beats (follows real tempo
+          changes, drops the ±20 ms wobble of single picks); a stretch with too few kept beats takes the robust line */
+    const o=new Array(n);
+    for(let i=0;i<n;i++){let sk=0,st=0,skk=0,skt=0,m=0;
+      for(let k=Math.max(0,i-R);k<=Math.min(n-1,i+R);k++)if(ok[k]){sk+=k;st+=bt[k];skk+=k*k;skt+=k*bt[k];m++}
+      const den=m*skk-sk*sk; o[i]=(m>=4&&den)?((st*skk-sk*skt)+(m*skt-sk*st)*i)/den:fit[i]}
+    return o;
+  }
+  /* Drum pattern: kick = a rise in BOTH the sub band (35-100 Hz) and the punch band (100-250 Hz), so a bass note
+     (sub only) or a snare's body (punch only) doesn't count. Snare/clap/rim = a rise at 1-5 kHz that is noisy (flat
+     spectrum), so chord stabs and vocals (tonal) don't count. Each bar is cut into 16 slots on the smoothed grid;
+     a slot gets a cue when this bar really has a hit there AND the slot is part of the loop around it (8 bars),
+     or the hit is very strong (a fill or accent). Breaks with no drums give no cues. */
+  function riddim(chans,sr,beats,down,opt){
+    opt=opt||{}; if(!beats||beats.length<8)return null;
+    const d=Math.max(1,Math.round(sr/22050)), sr2=sr/d, N=1024, H=128, n0=Math.floor(chans[0].length/d);
+    const x=new Float32Array(n0+N);
+    for(let i=0;i<n0;i++){let s=0;for(let c=0;c<chans.length;c++){const ch=chans[c];for(let k=0;k<d;k++)s+=ch[i*d+k]||0}x[i+N/2]=s/(d*chans.length)}
+    const fft=makeFFT(N), win=new Float64Array(N); for(let i=0;i<N;i++)win[i]=0.5-0.5*Math.cos(2*Math.PI*i/N);
+    const fps=sr2/H, frames=Math.max(0,Math.floor(n0/H)), bin=f=>Math.round(f*N/sr2);
+    const B={sub:[bin(35),bin(100)],pun:[bin(100),bin(250)],sn:[bin(1000),bin(5000)]};
+    const subF=new Float32Array(frames),punF=new Float32Array(frames),hiF=new Float32Array(frames),rlA=new Float32Array(frames),lowA=new Float32Array(frames),flatA=new Float32Array(frames),rfA=new Float32Array(frames);
+    const re=new Float64Array(N),im=new Float64Array(N), P=new Float64Array(N/2+1); let prev=new Float64Array(N/2+1), L=new Float64Array(N/2+1), first=true;
+    const a0=B.sn[0],a1=B.sn[1], nb1=a1-a0+1;
+    for(let f=0;f<frames;f++){const o=f*H;for(let i=0;i<N;i++){re[i]=x[o+i]*win[i];im[i]=0}fft(re,im);
+      for(let k=0;k<=N/2;k++){P[k]=re[k]*re[k]+im[k]*im[k];L[k]=Math.log1p(1e4*P[k])}
+      {let e=0;for(let k=B.sub[0];k<=B.pun[1];k++)e+=P[k];lowA[f]=Math.sqrt(e)}
+      if(!first){const pos=(lo,hi)=>{let s=0;for(let k=lo;k<=hi;k++){const dd=L[k]-prev[k];if(dd>0)s+=dd}return s/(hi-lo+1)};
+        subF[f]=pos(B.sub[0],B.sub[1]); punF[f]=pos(B.pun[0],B.pun[1]); hiF[f]=pos(a0,a1);
+        let lg=0,ar=0,rs=0,rl=0;for(let k=a0;k<=a1;k++){lg+=Math.log(P[k]+1e-12);ar+=P[k];const dd=Math.max(0,L[k]-prev[k])+0.05;rs+=dd;rl+=Math.log(dd)}
+        flatA[f]=ar>0?Math.exp(lg/nb1)/(ar/nb1):0;            /* noisy (flat) spectrum */
+        rfA[f]=Math.exp(rl/nb1)/(rs/nb1);
+        let ls=0,ll=0;const l0=B.sub[0],l1=B.pun[1];for(let k=l0;k<=l1;k++){const dd=Math.max(0,L[k]-prev[k])+0.05;ls+=dd;ll+=Math.log(dd)}rlA[f]=Math.exp(ll/(l1-l0+1))/(ls/(l1-l0+1))}  /* a kick's pitch drop fills every low bin; bass + chord only a few */                    /* the rise spreads evenly (noise hit), not just at a chord's notes */
+      first=false; const t=prev;prev=L;L=t}
+    const norm=a=>{const ma=movingAvg(a,Math.round(fps*0.3)),o=new Float32Array(a.length);for(let i=0;i<a.length;i++)o[i]=Math.max(0,a[i]-ma[i]);
+      const nz=Array.from(o).filter(v=>v>0).sort((p,q)=>p-q);const sc=nz.length?nz[Math.floor(nz.length*0.98)]:1;for(let i=0;i<o.length;i++)o[i]/=sc||1;return o};
+    const sub=norm(subF),pun=norm(punF),hi=norm(hiF);
+    /* kick: rise in sub AND punch, minus what a snare's noise leaks into the low end */
+    /* per-bin rises compared directly: a noise hit (snare) rises about equally in every band, a kick much more in the
+       low bands than at 1-5 kHz, and a hi-hat on top of a kick doesn't cancel it */
+    /* low hits (kick or bass): rise in low-band LOUDNESS. Linear, not log: a quiet hi-hat or a snare's noise carries
+       almost no energy below 250 Hz, so it can't pass for a low hit */
+    const kr=new Float32Array(frames);for(let i=2;i<frames;i++)kr[i]=Math.max(0,lowA[i]-Math.max(lowA[i-1],lowA[i-2]));
+    const kick=norm(kr);
+    /* snare/clap/rim: high rise, weighted by noisiness, body (punch) and an even rise */
+    const sn=new Float32Array(frames);for(let i=0;i<frames;i++)sn[i]=hi[i]*Math.sqrt(clamp(flatA[i]/0.5,0,1))*(0.45+0.55*clamp(pun[i]/0.5,0,1))*clamp((rfA[i]-0.45)/0.25,0,1);
+    /* grid: 16 slots per bar on the smoothed beats */
+    const bt=smoothBeats(beats,opt.R||4), nb=bt.length;
+    let i0=0; if(down&&down.length){let best=1e9;bt.forEach((t,i)=>{const dd=Math.abs(t-down[0]);if(dd<best){best=dd;i0=i}})}
+    const rad=Math.max(2,Math.round(0.035*fps)), peak=(a,t)=>{const c=Math.round(t*fps);let m=0,mi=c;for(let k=c-rad;k<=c+rad;k++)if(k>=0&&k<a.length&&a[k]>m){m=a[k];mi=k}return [m,mi/fps]};
+    const slots=[];
+    for(let i=0;i<nb;i++){const p=i<nb-1?bt[i+1]-bt[i]:bt[i]-bt[i-1];const pos=(((i-i0)%4)+4)%4, bar=Math.floor((i-i0)/4);
+      for(let q=0;q<4;q++){const t=bt[i]+p*q/4;if(t<0)continue;const [kv,kt]=peak(kick,t),[sv,st]=peak(sn,t);
+        const sl={t,bar,s:pos*4+q,k:kv,sn:sv,kt,st};if(opt.debug){sl.sub=peak(sub,t)[0];sl.pun=peak(pun,t)[0];sl.hi=peak(hi,t)[0];const fi=Math.round(st*fps);sl.flat=flatA[fi]||0;sl.rf=rfA[fi]||0;sl.rl=rlA[Math.round(kt*fps)]||0}slots.push(sl)}}
+    const bars={};for(const sl of slots)(bars[sl.bar]||(bars[sl.bar]=[])).push(sl);
+    const barIds=Object.keys(bars).map(Number).sort((a,b)=>a-b);
+    const W=opt.window||4, out=[];
+    const med=a=>{if(!a.length)return 0;const b=a.slice().sort((p,q)=>p-q),h=b.length>>1;return b.length%2?b[h]:(b[h-1]+b[h])/2};
+    /* level of a band's hits in some bars: the k-th strongest slot, k = number of bars (a part that plays at all
+       plays at least once a bar), so sparse riddims (one-drop: one kick a bar) still get a fair level */
+    const level=(ids,band)=>{const v=ids.flatMap(x=>bars[x].map(z=>z[band])).sort((p,q)=>q-p);return v[Math.min(v.length-1,Math.max(0,ids.length-1))]||0};
+    const songLevel={k:level(barIds,'k'),sn:level(barIds,'sn')};
+    for(const b of barIds){
+      const near=barIds.filter(x=>x>=b-W&&x<=b+W-1);
+      for(const band of ['k','sn']){
+        const top=level(near,band); if(top<0.3*songLevel[band]||top<0.05)continue;   /* this part is silent around here (a break) */
+        /* the loop around this bar: 1-bar repeats (all bars nearby) or 2-bar repeats (every other bar), whichever
+           holds this slot more strongly; many riddims answer themselves across two bars */
+        const at=(x,s)=>{const sl=bars[x]&&bars[x].find(z=>z.s===s);return sl?sl[band]:0};
+        const near2=barIds.filter(x=>x>=b-2*W&&x<=b+2*W&&((x-b)%2===0));
+        const p1=new Array(16).fill(0),p2=new Array(16).fill(0);for(let s=0;s<16;s++){p1[s]=med(near.map(x=>at(x,s)));p2[s]=med(near2.map(x=>at(x,s)))}
+        const m1=Math.max(...p1),m2=Math.max(...p2), prof=p1.map((v,s)=>Math.max(v/(m1||1),p2[s]/(m2||1))*Math.max(m1,m2)), pmax=Math.max(m1,m2);
+        for(const sl of bars[b]){const v=sl[band];
+          const T=opt.th||[0.45,0.5,0.3,1.5];
+          const loop=prof[sl.s]>=T[1]*pmax&&prof[sl.s]>=T[2]*top, accent=v>=T[3]*top, present=v>=T[0]*top;
+          if((present&&loop)||accent){sl[band==='k'?'isK':'isS']=true;sl[band==='k'?'wk':'ws']=v/(top||1)}}
+      }
+    }
+    for(const sl of slots)if(sl.isK||sl.isS)out.push({t:+sl.t.toFixed(4),kind:sl.isK&&sl.isS?'both':sl.isK?'kick':'snare',bar:sl.bar,slot:sl.s,w:+Math.min(2,Math.max(sl.wk||0,sl.ws||0)).toFixed(2),
+      raw:+((sl.isK?sl.kt:sl.st)).toFixed(4)});
+    /* a riddim the detector can't see (no clear drums) gives very few cues: say so instead of guessing */
+    const perBar=out.length/Math.max(1,barIds.length);
+    return {events:out,grid:bt,perBar,sure:perBar>=0.75,slots:opt.debug?slots:undefined};
+  }
+
   function grid(bt,down){
     const g=[];const ds=new Set((down||[]).map(t=>t.toFixed(3)));
     for(let i=0;i<bt.length;i++){g.push({t:bt[i],w:ds.has(bt[i].toFixed(3))?1.2:1});if(i<bt.length-1)g.push({t:(bt[i]+bt[i+1])/2,w:0.6})}
     return g;
   }
-  return {onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,analyzePose,mergeHits,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
+  return {riddim,smoothBeats,onsetEnvelope,tempo,beats,downbeats,analyzeSong,flow,flowPyr,directogram,visualImpulses,pickPeaks,CFG,analyzeMotion,analyzeMotionVecs,analyzePose,mergeHits,flowVecs:flowPyr,score,warpMove,grid,nearest,median};
 })();
 if(typeof module!=='undefined')module.exports=RA;
 /*ANALYSIS-END*/

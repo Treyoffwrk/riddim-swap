@@ -7,24 +7,26 @@ const ok=(c,m)=>{console.log((c?'PASS ':'FAIL ')+m);if(!c)process.exitCode=1};
   const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium',args:['--autoplay-policy=no-user-gesture-required']});
   /* reduced motion -> Off by default */
   {const ctx=await b.newContext({reducedMotion:'reduce'});const p=await ctx.newPage();await p.goto(url);await p.evaluate(()=>localStorage.clear());await p.reload();
-   ok(await p.evaluate(()=>document.body.classList.contains('bv-off')),'reduced-motion phone starts with beat lights Off');await ctx.close()}
+   ok(await p.evaluate(()=>document.body.classList.contains('bv-off')),'reduced-motion phone starts with beat cues Off');await ctx.close()}
   const ctx=await b.newContext({viewport:{width:390,height:844}}); const p=await ctx.newPage(); const errs=[];p.on('pageerror',e=>errs.push(e.message));
   await p.goto(url+'#debug'); await p.evaluate(()=>{indexedDB.deleteDatabase('riddim-swap');localStorage.clear()}); await p.reload();
-  ok(await p.evaluate(()=>document.body.classList.contains('bv-calm')),'default beat lights: Calm');
+  ok(await p.evaluate(()=>document.body.classList.contains('bv-ball')),'default beat cues: Ball');
   await p.setInputFiles('#vidFile',video); await p.setInputFiles('#audFile',song);
   for(let i=0;i<40;i++){if(await p.evaluate(()=>!!(window.__rs.S.mainSong&&window.__rs.S.mainSong.an)))break;await p.waitForTimeout(250)}
   const watch=async ms=>p.evaluate(ms=>new Promise(r=>{const st=document.querySelector('#stage');let fl=0,lit=0;const iv=setInterval(()=>{if(st.classList.contains('pulse-s')||st.classList.contains('pulse-d'))fl++;if(document.querySelector('#sBeats i.on'))lit++},20);setTimeout(()=>{clearInterval(iv);r({fl,lit})},ms)}),ms);
+  const painted=()=>p.evaluate(()=>{const c=document.getElementById('cueCanvas'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=16)if(d[i]>0)n++;return n});
   await p.click('#play'); await p.waitForTimeout(300);
-  let w=await watch(2000); ok(w.fl===0&&w.lit>0,`Calm: count lights on (${w.lit} samples), frame never flashes (${w.fl})`);
-  await p.click('#t-tempo'); await p.click('#bvSeg [data-bv="flash"]');
-  w=await watch(2000); ok(w.fl>0,`Flash: frame flashes (${w.fl} samples)`);
+  let w=await watch(2000); const px=await painted(); ok(w.fl===0&&w.lit>0&&px>50,`Ball: balls drawn (${px} px), count lights on (${w.lit} samples), frame never flashes (${w.fl})`);
+  await p.click('#t-tempo'); await p.click('#bvSeg [data-bv="calm"]'); await p.waitForTimeout(200);
+  w=await watch(1500); ok(w.lit>0&&await painted()===0,`Count: lights only, no balls (${w.lit} samples)`);
+  await p.click('#bvSeg [data-bv="ball"]');
   /* confidence gate: make the song look unsure */
   await p.evaluate(()=>{const so=window.__rs.S.mainSong;so._pc=so.an.phaseConf;so.an.phaseConf=0.05});
-  w=await watch(1500); ok(w.fl===0&&await p.evaluate(()=>document.querySelector('#sBeats').classList.contains('unsure')),'unsure song beat: dim "?" lights and no flashing even in Flash mode');
+  w=await watch(1500); ok(w.fl===0&&await p.evaluate(()=>document.querySelector('#sBeats').classList.contains('unsure')&&window.__rs.riddimEvents().sure===false),'unsure song beat: dim "?" lights and a hollow "?" ball');
   await p.evaluate(()=>{const so=window.__rs.S.mainSong;so.an.phaseConf=so._pc});
   await p.click('#bvSeg [data-bv="off"]'); ok(await p.evaluate(()=>getComputedStyle(document.querySelector('#pulses')).display==='none'),'Off hides the lights');
-  ok(await p.evaluate(()=>localStorage.getItem('rs-beatview'))==='off','setting saved on this device');
-  await p.click('#bvSeg [data-bv="calm"]');
+  ok(await p.evaluate(()=>localStorage.getItem('rs-cues'))==='off','setting saved on this device');
+  await p.click('#bvSeg [data-bv="ball"]');
   await p.click('#play'); await p.click('#t-song');
   /* tap to check: taps scheduled on the detected beats (+ offset in beats) at the song's clock */
   const restart=async()=>{if(!(await p.evaluate(()=>document.querySelector('#aud').paused)))await p.click('#play');

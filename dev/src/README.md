@@ -10,6 +10,7 @@ Edit these files, then run `python3 build_src.py` from the folder above.
 | `../analysis.js` | tempo and beat analysis, shared with MirrorView |
 | `../body.js` | body tracking, cleaning and drawing, shared with MirrorView and the pose labs |
 | `app.js` | the app itself |
+| `cues.js` | beat cues: the riddim and dancer balls, the count, the click, sound delay (placed into `app.js` at `/*@cues*/`) |
 | `tail.html` | closing tags |
 
 `build_src.py` writes `riddim-swap.html` (the Claude artifact page), then `build_app.py` makes the installable app in

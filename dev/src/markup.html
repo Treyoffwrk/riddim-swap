@@ -77,6 +77,7 @@
             <label class="btn file">Choose dance video<input type="file" id="vidFile" accept="video/*"></label>
           </div>
           <canvas class="bodycv" id="bodyCanvas" aria-hidden="true"></canvas>
+          <canvas class="cuecv" id="cueCanvas" aria-hidden="true"></canvas>
           <button class="fsbtn" id="fsBtn" type="button" aria-label="Full screen" hidden><svg class="ico-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><svg class="ico-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
           <div class="dock mv-only" id="dock" hidden>
             <button type="button" id="dkBody" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg><span>Body</span></button>
@@ -254,7 +255,8 @@
           <div class="row">
             <button class="btn sm" id="beatHalf">Shift beat ½</button>
             <button class="btn sm" id="beatUseDet">Use detected beat</button>
-            <label class="check"><input type="checkbox" id="clickOn"> Click on each beat</label>
+            <label class="check"><input type="checkbox" id="clickOn"> Click</label>
+            <select id="clickWhat" class="sel sm" aria-label="What the click plays on"><option value="beat">on each beat</option><option value="riddim">on the riddim</option></select>
           </div>
           <div class="row">
             <button class="btn sm" id="beatCheck">Tap to check</button>
@@ -264,7 +266,8 @@
           </div>
           <p class="hint" id="beatCheckMsg"></p>
           <ul class="warnlist" id="songWarn"></ul>
-          <p class="hint ear">Turn on the click and play: if the clicks don't sit on the kick, try another tempo or shift by half a beat. Your ear decides.</p>
+          <p class="hint" id="riddimMsg"></p>
+          <p class="hint ear">Turn on the click and play. On the beat: if the clicks don't sit on the kick, try another tempo or shift by half a beat. On the riddim: a low click for each kick or bass hit, a high one for each snare, clap or rim; this is what the ball lands on. Your ear decides.</p>
         </div>
         <p class="hint" id="songMsg">MP3, M4A or a video. For a video, only its sound is used.</p>
         <div class="field">
@@ -286,14 +289,25 @@
 
       <!-- TEMPO -->
       <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
-        <div class="field">
-          <div class="subhead"><span class="label">Beat lights</span>
-            <div class="seg" id="bvSeg" role="group" aria-label="Beat lights" style="grid-template-columns:repeat(3,auto)">
+        <div class="field" id="cueBox">
+          <div class="subhead"><span class="label">Beat cues</span>
+            <div class="seg" id="bvSeg" role="group" aria-label="Beat cues" style="grid-template-columns:repeat(3,auto)">
               <button data-bv="off" aria-pressed="false" style="padding:0 12px">Off</button>
-              <button data-bv="calm" aria-pressed="true" style="padding:0 12px">Calm</button>
-              <button data-bv="flash" aria-pressed="false" style="padding:0 12px">Flash</button>
+              <button data-bv="calm" aria-pressed="false" style="padding:0 12px">Count</button>
+              <button data-bv="ball" aria-pressed="true" style="padding:0 12px">Ball</button>
             </div></div>
-          <p class="hint">Calm shows the count under the video without flashing the frame. When the app isn't sure of a beat, its lights go dim with a "?", and they never flash.</p>
+          <p class="hint">Ball: over the video, the left ball lands on each hit of the riddim (big amber ring for a kick or bass hit, white for a snare, clap or rim) and the right ball lands on each of the dancer's hits (it appears once they're found: Find hits in the Clip tab, or body tracking). Watch it fall to see the hit coming. When both land together, a line joins them. Count shows 1 2 3 4 under the video. When the app isn't sure, the cues go dim with a "?".</p>
+        </div>
+        <div class="field" id="delayBox">
+          <div class="field-top"><span class="label">Sound delay</span><span class="val" id="delayOut">0 ms</span></div>
+          <div class="seg" id="delaySeg" role="group" aria-label="Sound delay" style="grid-template-columns:repeat(3,auto)">
+            <button data-d="0" aria-pressed="true" style="padding:0 10px">Speaker / wired</button>
+            <button data-d="200" aria-pressed="false" style="padding:0 10px">Bluetooth</button>
+            <button data-d="custom" aria-pressed="false" style="padding:0 10px">Custom</button>
+          </div>
+          <input type="range" id="delay" min="-100" max="400" step="5" value="0" aria-label="Sound delay in milliseconds">
+          <div class="row"><button class="btn sm" id="delayTest" aria-pressed="false">Check it</button><canvas id="delayCv" class="delaycv" aria-hidden="true" hidden></canvas></div>
+          <p class="hint" id="delayHint">Bluetooth headphones and speakers play sound later than the screen shows it (often 150–250 ms). This shifts the ball and the dancer video to match what you hear. Check it: a click plays and the ball should land on it; move the slider until it does.</p>
         </div>
         <div class="pair">
           <div class="field">

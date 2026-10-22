@@ -249,7 +249,7 @@ function syncSong(force){
 }
 
 function syncSteady(force){
-  const e=expected(), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
+  const e=expected()+(S.rec?0:(S.sndDelay||0)*S.ar), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
   const setV=n=>{S.vNudge=n;const g=segs()[S.segIdx];if(!g||S.switchPending)return;const r=vNudged(rateAt(g,v.currentTime));if(Math.abs(v.playbackRate-r)>0.006)v.playbackRate=r};
   if(!live||e<0||e>=d){
     if(S.vNudge)setV(0);
@@ -1614,6 +1614,8 @@ function analyzeSongObj(so,apply){
       const an=RA.analyzeSong(songChans(so.buf),so.buf.sampleRate,{forceBpm:so.forceBpm||undefined,noPhaseFix:false});
       if(so.beatShift){const h=30/an.bpm;an.beats=an.beats.map(t=>t+h).filter(t=>t<so.buf.duration);an.downbeats=an.beats.filter((t,i)=>i%4===((an.phase||0)%4))}
       setOne(so,an);
+      an.grid=RA.smoothBeats(an.beats);
+      try{const R=RA.riddim(songChans(so.buf),so.buf.sampleRate,an.beats,an.downbeats);an.riddim=R?{events:R.events.map(e=>({t:e.t,kind:e.kind,w:e.w})),sure:R.sure,perBar:R.perBar}:null}catch(e){an.riddim=null}
       so.an=an;
     }catch(e){so.an=null}
     if(so===S.mainSong&&!so.cleared){if(apply)S.beatSrc='detected';if(S.beatSrc!=='tapped')applyDetectedBeat(so)}
@@ -1621,6 +1623,10 @@ function analyzeSongObj(so,apply){
     if(so._after){const f=so._after;so._after=null;f()}
   },30);
 }
+function riddimText(so){const R=so&&so.an&&so.an.riddim;if(!R)return '';
+  if(!R.sure)return 'Riddim: no clear drums found, so the ball lands on the beat instead.';
+  const k=R.events.filter(e=>e.kind!=='snare').length,s=R.events.filter(e=>e.kind!=='kick').length;
+  return `Riddim: ${k} low hits (kick or bass) and ${s} snare, clap or rim hits found, about ${R.perBar.toFixed(1)} a bar. Turn the click to "on the riddim" to hear them.`}
 function applyDetectedBeat(so){
   if(!so||!so.an)return;
   S.beatSrc='detected'; S.sBase=+so.an.bpm.toFixed(2); S.sAnchor=(so.an.downbeats[0]??so.an.beats[0])||0;
@@ -1647,6 +1653,7 @@ function renderSongCard(){
   card.classList.toggle('cleared',!!so.cleared);
   if(so.cleared){$('#songDet').textContent='Beat tracking cleared';return}
   $('#songDet').textContent=an.bpm.toFixed(1)+' BPM · '+(so.confirmed?'checked by your taps ✓':songSure()?'sure':'not sure')+(S.beatSrc==='tapped'?' · using your taps':'');
+  $('#riddimMsg').textContent=riddimText(so);
   const box=$('#songCands'); box.textContent='';
   const all=[{bpm:+an.bpm.toFixed(1)}].concat((an.candidates||[]).filter(c=>Math.abs(c.bpm-an.bpm)/an.bpm>0.05)).slice(0,4);
   all.forEach((c,i)=>{const b=el('button','btn sm cand'+(i===0?' on':''),c.bpm.toFixed(1));b.setAttribute('aria-label','Use '+c.bpm.toFixed(1)+' BPM');
@@ -1661,20 +1668,6 @@ function renderSongCard(){
 $('#beatHalf').addEventListener('click',()=>{const so=S.mainSong;if(!so)return;so.beatShift=so.beatShift?0:0.5;so.confirmed=false;S.beatSrc='detected';analyzeSongObj(so,true)});
 $('#beatUseDet').addEventListener('click',()=>{const so=S.mainSong;if(so&&so.an)applyDetectedBeat(so);renderSongCard();scheduleFit()});
 $('#clickOn').addEventListener('change',e=>{S.clickOn=e.target.checked;if(S.clickOn){const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}});
-/* click track: a short tick each time the song passes a beat (downbeats higher) */
-let lastClickT=-1;
-function clickTick(){
-  if(!S.clickOn||a.paused||!S.hasA){lastClickT=-1;return}
-  const G=liveGrid(); if(!G)return; const t=a.currentTime;
-  if(lastClickT<0||t<lastClickT||t-lastClickT>0.5){lastClickT=t;return}
-  const hit=G.beats.find(b=>b>lastClickT&&b<=t+0.012); lastClickT=t;
-  if(hit==null)return;
-  const c=getCtx(); if(c.state!=='running')return;
-  const down=G.down.some(d=>Math.abs(d-hit)<0.02);
-  const o=c.createOscillator(),g=c.createGain(); o.frequency.value=down?1600:1000; g.gain.setValueAtTime(0.35,c.currentTime); g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+0.05);
-  o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+0.06);
-}
-
 /* ---------- trust, beat lights setting, clearing, tap to check ---------- */
 function songSure(){
   if(S.beatSrc==='tapped')return true;
@@ -1690,12 +1683,12 @@ function danceSure(){
   return (m.contrast??1)>=0.6&&(m.shake||0)<0.6;
 }
 function setBeatView(v0,save){
-  S.beatView=v0; document.body.classList.remove('bv-off','bv-calm','bv-flash'); document.body.classList.add('bv-'+v0);
+  S.beatView=v0; document.body.classList.remove('bv-off','bv-calm','bv-flash','bv-ball'); document.body.classList.add('bv-'+v0);
   $$('#bvSeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bv===v0)));
-  if(save)try{localStorage.setItem('rs-beatview',v0)}catch(e){}
+  if(save)try{localStorage.setItem('rs-cues',v0)}catch(e){}
 }
-(()=>{let v0=null;try{v0=localStorage.getItem('rs-beatview')}catch(e){}
-  if(!['off','calm','flash'].includes(v0)){let rm=false;try{rm=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}v0=rm?'off':'calm'}
+(()=>{let v0=null;try{v0=localStorage.getItem('rs-cues')}catch(e){}
+  if(!['off','calm','ball'].includes(v0)){let rm=false;try{rm=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}v0=rm?'off':'ball'}
   setBeatView(v0,false)})();
 $$('#bvSeg button').forEach(b=>b.addEventListener('click',()=>setBeatView(b.dataset.bv,true)));
 /* the dancer's "1": downbeats are every 4th beat counting from the beat nearest to where they pressed */
@@ -2753,6 +2746,7 @@ async function phoneCheck(){
   if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
+  try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
   try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`)}catch(e){}
   try{const r=await storageScan();const t=r.total!=null?Math.max(r.total,r.media+r.body+r.unused+r.projects):null;
     add('Storage',`${fmtMB(t)} in use${r.quota?' of '+fmtMB(r.quota):''} · media ${fmtMB(r.media)} · tracking ${fmtMB(r.body)} · unused ${fmtMB(r.unused)} · ${r.projectsN} project${r.projectsN===1?'':'s'} · ${r.persisted?'kept safe':'may be cleared by the browser'}`)}catch(e){add('Storage','couldn’t read')}
@@ -2974,7 +2968,8 @@ function patFilterUI(){
   if(S.patFilter!=='all'&&!have.includes(S.patFilter)){S.patFilter='all'}
 }
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__rs={patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+/*@cues*/
+if(/debug/.test(location.hash))window.__rs={expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
@@ -3014,10 +3009,10 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
+  clickTick(); drawBody(); drawCues(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
-  if(S.sBase&&S.hasA&&!a.paused)s=beat(a.currentTime,S.sAnchor,S.sBase);
+  if(S.hasA&&!a.paused)s=countAt(heardNow());
   const bv=S.beatView, sOk=songSure(), dOk=danceSure();
   dBeatsEl.classList.toggle('unsure',!dOk); sBeatsEl.classList.toggle('unsure',!sOk);
   dLights.forEach((l,i)=>l.classList.toggle('on',bv!=='off'&&i===d.idx));
