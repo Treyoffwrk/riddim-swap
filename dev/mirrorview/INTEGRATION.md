@@ -381,3 +381,64 @@ Next to Repeat. It loops 2 s around the playhead at half speed, and the song is 
 - **On the test machine:** the take with the body drawn on was 0.26 s shorter than the plain one (frames dropped at the end under the extra drawing).
 
 | Full regression | All 22 suites passed in one run. The routine take's hit check read 9 of 12 under load and 12 of 12 twice when run alone (recording sync is unchanged and still ±0 ms). |
+
+## Share a routine, compare your try, hip patterns (Oct 2026)
+
+### Share routine with videos (Projects)
+
+One `.riddim` file: a short header, then the project (moves, routine, trims, speeds, speed graph, song points), body tracking (poses, 3D points, hips; not the cut-out masks), then the videos and songs themselves. It's built from the stored files without copying them into memory first. On iPhone it opens the share sheet (AirDrop, Messages, Files).
+
+**Open backup or shared routine** reads either kind of file. A shared routine's media are stored under their own keys, so it opens ready to play; files already on the phone are kept. A file cut short in sending is refused with "it looks cut short: try sending it again".
+
+| Test (`dev/mirrorview/tests/share_test.js`, two separate browser profiles as two phones) | Result |
+|---|---|
+| One file with the video and song in it (4.35 MB for 4.14 MB of media) | Passed |
+| The other phone opens it: video, song, move, routine, speed graph, beat (99.51 BPM) all there, nothing missing | Passed |
+| Body tracking comes with it (312 frames, hips) | Passed |
+| It plays (song and video) | Passed |
+| A file cut to 60% is refused with the cut-short message | Passed |
+
+### Compare a try (Clip tab, under body tracking)
+
+Pick another video in the project, such as you dancing the same part, and press Compare. Both videos are body-tracked if they aren't already. They're lined up by movement: tilt and sway speed are compared at every offset, and also as a mirror image. Results:
+- how alike the hip tilt is
+- how big your tilts are next to the original's
+- timing drift: each 2 s stretch is matched again within ±0.3 s; 80 ms or more is named as ahead or behind
+- the least alike stretch
+- whether you danced it mirrored
+
+Your tilt is drawn dashed on the Hip moves graph and the least alike stretch is shaded.
+
+Lining up by movement removes any overall lateness, so overall early or late against the song isn't measured here; Hips on the beat does that for each video separately.
+
+| Test (`compare_test.js`: your clip, a copy starting 0.6 s later, a mirrored copy, a different dance; plus a copy with half-size tilts that falls 150 ms behind after 10 s) | Result |
+|---|---|
+| Later copy: lined up at −0.60 s, 98% alike, size 98%, timing steady | Passed |
+| Mirrored copy: found mirrored, 89% alike | Passed |
+| Different dance: "These don't look like the same moves" (best match 23%) | Passed |
+| Half-size tilts: "50% as big: go bigger" | Passed |
+| 150 ms behind after 10 s: reported from 0:10 on (133–167 ms; the stretch check works in 33 ms steps) | Passed |
+
+### Hip patterns
+
+Every 0.25 s, the last 1.5 s of hip measures is described, but only when the pattern is clear:
+- **Still:** very little movement.
+- **Hip circles (whine-like):** sway and tilt or forward/back a quarter cycle apart, like a circle seen from the front.
+- **Quick pulses:** repeats faster than about 2.7 a second.
+- **Tilts:** side-to-side tilts over 3°.
+- **Sways:** sideways shifts with little tilt.
+
+For any of the moving patterns the movement must really repeat: it swings back, then repeats. Anything else is left unnamed, and runs shorter than 0.75 s are dropped.
+
+Patterns show as a coloured band under the Hip moves graph, with a summary line. Saved moves get a tag when one pattern covers 40% or more of the move, and the Moves tab filters by pattern.
+
+| Test (`patterns_test.js`, prototype in `dev/poselab/patterns.py`) | Result |
+|---|---|
+| Made-up movements of each kind (120 each, with real-sized wobble) | All named right (120/120 each) |
+| Random drifting | Left unnamed 80%, called "still" 14%, tilt/sway 6% |
+| Your clip | Tilts and sways named in a few stretches (about 4–8% each); the rest is left mixed |
+| A move cut on a named stretch is tagged; filtering shows only it | Passed |
+
+**Not verified:** whether these names match what a dancer would call each move. They're descriptions of the measured hip motion (circles, tilts, pulses), not a trained move recogniser, and there are no labelled dancehall clips to check against.
+
+| Full regression | All 25 suites passed in one run, plus the struggling-phone sync test (4 ms median gap, no pauses) and the routine take (12/12 hits, sound ±0 ms). |

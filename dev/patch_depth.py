@@ -1388,5 +1388,8 @@ exec(compile(pathlib.Path(__file__).with_name('perf_block.py').read_text(),'perf
 exec(compile(pathlib.Path(__file__).with_name('hipbeat_block.py').read_text(),'hipbeat_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('study_block.py').read_text(),'study_block.py','exec'))
 exec(compile(pathlib.Path(__file__).with_name('recbody_block.py').read_text(),'recbody_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('share_block.py').read_text(),'share_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('compare_block.py').read_text(),'compare_block.py','exec'))
+exec(compile(pathlib.Path(__file__).with_name('patterns_block.py').read_text(),'patterns_block.py','exec'))
 P.write_text(s)
 print('patched', len(s))

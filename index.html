@@ -389,6 +389,17 @@ html.rs-hosted #pickRow.mv-only{display:flex!important}
 
 #studyBtn[aria-pressed="true"]{background:var(--hips);border-color:var(--hips);color:#0E1014}
 .studytag{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:6;background:rgba(255,95,162,.92);color:#0E1014;font:800 13px var(--f-body);padding:5px 12px;border-radius:999px;pointer-events:none;white-space:nowrap}
+
+.cmprow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+html.rs-hosted .cmprow.mv-only{display:flex!important}
+html.rs-hosted p.mv-only#cmpOut{display:block!important}
+.cmprow select{flex:1 1 140px;min-height:40px;font:600 15px var(--f-body);padding:6px 10px}
+#cmpOut b{color:var(--ink)}
+
+.pattag{display:inline-block;font:700 11px var(--f-body);padding:1px 7px;border-radius:999px;margin-left:6px;color:#0E1014;vertical-align:1px}
+#patFilter button{font:600 13px var(--f-body);border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;min-height:34px;padding:0 12px;cursor:pointer}
+#patFilter button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.patline{margin:0;font-size:13px;color:var(--muted)}
 /* ===== Sound System: the look shared with MirrorView. Dark stage; blue = the dancer, amber = the music, magenta = the hips. ===== */
 :root{--bg:#0E1014!important;--surface:#171A21!important;--sunk:#20242D!important;--ink:#F3F1EC!important;--muted:#A3A9B6!important;--line:#2C313C!important;
   --dance:#6E8BFF!important;--song:#FFB547!important;--song-hot:#FFB547!important;--hips:#FF5FA2!important;
@@ -473,7 +484,8 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
       <button class="btn" id="projNew">New project</button>
       <button class="btn" id="projHeal">Fix playback</button>
       <button class="btn" id="projExport">Save backup file</button>
-      <label class="btn file">Open backup file<input type="file" id="projImport" accept=".json,application/json"></label>
+      <button class="btn" id="projShare">Share routine with videos</button>
+      <label class="btn file">Open backup or shared routine<input type="file" id="projImport"></label>
     </div>
     <p class="hint" id="projMsg" hidden></p>
     <div class="field" id="freshBox">
@@ -604,10 +616,13 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           </div>
           <div class="prog" id="bodyProg" hidden><i></i></div>
           <div class="row mv-only" id="pickRow"><button class="btn sm" id="bodyPick">Choose the dancer</button><span class="hint" id="pickMsg"></span></div>
+          <div class="cmprow mv-only" id="cmpRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
+          <p class="hint mv-only" id="cmpOut"></p>
           <section class="hipcard mv-only" id="hipCard" hidden aria-labelledby="h-hip">
             <div class="subhead"><h3 id="h-hip">Hip moves</h3><span class="hint" id="hipNow"></span></div>
             <div class="hipgraph"><canvas id="hipCanvas" role="img" aria-label="Hip tilt and sway over the clip"></canvas></div>
             <p class="hipbeat" id="hipBeat"></p>
+            <p class="patline" id="patLine"></p>
             <div class="hipkey"><span><i style="background:var(--hips)"></i>Tilt (up = right side higher)</span><span><i style="background:#F3F1EC"></i>Sway (up = hips to the right)</span><span><i style="background:var(--song)"></i>Beats</span><span><i style="background:var(--ok);border-radius:50%;width:8px;height:8px"></i>Hip hit on the beat</span><span><i style="background:var(--hips);border-radius:50%;width:8px;height:8px"></i>Hip hit off it</span></div>
             <p class="hint">Tap the graph to jump there. On the video, the pink bar is the hips, the dashed line is level, and the meter shows tilt, the hips' path under the chest (a whine draws a loop) and which way they face.</p>
           </section>
@@ -763,6 +778,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </div>
         <div class="field">
           <div class="subhead"><h3>Your moves</h3></div>
+          <div class="chips" id="patFilter" role="group" aria-label="Show moves by hip pattern" hidden></div>
           <ul class="list" id="moveList"></ul>
           <div class="empty-note" id="moveEmpty">Saved moves show here. Tap + to add one to the routine, then arrange it in the Routine tab.</div>
         </div>
@@ -2441,9 +2457,13 @@ function updateSeqStats(){
 function renderMoves(){
   /* Moves tab: the library */
   const ml=$('#moveList'); ml.textContent='';
+  try{patFilterUI()}catch(e){}
   S.moves.forEach(m=>{
+    let pk=null;try{pk=movePattern(m)}catch(e){}
+    if(S.patFilter&&S.patFilter!=='all'&&pk!==S.patFilter)return;
     const li=el('li','item nonum'); if(S.preview&&S.preview.id===m.id)li.classList.add('now');
-    const meta=el('div','meta'); meta.append(nameEl(m),el('span',null,fmt(m.s)+' – '+fmt(m.e)+' · '+(m.e-m.s).toFixed(1)+'s'));
+    const meta=el('div','meta'); const nm=nameEl(m);if(pk){const tg=el('span','pattag',PAT[pk].short);tg.style.background=PAT[pk].col;nm.append(tg)}
+    meta.append(nm,el('span',null,fmt(m.s)+' – '+fmt(m.e)+' · '+(m.e-m.s).toFixed(1)+'s'));
     const acts=el('div','acts');
     acts.append(iconBtn('Play '+m.name,'▶',()=>previewMove(m)),iconBtn('Add '+m.name+' to routine','+',()=>addToSeq(m.id)),iconBtn('Delete '+m.name,'✕',()=>deleteMove(m.id)));
     li.append(thumbEl(m),meta,acts); ml.append(li);
@@ -2932,6 +2952,50 @@ function drawBodyOnTake(el,t){
     if($('#bodyShow').checked)RB.draw(cx,B,t,rect,{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked});
   }catch(e){}
 }
+
+/* ---------- sharing a routine ----------
+   A .riddim file: a short text header, then the project (moves, routine, trims, speeds, song points), body tracking
+   (poses, 3D points, hips; not the cut-out masks) and the videos and songs themselves, one after another. Built from
+   the stored files without copying them into memory first. Opening it stores the media under their own keys, so the
+   project opens ready to play; files already on the phone are kept, not replaced. */
+const BUNDLE_MAGIC='RIDDIMSWAP1\n';
+async function buildBundle(){
+  await autosave(true);
+  const data=snapshot(),keys=[];
+  for(const n of S.sources)if(n.key&&!keys.includes(n.key))keys.push(n.key);
+  for(const so of [S.mainSong,S.rtSong])if(so&&so.key&&!keys.includes(so.key))keys.push(so.key);
+  const media=[],parts=[];let off=0,missing=0;
+  for(const k of keys){const f=await mediaGet(k);if(!f){missing++;continue}
+    media.push({key:k,name:f.name||k.split('|')[0],type:f.type||'',size:f.size,lastModified:f.lastModified||0,offset:off,length:f.size});parts.push(f);off+=f.size}
+  const header=JSON.stringify({app:'riddim-swap',kind:'routine',v:1,name:PJ.name||'Routine',saved:new Date().toISOString(),data,bodies:S.bkBodies||await bodiesForBackup(),media});
+  const hb=new TextEncoder().encode(header),len=new Uint8Array(4);new DataView(len.buffer).setUint32(0,hb.length,true);
+  return {blob:new Blob([BUNDLE_MAGIC,len,hb,...parts],{type:'application/octet-stream'}),media:media.length,missing,bytes:off};
+}
+async function readBundle(file){
+  const head=await file.slice(0,16).arrayBuffer(),magic=new TextDecoder().decode(new Uint8Array(head,0,BUNDLE_MAGIC.length));
+  if(magic!==BUNDLE_MAGIC)return null;
+  const hl=new DataView(head,BUNDLE_MAGIC.length,4).getUint32(0,true),start=BUNDLE_MAGIC.length+4;
+  const j=JSON.parse(await file.slice(start,start+hl).text());if(j.app!=='riddim-swap'||j.kind!=='routine'||!j.data)throw new Error('not ours');
+  const base=start+hl;let added=0;
+  const end=base+(j.media||[]).reduce((m,x)=>Math.max(m,x.offset+x.length),0);if(file.size<end)throw new Error('incomplete file');
+  for(const m of j.media||[]){const have=await mediaGet(m.key);if(have)continue;
+    const part=file.slice(base+m.offset,base+m.offset+m.length);if(part.size!==m.length)throw new Error('incomplete file');
+    await mediaPut(m.key,new File([part],m.name,{type:m.type,lastModified:m.lastModified}));added++}
+  const nb=await bodiesFromBackup(j.bodies);
+  return {j,added,nb};
+}
+$('#projShare').addEventListener('click',async()=>{
+  if(!hasContent()){sheetMsg('Add a video or some moves first.',true);return}
+  const b=$('#projShare');b.disabled=true;sheetMsg('Packing the routine…');
+  try{
+    const r=await buildBundle();
+    const safe=(PJ.name||'routine').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')||'routine';
+    const res=await saveFile(safe+'.riddim',r.blob,'application/octet-stream');
+    const mb=(r.blob.size/1048576).toFixed(r.blob.size>10485760?0:1);
+    sheetMsg(res==='saved'||res==='shared'||res==='downloaded'?`Routine shared (${mb} MB, ${r.media} video and song file${r.media===1?'':'s'}${r.missing?`; ${r.missing} file${r.missing>1?'s':''} weren't on this phone`:''}). They open it with "Open backup or shared routine".`:saveWords[res],res==='failed'||res==='busy');
+  }catch(e){sheetMsg("Couldn't pack the routine: "+((e&&e.message)||e),true)}
+  finally{b.disabled=false}
+});
 /* fallback recorder */
 function recSongPos(){return recPos+(ctx.currentTime-recT)*S.ar}
 function recStopSong(){if(!recSrc)return;const s=recSrc;recSrc=null;try{s.stop()}catch(e){}s.disconnect()}
@@ -3264,6 +3328,14 @@ $('#projExport').addEventListener('click',async()=>{
 $('#projImport').addEventListener('change',async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f)return;
   try{
+    sheetMsg('Opening…');
+    const sh=await readBundle(f).catch(err=>{throw err});
+    if(sh){await autosave(true);
+      const rec={id:'p'+Date.now().toString(36),name:(sh.j.name||'Shared routine'),updated:Date.now(),data:JSON.stringify(sh.j.data)};
+      await projPut(rec); await restore(rec); renderProjects();
+      const n=missingItems().length;
+      sheetMsg('Opened "'+rec.name+'"'+(sh.added?' with its '+sh.added+' video and song file'+(sh.added===1?'':'s'):'')+'.'+(sh.nb?' Body tracking for '+sh.nb+' video'+(sh.nb===1?'':'s')+' included.':'')+(n?' '+n+' file'+(n===1?' is':'s are')+' still missing.':' Ready to play.'));
+      return}
     const j=JSON.parse(await f.text()); if(j.app!=='riddim-swap'||!j.data)throw new Error('not ours');
     await autosave(true);
     const rec={id:'p'+Date.now().toString(36),name:(j.name||'Imported routine'),updated:Date.now(),data:JSON.stringify(j.data)};
@@ -3271,7 +3343,7 @@ $('#projImport').addEventListener('change',async e=>{
     await projPut(rec); await restore(rec); renderProjects();
     const n=missingItems().length;
     sheetMsg('Opened "'+rec.name+'".'+(nb?' Body tracking for '+nb+' video'+(nb===1?'':'s')+' restored.':'')+(n?' Re-add the '+n+' file'+(n===1?'':'s')+' listed above.':''));
-  }catch(err){sheetMsg("That file isn't a Riddim Swap backup.",true)}
+  }catch(err){sheetMsg("That file isn't a Riddim Swap backup or shared routine"+(err&&/incomplete/.test(err.message)?' (it looks cut short: try sending it again)':'')+'.',true)}
 });
 (async()=>{
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{})}catch(e){}
@@ -4325,7 +4397,15 @@ function hipGraph(){
     RB.hipsAt(B,0);const off={tilt:0,sway:2}[k];
     for(let i=0;i<B.n;i++){const t=B.data[i*RB.STRIDE];const val=B.hips[i*RB.HS+off];if(!(val===val)){on=false;continue}
       const px=X(t),py=mid-Math.max(-1,Math.min(1,val/scale))*amp;if(!on){x.moveTo(px,py);on=true}else x.lineTo(px,py)}x.stroke()};
-  line('sway',SWAY,'rgba(243,241,236,.7)',1.5*dpr); line('tilt',TILT,tok('--hips'),2.5*dpr);
+  try{for(const r of hipPatterns(B)){x.fillStyle=PAT[r.lab].col;x.globalAlpha=0.85;x.fillRect(X(r.t0),h-19*dpr,Math.max(dpr,X(r.t1)-X(r.t0)),6*dpr)}x.globalAlpha=1;
+    const pl=$('#patLine'),tx=patSummary(n,B);if(pl.innerHTML!==tx)pl.innerHTML=tx}catch(e){}
+  const C=S.cmp&&!S.cmp.err&&S.cmp.match>=0.3&&S.cmp.refId===S.cur?S.cmp:null;
+  if(C){if(C.weakest&&C.weakest.alike<0.6){x.fillStyle='rgba(255,148,102,.13)';x.fillRect(X(C.weakest.t0),0,X(C.weakest.t1)-X(C.weakest.t0),h)}
+    x.strokeStyle=tok('--dance');x.lineWidth=2*dpr;x.setLineDash([5*dpr,4*dpr]);x.beginPath();let on=false;
+    for(let k=0;k<C.tt.length;k++){const tRef=C.ra+(k-C.off)*C.step;const val=C.tt[k];if(!(val===val)||tRef<0||tRef>d){on=false;continue}const px=X(tRef),py=mid-Math.max(-1,Math.min(1,val/TILT))*amp;if(!on){x.moveTo(px,py);on=true}else x.lineTo(px,py)}
+    x.stroke();x.setLineDash([])}
+  else line('sway',SWAY,'rgba(243,241,236,.7)',1.5*dpr);
+  line('tilt',TILT,tok('--hips'),2.5*dpr);
   {const hs=hipSync(n,B),grid=hs?hs.beats:null,hh=hipHits(B);
    for(const q of hh){if(q.t<0||q.t>d)continue;const H=RB.hipsAt(B,q.t),py=H&&H.tilt!=null?mid-Math.max(-1,Math.min(1,H.tilt/TILT))*amp:mid;
      let on=false;if(grid){const dv=hs.div||2;for(let i=0;i<grid.length-1;i++){const a=grid[i],b=grid[i+1];if(q.t<a-0.07||q.t>b+0.07)continue;for(let j=0;j<=dv;j++){const g=a+(b-a)*j/dv+hs.offsetMs/1000*0;if(Math.abs(q.t-g)<=0.06){on=true;break}}if(on)break}}
@@ -4472,8 +4552,147 @@ function studyOff(){
 }
 $('#studyBtn').addEventListener('click',()=>{S.study?studyOff():studyOn()});
 setInterval(()=>{try{studyUI()}catch(e){}},500);
+
+/* ---------- compare your try with the original ----------
+   Pick another video in the project (you dancing the same part). Both are body-tracked. They are lined up by
+   movement: the hip-tilt and sway speeds are compared at every offset (and as a mirror image, for when you danced it
+   facing the screen), and the best match wins. Lining up by movement removes any overall lateness, so timing is
+   reported as drift inside the routine: each 2 s stretch is matched again within ±0.3 s, and stretches where you get
+   ahead or behind by 80 ms or more are named. Also: how alike the hips are (correlation of tilt), how big your tilts
+   are next to the original's, and the least alike stretch. */
+function hipSeriesOn(B,a,b,step){
+  RB.hipsAt(B,0);const n=B.n,S2=RB.STRIDE,H=RB.HS,N=Math.max(0,Math.floor((b-a)/step)+1),tilt=new Float32Array(N).fill(NaN),sway=new Float32Array(N).fill(NaN);
+  let j=0;for(let k=0;k<N;k++){const t=a+k*step;while(j<n-2&&B.data[(j+1)*S2]<t)j++;const t0=B.data[j*S2],t1=B.data[(j+1)*S2];if(!(t1>t0)||t<t0-0.05||t>t1+0.05)continue;
+    const u=Math.max(0,Math.min(1,(t-t0)/(t1-t0)));for(const [arr,o] of [[tilt,0],[sway,2]]){const x=B.hips[j*H+o],y=B.hips[(j+1)*H+o];if(x===x&&y===y)arr[k]=x+(y-x)*u}}
+  return {a,step,tilt,sway,N};
+}
+function vel(x){const v=new Float32Array(x.length).fill(NaN);for(let i=1;i<x.length-1;i++){const p=x[i-1],q=x[i+1];if(p===p&&q===q)v[i]=(q-p)/2}return v}
+function ncc(x,y,off,i0,i1){let sx=0,sy=0,n=0;for(let i=i0;i<i1;i++){const j=i+off;if(j<0||j>=y.length)continue;const a=x[i],b=y[j];if(a===a&&b===b){sx+=a;sy+=b;n++}}
+  if(n<20)return {r:-2,n};const mx=sx/n,my=sy/n;let xy=0,xx=0,yy=0;for(let i=i0;i<i1;i++){const j=i+off;if(j<0||j>=y.length)continue;const a=x[i],b=y[j];if(a===a&&b===b){xy+=(a-mx)*(b-my);xx+=(a-mx)**2;yy+=(b-my)**2}}
+  return {r:xx>0&&yy>0?xy/Math.sqrt(xx*yy):-2,n};}
+function compareTry(refN,tryN){
+  const Br=bodyOf(refN),Bt=bodyOf(tryN);if(!Br||!Bt)return null;const step=1/30;
+  const ra=S.cIn,rb=clipEnd(),R=hipSeriesOn(Br,ra,rb,step),tEnd=Bt.data[(Bt.n-1)*RB.STRIDE],T=hipSeriesOn(Bt,Bt.data[0],tEnd,step);
+  if(R.N<60||T.N<60)return {err:'Both videos need at least 2 s of tracked dancing.'};
+  const rv=[vel(R.tilt),vel(R.sway)],tv=[vel(T.tilt),vel(T.sway)],sc=[1/8,1/0.12];
+  const minOv=Math.floor(Math.min(R.N,T.N)*0.6);let best={r:-2};
+  const tvm={1:tv,[-1]:tv.map(arr=>arr.map(x=>-x))};
+  for(const mir of [1,-1])for(let off=-R.N;off<T.N;off++){
+    const lo=Math.max(0,-off),hi=Math.min(R.N,T.N-off);if(hi-lo<minOv)continue;
+    const a=ncc(rv[0],tvm[mir][0],off,lo,hi),b=ncc(rv[1],tvm[mir][1],off,lo,hi);if(a.r<-1)continue;
+    const r=0.65*a.r+0.35*(b.r<-1?a.r:b.r);if(r>best.r)best={r,off,mir,lo,hi};
+  }
+  if(best.r<-1)return {err:'Not enough overlap between the two videos.'};
+  const {off,mir,lo,hi}=best,tt=T.tilt.map(x=>x*mir),lag=T.a+off*step-R.a;   /* try time = original time + lag */
+  const sim=ncc(R.tilt,tt,off,lo,hi).r;
+  const rng=(arr,i0,i1,o)=>{const v=[];for(let i=i0;i<i1;i++){const x=arr[i+o];if(x===x)v.push(x)}v.sort((p,q)=>p-q);return v.length>10?v[Math.floor(v.length*0.9)]-v[Math.floor(v.length*0.1)]:0};
+  const size=rng(R.tilt,lo,hi,0)>0?rng(tt,lo,hi,off)/rng(R.tilt,lo,hi,0):null;
+  /* stretches: 2 s, every 1 s */
+  const W=60,stretches=[];
+  for(let s0=lo;s0+W<=hi;s0+=30){let mv=0,c=0;for(let i=s0;i<s0+W;i++){const x=rv[0][i];if(x===x){mv+=Math.abs(x);c++}}if(!c||mv/c<0.25)continue;   /* ref barely moving */
+    let bl={r:-2,d:0};for(let d=-9;d<=9;d++){const q=ncc(rv[0],tvm[mir][0],off+d,s0,s0+W);if(q.r>bl.r)bl={r:q.r,d}}
+    stretches.push({t0:R.a+s0*step,t1:R.a+(s0+W)*step,shiftMs:Math.round(bl.d*step*1000),alike:ncc(R.tilt,tt,off,s0,s0+W).r})}
+  const weakest=stretches.filter(s=>s.alike>-2).sort((p,q)=>p.alike-q.alike)[0]||null;
+  const drift=stretches.filter(s=>Math.abs(s.shiftMs)>=80);
+  return {match:best.r,lag,mirrored:mir<0,similarity:sim,size,stretches,weakest,drift,overlap:[R.a+lo*step,R.a+hi*step],tryId:tryN.id,refId:refN.id,tt,off,step,ra:R.a};
+}
+const mmss=t=>{const m=Math.floor(t/60),s=Math.floor(t-m*60);return m+':'+(s<10?'0':'')+s};
+function compareText(c){
+  if(!c)return '';if(c.err)return c.err;
+  if(c.match<0.3)return `These don't look like the same moves (best match ${Math.round(Math.max(0,c.match)*100)}%). Check you picked the right video, and that it shows the same part.`;
+  const parts=[`<b>${Math.round(Math.max(0,c.similarity)*100)}% alike</b> hip tilt`];
+  if(c.size!=null)parts.push(c.size<0.8?`your tilts are <b>${Math.round(c.size*100)}%</b> as big: go bigger`:c.size>1.25?`your tilts are <b>${Math.round(c.size*100)}%</b> as big: bigger than the original`:`your tilts are about the same size (${Math.round(c.size*100)}%)`);
+  if(c.drift.length){const d=c.drift.reduce((p,q)=>Math.abs(q.shiftMs)>Math.abs(p.shiftMs)?q:p);parts.push(`you get <b>${d.shiftMs>0?'behind':'ahead'} by ${Math.abs(d.shiftMs)} ms</b> around ${mmss(d.t0)}–${mmss(d.t1)}`)}
+  else parts.push('timing steady through the part');
+  if(c.weakest&&c.weakest.alike<0.6)parts.push(`work on <b>${mmss(c.weakest.t0)}–${mmss(c.weakest.t1)}</b> (least alike)`);
+  return 'Your try vs the original: '+parts.join(' · ')+'.'+(c.mirrored?' You danced it mirrored, so it was compared as a mirror image.':'')+(Math.abs(c.lag)<0.05?' Both start at the same moment.':c.lag>0?` The part starts ${c.lag.toFixed(1)} s into your video.`:` Your video starts ${(-c.lag).toFixed(1)} s into the original\u2019s part.`);
+}
+function cmpOptions(){
+  const sel=$('#cmpPick'),cur=sel.value,others=S.sources.filter(n=>n.id!==S.cur&&!n.missing);
+  const sig=others.map(n=>n.id+n.name).join('|')+S.cur;if(sel.dataset.sig===sig)return;sel.dataset.sig=sig;sel.innerHTML='';
+  if(!others.length){const o=el('option',null,'Add a video of your try (+ Add video)');o.value='';sel.append(o)}
+  for(const n of others){const o=el('option',null,n.name);o.value=n.id;sel.append(o)}if(cur&&others.some(n=>n.id===cur))sel.value=cur;
+  $('#cmpGo').disabled=!others.length;
+}
+setInterval(()=>{try{cmpOptions();if(S.cmp&&S.cmp.refId!==S.cur){S.cmp=null;$('#cmpOut').textContent=''}}catch(e){}},700);
+async function trackSourceQuiet(n,label){
+  const B=await RB.track(n.url,{onProgress:p=>{$('#cmpOut').textContent=label+' '+Math.round(p*100)+'%'}});
+  n.body=B;if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});return B;
+}
+$('#cmpGo').addEventListener('click',async()=>{
+  const ref=srcById(S.cur),tr=srcById($('#cmpPick').value);if(!ref||!tr||S.bodyBusy)return;
+  const b=$('#cmpGo');b.disabled=true;S.bodyBusy=true;
+  try{
+    if(!bodyOf(ref)){await trackSourceQuiet(ref,'Tracking the original…')}
+    if(!bodyOf(tr)){if(!tr.url)throw new Error('That video isn’t loaded.');await trackSourceQuiet(tr,'Tracking your try…')}
+    $('#cmpOut').textContent='Lining them up…';await new Promise(r=>setTimeout(r,30));
+    S.cmp=compareTry(ref,tr);$('#cmpOut').innerHTML=compareText(S.cmp);hipKey='';
+  }catch(e){$('#cmpOut').textContent='Couldn’t compare: '+((e&&e.message)||e)}
+  finally{S.bodyBusy=false;b.disabled=false}
+});
+
+/* ---------- hip patterns ----------
+   Every 0.25 s, the last 1.5 s of hip measures is described, only when it's clear:
+   still: tilt moves under 2° and sway under 0.025 torso (spread);
+   otherwise the movement must repeat (the tilt or sway swings back: its autocorrelation dips below −0.1, then peaks
+   again above 0.35; the first repeat gives the period). Then:
+   hip circles (whine-like): sway and tilt or forward/back follow each other a quarter cycle apart (|r| > 0.5, and
+   clearly more than in step), like a circle seen from the front;
+   quick pulses: repeats faster than about 2.7 a second;
+   tilts: side-to-side tilts over 3°; sways: hips shifting sideways (over 0.04 torso) with little tilt.
+   Anything else is left unnamed. Runs shorter than 0.75 s are dropped. On made-up movements of each kind with
+   real-sized wobble, every one was named right; random drifting was left unnamed 87% of the time (10% "still").
+   On real dancing most stretches stay unnamed, because real dancing changes faster than one clean pattern. */
+const PAT={circle:{name:'Hip circles',short:'Circles',col:'#B98BFF'},tilt:{name:'Tilts',short:'Tilts',col:'#FF5FA2'},pulse:{name:'Quick pulses',short:'Pulses',col:'#4FD1A1'},sway:{name:'Sways',short:'Sways',col:'#6E8BFF'},still:{name:'Still',short:'Still',col:'#7C8494'}};
+function patAc(x,lo,hi){let m=0,c=0;for(const v of x)if(v===v){m+=v;c++}if(c<10)return [0,0];m/=c;const y=x.map(v=>v===v?v-m:0);let d=0;for(const v of y)d+=v*v;if(d<=0)return [0,0];
+  const r=[1];for(let L=1;L<=hi+1;L++){let s=0;for(let i=0;i+L<y.length;i++)s+=y[i]*y[i+L];r.push(s/d*y.length/(y.length-L))}
+  let dip=-1;for(let L=1;L<hi;L++)if(r[L]<-0.1){dip=L;break}if(dip<0)return [0,0];
+  for(let L=Math.max(dip,lo);L<=hi;L++)if(r[L]>=r[L-1]&&r[L]>=r[L+1])return [r[L],L];return [0,0]}
+function patCorr(a,b){const n=a.length;let ma=0,mb=0;for(let i=0;i<n;i++){ma+=a[i];mb+=b[i]}ma/=n;mb/=n;let xy=0,xx=0,yy=0;for(let i=0;i<n;i++){xy+=(a[i]-ma)*(b[i]-mb);xx+=(a[i]-ma)**2;yy+=(b[i]-mb)**2}return xx>0&&yy>0?xy/Math.sqrt(xx*yy):0}
+function patStd(x){let m=0,c=0;for(const v of x)if(v===v){m+=v;c++}if(c<3)return NaN;m/=c;let s=0;for(const v of x)if(v===v)s+=(v-m)**2;return Math.sqrt(s/c)}
+function patWindow(tilt,sway,thrust,k){
+  const at=patStd(tilt),as=patStd(sway);if(!(at===at)||!(as===as))return null;
+  if(at<2&&as<0.025)return 'still';
+  const lo=Math.max(2,Math.round(5*k)),hi=Math.round(30*k);
+  const [rt,Lt]=patAc(tilt,lo,hi),[rs,Ls]=patAc(sway,lo,hi);const [r,L]=rt*at/3>=rs*as/0.04?[rt,Lt]:[rs,Ls];
+  if(r<0.35)return null;
+  const q=Math.max(1,Math.round(L/4)),fill=x=>{let m=0,c=0;for(const v of x)if(v===v){m+=v;c++}m=c?m/c:0;return x.map(v=>v===v?v-m:0)};
+  const s=fill(sway);let circ=0,zero=0;
+  for(const X0 of [tilt,thrust]){if(!X0)continue;const X=fill(X0);if(X.every(v=>v===0))continue;
+    const c=Math.max(Math.abs(patCorr(s.slice(0,-q),X.slice(q))),Math.abs(patCorr(s.slice(q),X.slice(0,-q)))),z=Math.abs(patCorr(s,X));if(c>circ){circ=c;zero=z}}
+  if(as>0.03&&circ>0.5&&zero<0.5&&circ-zero>0.2)return 'circle';
+  if(L<=Math.round(11*k))return 'pulse';
+  if(at>=3&&at/3>=as/0.04)return 'tilt';
+  if(as>=0.04)return 'sway';
+  return at>=3?'tilt':null;
+}
+function hipPatterns(B){
+  if(B._pat&&B._patN===B.n&&B._patH===B.hips)return B._pat;
+  RB.hipsAt(B,0);const n=B.n,S2=RB.STRIDE,H=RB.HS,fps=B.fps||30,k=fps/30,win=Math.round(1.5*fps),hop=Math.max(1,Math.round(0.25*fps));
+  const col=o=>{const a=new Array(n);for(let i=0;i<n;i++)a[i]=B.hips[i*H+o];return a},T=col(0),Sw=col(2),Th=col(5);
+  const slots=[];for(let s0=0;s0+win<=n;s0+=hop){const lab=patWindow(T.slice(s0,s0+win),Sw.slice(s0,s0+win),Th.slice(s0,s0+win),k);const c=s0+Math.floor(win/2);
+    slots.push({t0:B.data[Math.max(0,c-Math.floor(hop/2))*S2],t1:B.data[Math.min(n-1,c+Math.ceil(hop/2))*S2],lab})}
+  const runs=[];for(const s of slots){const L=runs[runs.length-1];if(L&&L.lab===s.lab&&s.t0-L.t1<0.2)L.t1=s.t1;else runs.push({...s})}
+  const out=runs.filter(r=>r.lab&&r.t1-r.t0>=0.75);B._pat=out;B._patN=B.n;B._patH=B.hips;return out;
+}
+/* the main pattern in a stretch: the one covering most of it, if it covers at least 40% */
+function patternIn(B,a,b){const cov={};for(const r of hipPatterns(B)){const o=Math.min(b,r.t1)-Math.max(a,r.t0);if(o>0)cov[r.lab]=(cov[r.lab]||0)+o}
+  let best=null,bv=0;for(const [k,v] of Object.entries(cov))if(v>bv){bv=v;best=k}return best&&bv>=0.4*(b-a)?best:null}
+function patSummary(n,B){const a=S.cIn,b=clipEnd(),tot={};let named=0;for(const r of hipPatterns(B)){const o=Math.min(b,r.t1)-Math.max(a,r.t0);if(o>0){tot[r.lab]=(tot[r.lab]||0)+o;named+=o}}
+  if(!named)return 'Hip patterns: none clear enough to name in this clip (that’s common in mixed, fast dancing).';
+  return 'Hip patterns (band under the graph): '+Object.entries(tot).sort((x,y)=>y[1]-x[1]).map(([k,v])=>`<span style="display:inline-block;width:10px;height:6px;border-radius:2px;background:${PAT[k].col};margin-right:4px"></span>${PAT[k].name.toLowerCase()} ${Math.round(v/(b-a)*100)}%`).join(' · ')+' of the clip (the rest is mixed).'}
+/* moves: a tag each, and a filter */
+S.patFilter=S.patFilter||'all';
+function movePattern(m){const n=srcById(m.src),B=n&&bodyOf(n);return B?patternIn(B,m.s,m.e):null}
+function patFilterUI(){
+  const box=$('#patFilter');const tags=S.moves.map(movePattern);const have=[...new Set(tags.filter(Boolean))];
+  box.hidden=!have.length;const sig=have.join(',')+'|'+S.patFilter;if(box.dataset.sig===sig)return;box.dataset.sig=sig;box.textContent='';
+  for(const k of ['all',...Object.keys(PAT).filter(k=>have.includes(k))]){const bt=el('button',null,k==='all'?'All':PAT[k].short);bt.type='button';bt.setAttribute('aria-pressed',String(S.patFilter===k));
+    bt.addEventListener('click',()=>{S.patFilter=k;renderMoves()});box.append(bt)}
+  if(S.patFilter!=='all'&&!have.includes(S.patFilter)){S.patFilter='all'}
+}
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__rs={studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
