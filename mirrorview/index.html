@@ -562,6 +562,9 @@ body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud #pulse-cu
 .rs-grp .you-line{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
 .rs-grp .you-line[hidden]{display:none}
 .rs-grp .you-line button{min-height:36px!important;padding:0 10px!important;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);font:700 13px Figtree,sans-serif}
+.rs-grp .rs-part{gap:4px}.rs-grp .rs-part[hidden]{display:none}.rs-grp .rs-part>span{font:700 12px Figtree,sans-serif;color:var(--muted);padding-right:4px}
+.rs-grp .rs-part button{min-height:36px!important;padding:0 12px!important;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);font:700 13px Figtree,sans-serif}
+.rs-grp .rs-part button[aria-pressed="true"]{background:#F3F1EC!important;color:#0E1014!important;border-color:#F3F1EC!important}
 .rs-grp .you-line i{font:600 12px 'JetBrains Mono',monospace;font-style:normal;color:var(--muted);padding:0 4px}
 /* ---- transport row: wrap rather than push the speed menu off screen ---- */
 .transport-row{flex-wrap:wrap;row-gap:8px}
@@ -1150,6 +1153,36 @@ main{padding-bottom:12px}
     for(let i=0;i<mw*mh;i++){const v=M.data[o+i]/255,a=Math.max(0,Math.min(1,(v-.35)/.3));img.data[i*4+3]=Math.round(a*a*(3-2*a)*255)}
     mcx.putImageData(img,0,0); return mcv;
   }
+  /* ---------- isolation: just the legs, or just the upper body ----------
+     Legs = the area around each leg, from the hip joints down through knees and ankles to heel and toes (thick enough for
+     baggy trousers), plus the space between the thighs; then trimmed to the person's real outline. Upper body = the person
+     minus that, so arms hanging past the hips stay with the upper body. The edge of the split is softened. */
+  let pcv=null,pcx=null,lcv=null,lcx=null;
+  function rowPose(B,k){const o=k*STRIDE;if(isNaN(B.data[o+1]))return null;const p=new Array(N);for(let j=0;j<N;j++)p[j]=[B.data[o+1+j*3],B.data[o+2+j*3],B.data[o+3+j*3]];return p}
+  function legRegion(P,mw,mh,sc){
+    const X=j=>[P[j][0]*mw*sc,P[j][1]*mh*sc], d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+    const sh=mid(X(11),X(12)),hp=mid(X(23),X(24)),s=d(sh,hp)||mh*sc*0.3,hw=d(X(23),X(24));
+    const line=(a,b,w)=>{lcx.lineWidth=w;lcx.beginPath();lcx.moveTo(a[0],a[1]);lcx.lineTo(b[0],b[1]);lcx.stroke()};
+    lcx.clearRect(0,0,lcv.width,lcv.height);lcx.strokeStyle='#000';lcx.fillStyle='#000';lcx.lineCap='round';lcx.lineJoin='round';
+    for(const [h,k,a,he,ft] of [[23,25,27,29,31],[24,26,28,30,32]]){
+      line(X(h),X(k),2*Math.max(0.21*s,0.6*hw));       /* thigh */
+      line(X(k),X(a),2*0.16*s);                         /* shin */
+      line(X(a),X(he),2*0.12*s);line(X(a),X(ft),2*0.12*s);line(X(he),X(ft),2*0.1*s);   /* foot */
+    }
+    lcx.beginPath();for(const j of [23,24,26,25]){const q=X(j);lcx.lineTo(q[0],q[1])}lcx.closePath();lcx.fill();   /* between the thighs */
+  }
+  function partMask(B,k,part){
+    const base=maskCanvas(B,k);if(!part||part==='all')return base;
+    const P=rowPose(B,k);if(!P)return base;
+    const M=B.mask,mw=M.w,mh=M.h,sc=0.5;   /* the region at half size, scaled up smoothly = a soft edge */
+    if(!pcv){pcv=document.createElement('canvas');pcx=pcv.getContext('2d');lcv=document.createElement('canvas');lcx=lcv.getContext('2d')}
+    if(pcv.width!==mw||pcv.height!==mh){pcv.width=mw;pcv.height=mh}
+    const lw=Math.max(4,Math.round(mw*sc)),lh=Math.max(4,Math.round(mh*sc));if(lcv.width!==lw||lcv.height!==lh){lcv.width=lw;lcv.height=lh}
+    legRegion(P,mw,mh,sc);
+    pcx.globalCompositeOperation='source-over';pcx.clearRect(0,0,mw,mh);pcx.drawImage(base,0,0);
+    pcx.globalCompositeOperation=part==='legs'?'destination-in':'destination-out';pcx.imageSmoothingEnabled=true;pcx.imageSmoothingQuality='high';pcx.drawImage(lcv,0,0,mw,mh);
+    pcx.globalCompositeOperation='source-over';return pcv;
+  }
   function cutout(ctx,B,t,video,rect,o){
     o=o||{}; const k=maskIndex(B,t); if(k<0||!video||!video.videoWidth)return false;
     const W=ctx.canvas.width,H=ctx.canvas.height;
@@ -1162,11 +1195,12 @@ main{padding-bottom:12px}
     if(o.bg==='blur'){if(!bcv){bcv=document.createElement('canvas');bcx=bcv.getContext('2d')}const sw=Math.max(8,Math.round(rect.w/24)),sh=Math.max(8,Math.round(rect.h/24));
       if(bcv.width!==sw||bcv.height!==sh){bcv.width=sw;bcv.height=sh}bcx.imageSmoothingEnabled=true;bcx.imageSmoothingQuality='high';bcx.drawImage(video,0,0,sw,sh);
       ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(bcv,rect.x,rect.y,rect.w,rect.h);ctx.fillStyle='rgba(8,9,12,.55)';ctx.fillRect(0,0,W,H)}
+    else if(o.bg==='dim'){ctx.fillStyle='#08090C';ctx.fillRect(0,0,W,H);ctx.drawImage(video,rect.x,rect.y,rect.w,rect.h);ctx.fillStyle='rgba(8,9,12,.66)';ctx.fillRect(0,0,W,H)}   /* the rest of the frame, darkened */
     else{ctx.fillStyle=o.bg==='colour'?(o.colour||'#2B2F6B'):(o.dark||'#08090C');ctx.fillRect(0,0,W,H)}
     ctx.restore();
     /* the dancer: frame, then keep only where the mask is */
     ccx.clearRect(0,0,W,H);ccx.globalCompositeOperation='source-over';ccx.drawImage(video,rect.x,rect.y,rect.w,rect.h);
-    ccx.globalCompositeOperation='destination-in';ccx.imageSmoothingEnabled=true;ccx.imageSmoothingQuality='high';ccx.drawImage(maskCanvas(B,k),rect.x,rect.y,rect.w,rect.h);
+    ccx.globalCompositeOperation='destination-in';ccx.imageSmoothingEnabled=true;ccx.imageSmoothingQuality='high';ccx.drawImage(partMask(B,k,o.part),rect.x,rect.y,rect.w,rect.h);
     ccx.globalCompositeOperation='source-over';
     ctx.drawImage(ccv,0,0);
     return true;
@@ -1175,7 +1209,7 @@ main{padding-bottom:12px}
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
@@ -4157,7 +4191,7 @@ function preparedCutout(t){
   if(!prepCut){prepCut=document.createElement('canvas');prepCutCtx=prepCut.getContext('2d');}
   if(prepCut.width!==W||prepCut.height!==H){prepCut.width=W;prepCut.height=H;}
   prepCutCtx.globalCompositeOperation='source-over';prepCutCtx.clearRect(0,0,W,H);prepCutCtx.drawImage(refVideo,0,0,W,H);
-  prepCutCtx.globalCompositeOperation='destination-in';prepCutCtx.imageSmoothingEnabled=true;prepCutCtx.imageSmoothingQuality='high';prepCutCtx.drawImage(RB.maskCanvas(preparedBody,k),0,0,W,H);
+  prepCutCtx.globalCompositeOperation='destination-in';prepCutCtx.imageSmoothingEnabled=true;prepCutCtx.imageSmoothingQuality='high';prepCutCtx.drawImage(RB.partMask(preparedBody,k,state.cutPart||'all'),0,0,W,H);
   prepCutCtx.globalCompositeOperation='source-over';
   state.refCutout=prepCut;state.refCutoutTime=t;
 }
@@ -6606,6 +6640,14 @@ const rsSong={el:null,url:null,meta:null,mode:'clip',nudge:0,unlocked:false,want
   {const tr=document.getElementById('reference-transport'),dk=document.getElementById('mv-dock'),mc=document.getElementById('music-card');
    if(tr&&dk){tr.after(dk);} if(dk&&mc){dk.after(mc);mc.classList.add('rs-pulse-below');}}
   /* the Pulse strip hides its empty waveform until there's an analysis */
+  {const g1=document.querySelector('.rs-grp.dancer');if(g1){
+    const pr=document.createElement('div');pr.className='rs-sub rs-part';pr.id='dancer-part';pr.hidden=true;pr.setAttribute('role','group');pr.setAttribute('aria-label','Which part of the dancer');
+    pr.innerHTML='<span>Show</span><button type="button" data-part="all" aria-pressed="true">Whole</button><button type="button" data-part="upper" aria-pressed="false">Upper body</button><button type="button" data-part="legs" aria-pressed="false">Legs</button>';
+    g1.append(pr);
+    try{const cp=localStorage.getItem('rs-mv-cutpart');if(cp==='upper'||cp==='legs')state.cutPart=cp;}catch(e){}
+    pr.addEventListener('click',e=>{const b=e.target.closest('[data-part]');if(!b)return;state.cutPart=b.dataset.part;state.refCutout=null;try{lastFrame.reference='';renderRevision++;localStorage.setItem('rs-mv-cutpart',state.cutPart);}catch(err){}partSync();});
+    const partSync=()=>{const on=!!state.maskRef&&preparedReady();if(pr.hidden===on)pr.hidden=!on;pr.querySelectorAll('[data-part]').forEach(b=>{const v=String((state.cutPart||'all')===b.dataset.part);if(b.getAttribute('aria-pressed')!==v)b.setAttribute('aria-pressed',v);});};
+    setInterval(partSync,300);}}
   setInterval(()=>{const c=document.getElementById('music-card');if(c)c.classList.toggle('rs-noan',!(music&&music.analysis));},500);
 })();
 function soundNote(){

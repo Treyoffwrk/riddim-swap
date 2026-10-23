@@ -23,6 +23,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 - **Tracks the dancer's body** (the *Body* page). One chosen dancer is followed through crowds and occlusion. The tracking draws:
   - a skeleton and pelvis with live Tilt / Sway / Turn gauges, made for Jamaican hip work;
   - hip graphs, hips-on-the-beat scoring and named hip patterns (still, circle, pulse, tilt, sway).
+- **Isolates legs or upper body.** Cut out → Show: Whole / Upper / Legs, with backgrounds dark, colour, blur or Dim (the rest of the frame, darkened). Legs = around each leg from the hips to the toes, trimmed to the dancer's outline; Upper = the rest, so arms past the hips stay. Also in Body (the Dancer's Cut out). On the user's clip: Legs hid 96% of the upper body and kept 94% of the legs; Upper hid 92% of the legs and kept 99% of the upper body.
 - **Compares a try with the original.** It lines your try up with the original, finds mirroring, and reports size and drift.
 - **Beat cues: two balls bouncing over the video.**
   - The **Riddim** ball (left) lands on each hit of the song's drum pattern: a big amber ring for a kick or bass hit, a white ring for a snare, clap or rim.
@@ -66,7 +67,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 39 suites, all passed (23 Oct 2026), at the cutting / routine timeline / Body build.
+**Last full regression:** 40 suites, all passed (23 Oct 2026), at the isolation build.
 
 **Measured so far**
 

@@ -23,12 +23,12 @@ const [,,HOST,CLIP,HITS,SONG,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s
  await p.locator('#cutCard').screenshot({path:SHOT+'-cut.png'});
  /* play from the start: the cut part never shows, the song runs on without a jump */
  await p.evaluate(()=>{window.__rs.v().currentTime=0});await p.click('#play');
- const tr=await p.evaluate(()=>new Promise(res=>{const out=[];const iv=setInterval(()=>{const R=window.__rs;out.push({v:R.v().currentTime,a:document.getElementById('aud').currentTime,src:R.S.cur})},40);setTimeout(()=>{clearInterval(iv);res(out)},6500)}));
+ const tr=await p.evaluate(()=>new Promise(res=>{const out=[];const iv=setInterval(()=>{const R=window.__rs;out.push({v:R.v().currentTime,a:document.getElementById('aud').currentTime,src:R.S.cur,w:performance.now()/1000})},40);setTimeout(()=>{clearInterval(iv);res(out)},6500)}));
  await p.click('#play');
- const inCut=tr.filter(s=>s.v>3.08&&s.v<5.92).length, aj=[];for(let i=1;i<tr.length;i++)aj.push(tr[i].a-tr[i-1].a);
+ const inCut=tr.filter(s=>s.v>3.08&&s.v<5.92).length, aj=[];for(let i=1;i<tr.length;i++)aj.push((tr[i].a-tr[i-1].a)-(tr[i].w-tr[i-1].w));   /* song step minus real time passed: 0 when it just keeps playing */
  const reached=tr.some(s=>s.v>6.3);
  rec('Playing skips the cut part (never shows 3–6 s) and goes on from 6 s',inCut<=1&&reached?'passed':'failed',`${inCut} samples inside the cut · reached past 6 s: ${reached}`);
- rec('The song keeps going through the cut (no jump back or forward)',Math.max(...aj)<0.2&&Math.min(...aj)>=-0.01?'passed':'failed',`largest song step ${Math.max(...aj).toFixed(3)} s`);
+ rec('The song keeps going through the cut (no jump back or forward)',Math.max(...aj.map(Math.abs))<0.1?'passed':'failed',`largest difference between song time and real time between samples ${(Math.max(...aj.map(Math.abs))*1000).toFixed(0)} ms`);
  const sc=await p.evaluate(()=>+document.getElementById('scrub').max);
  rec('The play bar covers the kept length (9 s, not 12)',Math.abs(sc-(dur-3))<0.1?'passed':'failed',`scrub length ${sc.toFixed(2)} s of a ${dur.toFixed(2)} s clip`);
  /* drag the edge at 6 s to about 7 s */
