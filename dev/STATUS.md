@@ -66,7 +66,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 37 suites at the beat-cue build (22 Oct 2026). 35 passed outright; the two cue suites passed after measurement fixes. The suites touched by the last fixes (cues, audio, UI tracking, swipe, phone check) were rerun on the final build rs-78bec99bf2: all passed.
+**Last full regression:** 39 suites, all passed (23 Oct 2026), at the cutting / routine timeline / Body build.
 
 **Measured so far**
 

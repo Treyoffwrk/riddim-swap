@@ -56,7 +56,7 @@ const q=(a,p)=>{const b=a.slice().sort((x,y)=>x-y);return b[Math.min(b.length-1,
  const cam=()=>p.evaluate(()=>{const v=document.getElementById('camera-source'),st=v&&v.srcObject;return {live:!!(st&&st.getVideoTracks().some(t=>t.readyState==='live')),camPose:window.__mv.state.camPose,
    groups:[...document.querySelectorAll('.rs-grp')].map(g=>g.innerText.replace(/\s+/g,' ').trim()),note:(document.getElementById('you-note')||{}).textContent}});
  const k0=await cam();
- rec('Under the video: a Dancer group and a You group, each with its own Skeleton and Mirror',k0.groups.length===2&&/^DANCER Skeleton Cut out Mirror/i.test(k0.groups[0])&&/^YOU Camera Skeleton Mirror/i.test(k0.groups[1])&&!k0.live?'passed':'failed',JSON.stringify(k0));
+ rec('Under the video: a Dancer group and a You group, each with its own Skeleton and Mirror',k0.groups.length===2&&/^DANCER Skeleton Cut out Mirror/i.test(k0.groups[0])&&/^YOU Camera My video Skeleton Mirror/i.test(k0.groups[1])&&!k0.live?'passed':'failed',JSON.stringify(k0));
  await p.screenshot({path:SHOT+'-groups.png'});
  await p.click('#you-skel');for(let i=0;i<40;i++){await p.waitForTimeout(300);const k=await cam();if(k.live&&k.camPose)break}
  const k1=await cam();

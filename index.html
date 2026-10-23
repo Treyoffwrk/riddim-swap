@@ -450,6 +450,34 @@ html.rs-hosted .tab.mv-only,html.rs-hosted .bodyrow.mv-only{display:flex!importa
 #storeBox .store-list .dot{width:8px;height:8px;border-radius:50%;flex:none}
 #storeBox .store-list .tot{border-top:1px solid var(--line,rgba(255,255,255,.1));margin-top:4px;padding-top:6px}
 #storeBox .store-list .warn span,#storeBox .store-list .ok span{opacity:.75;font-size:12px}
+
+/* three levels: 1 always on screen (video, play, record), 2 each section's main tools, 3 "More options" (closed) */
+details.more{border:1px solid var(--line);border-radius:14px;background:var(--surface);margin-top:6px}
+details.more>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:14px 16px;font:700 15px var(--f-body);color:var(--ink);min-height:48px;box-sizing:border-box}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::after{content:"";margin-left:auto;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translateY(-3px);transition:transform .2s}
+details.more[open]>summary::after{transform:rotate(225deg) translateY(-1px)}
+details.more>summary span{font:500 13px var(--f-body);color:var(--muted);flex-basis:100%;order:3}
+details.more[open]{padding-bottom:6px}
+details.more>:not(summary){margin-left:14px;margin-right:14px}
+details.more .field{margin-top:8px}
+
+/* timeline editor (Clip cuts and the Routine) */
+.tle{position:relative;border-radius:12px;overflow:hidden;background:#12151B;border:1px solid var(--line);margin:6px 0 8px}
+.tle canvas{display:block;width:100%;height:110px;touch-action:none;cursor:grab}
+.tle.tall canvas{height:128px}
+.tle-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tle-bar .tle-zoom{margin-left:auto;display:inline-flex;gap:4px}
+.tle-bar .tle-zoom .btn{min-width:40px;font-size:18px;padding:0}
+.cutcard.off .tle{opacity:.45}
+.btn.danger{color:#FF8A95;border-color:rgba(255,77,94,.45)}
+.linkbtn{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;font:inherit;cursor:pointer}
+.linkbtn:disabled{color:var(--muted);text-decoration:none;cursor:default}
+.rtl-inspect{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.rtl-head{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin-bottom:8px}
+.rtl-head b{font:800 16px var(--f-body)}.rtl-head .hlen{color:var(--muted);font-size:13px}
+.rtl-acts{flex-wrap:wrap;gap:6px;margin-bottom:6px}
+#cutCard .subhead{flex-wrap:wrap;row-gap:2px}#cutSum{flex-basis:100%}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -472,7 +500,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
     <p>Put a dance clip on a different song and change its speed until the moves land on the beat.</p>
     <div class="hdr-r">
       <span class="savestate" id="saveState" aria-live="polite"></span>
-      <button class="btn sm ghost mv-only" id="mvBtn" title="Pose tracking, Worldline, Pulse and practice">MirrorView</button>
+      <button class="btn sm ghost mv-only" id="mvBtn" hidden title="Body: mirror, Worldline, Pulse and practice">Body</button>
       <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>
     </div>
   </header>
@@ -594,7 +622,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         <div class="row">
           <button class="btn primary" id="saveBtn">Save video</button>
           <button class="btn" id="discardBtn">Discard</button>
-          <button class="btn mv-only" id="mvTake">Practise in MirrorView</button>
+          <button class="btn mv-only" id="mvTake">Practise this take in Body</button>
           <span class="hint" id="saveMsg"></span>
         </div>
       </section>
@@ -616,35 +644,26 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1">Tempo</button>
         <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1">Moves</button>
         <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
-        <button class="tab mv-only" id="t-body" type="button" title="Body tracking, Worldline and practice (MirrorView)">Body</button>
+        <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice">Body</button>
       </div>
 
-      <!-- CLIP -->
+      <!-- CLIP: 1 your videos and the dancer's body · 2 speed, start and end, hits, compare · 3 more options -->
       <section class="panel clip" id="p-clip" role="tabpanel" aria-labelledby="t-clip">
         <div class="field">
           <span class="label">Videos</span>
           <div class="chips srcChips" id="srcChips"></div>
           <p class="hint" id="vidName">Add one or more dance videos. Moves from any of them can go in one routine.</p>
         </div>
-        <div class="anal" id="danceCard">
-          <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
-          <div class="prog" id="danceProg" hidden><i></i></div>
-          <p class="hint" id="danceInfo">Finds the moments the dancer hits: sharp stops and changes of direction. They show as blue ticks under the video, next to the song's beats in orange.</p>
-          <ul class="warnlist" id="danceWarn"></ul>
-          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>
-          <div class="subhead" id="hitLevelRow" hidden><span class="label">Hits per move</span>
-            <div class="seg" id="hitLevel" role="group" aria-label="How many hits to show">
-              <button data-hl="fewer" aria-pressed="false">Fewer</button><button data-hl="normal" aria-pressed="true">Normal</button><button data-hl="more" aria-pressed="false">More</button></div></div>
+        <div class="anal lv1 mv-only" id="bodyCard">
+          <div class="subhead"><h3>Dancer’s body</h3></div>
           <div class="bodyrow mv-only" id="bodyRow">
-            <button class="btn sm" id="bodyTrack" disabled>Track body</button>
-            <label class="check"><input type="checkbox" id="bodyShow" checked> Show body</label>
+            <button class="btn sm primary" id="bodyTrack" disabled>Track body</button>
+            <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
-            <label class="check"><input type="checkbox" id="recBody"> Draw it on recorded takes</label>
           </div>
           <div class="prog" id="bodyProg" hidden><i></i></div>
           <div class="row mv-only" id="pickRow"><button class="btn sm" id="bodyPick">Choose the dancer</button><span class="hint" id="pickMsg"></span></div>
-          <div class="cmprow mv-only" id="cmpRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
-          <p class="hint mv-only" id="cmpOut"></p>
+          <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
           <section class="hipcard mv-only" id="hipCard" hidden aria-labelledby="h-hip">
             <div class="subhead"><h3 id="h-hip">Hip moves</h3><span class="hint" id="hipNow"></span></div>
             <div class="hipgraph"><canvas id="hipCanvas" role="img" aria-label="Hip tilt and sway over the clip"></canvas></div>
@@ -653,20 +672,16 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <div class="hipkey"><span><i style="background:var(--hips)"></i>Tilt (up = right side higher)</span><span><i style="background:#F3F1EC"></i>Sway (up = hips to the right)</span><span><i style="background:var(--song)"></i>Beats</span><span><i style="background:var(--ok);border-radius:50%;width:8px;height:8px"></i>Hip hit on the beat</span><span><i style="background:var(--hips);border-radius:50%;width:8px;height:8px"></i>Hip hit off it</span></div>
             <p class="hint">Tap the graph to jump there. On the video, the pink bar is the hips, the dashed line is level, and the meter shows tilt, the hips' path under the chest (a whine draws a loop) and which way they face.</p>
           </section>
-          <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
-          <div class="row mv-only"><button class="btn sm" id="mvClip">Study this clip in MirrorView</button></div>
-          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
-          <button class="btn bigtap" id="hitTap" hidden>Hit</button>
-          <p class="hint" id="hitCheckMsg"></p>
         </div>
         <p class="note" id="clipNote" hidden>Routine is on, so the start and end below are paused. Switch to "Clip" under the video to use them.</p>
+        <div class="anal lv2" id="timingCard">
+        <div class="field">
+          <div class="field-top"><label class="label" for="vRate">Clip speed</label><span class="val" id="vRateOut">×1.00</span></div>
+          <input type="range" id="vRate" min="0.25" max="2.5" step="0.01" value="1">
+        </div>
         <div class="field">
           <div class="field-top"><label class="label" for="inRange">Clip starts at</label><span class="val" id="inVal">0:00.00</span></div>
           <input type="range" id="inRange" min="0" max="1" step="0.01" value="0" disabled>
-          <div class="nudges">
-            <button class="btn sm" data-in="-1" disabled>−1s</button><button class="btn sm" data-in="-0.1" disabled>−0.1</button><button class="btn sm" data-in="-0.02" disabled>−0.02</button>
-            <button class="btn sm" data-in="0.02" disabled>+0.02</button><button class="btn sm" data-in="0.1" disabled>+0.1</button><button class="btn sm" data-in="1" disabled>+1s</button>
-          </div>
           <p class="hint">Drag to the moment the dance should begin. The video shows that frame as you drag, and the song lines up from here.</p>
         </div>
         <div class="row" style="justify-content:space-between">
@@ -676,16 +691,50 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <button class="btn sm" id="clearOut" disabled>Full clip</button>
           </div>
         </div>
-        <hr class="sep">
-        <div class="field">
-          <div class="field-top"><label class="label" for="vRate">Clip speed</label><span class="val" id="vRateOut">×1.00</span></div>
-          <input type="range" id="vRate" min="0.25" max="2.5" step="0.01" value="1">
+        </div>
+        <div class="anal lv2 cutcard" id="cutCard">
+          <div class="subhead"><h3>Cut the clip</h3><span class="hint" id="cutSum"></span></div>
+          <div class="tle"><canvas id="cutCanvas" role="img" aria-label="The clip as a strip of pictures: cut parts are crossed out. Tap to go there, drag to scroll, pinch to zoom, drag the white edges to adjust."></canvas></div>
+          <div class="tle-bar">
+            <button class="btn sm primary" id="cutSplit" disabled>✂ Split here</button>
+            <button class="btn sm" id="cutToggle" disabled>Cut this part</button>
+            <button class="btn sm ghost" id="cutUndo" disabled>Undo</button>
+            <span class="tle-zoom"><button class="btn sm" id="cutZoomOut" aria-label="Zoom out" disabled>−</button><button class="btn sm" id="cutZoomIn" aria-label="Zoom in" disabled>+</button></span>
+          </div>
+          <p class="hint">Get rid of the parts you don't need instead of speeding through them. Play or scrub to a spot and tap <b>Split here</b>, tap a part to pick it, then <b>Cut this part</b>. Drag the white edges to adjust. Cut parts are skipped and the song keeps going. <button class="linkbtn" id="cutClear" disabled>Clear all cuts</button></p>
+        </div>
+        <div class="anal lv2" id="danceCard">
+          <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
+          <div class="prog" id="danceProg" hidden><i></i></div>
+          <p class="hint" id="danceInfo">Finds the moments the dancer hits: sharp stops and changes of direction. They show as blue ticks under the video, next to the song's beats in orange.</p>
+          <ul class="warnlist" id="danceWarn"></ul>
+          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>
+          <div class="subhead" id="hitLevelRow" hidden><span class="label">Hits per move</span>
+            <div class="seg" id="hitLevel" role="group" aria-label="How many hits to show">
+              <button data-hl="fewer" aria-pressed="false">Fewer</button><button data-hl="normal" aria-pressed="true">Normal</button><button data-hl="more" aria-pressed="false">More</button></div></div>
+          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
+          <button class="btn bigtap" id="hitTap" hidden>Hit</button>
+          <p class="hint" id="hitCheckMsg"></p>
+        </div>
+        <div class="anal lv2 mv-only" id="cmpCard">
+          <div class="cmprow mv-only" id="cmpRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
+          <p class="hint mv-only" id="cmpOut"></p>
+        </div>
+        <details class="more" data-more="clip">
+          <summary>More options <span>fine-tune start and speed, speed graph, clip sound, takes</span></summary>
+          <div class="field"><span class="label">Fine-tune clip start</span>
+          <div class="nudges">
+            <button class="btn sm" data-in="-1" disabled>−1s</button><button class="btn sm" data-in="-0.1" disabled>−0.1</button><button class="btn sm" data-in="-0.02" disabled>−0.02</button>
+            <button class="btn sm" data-in="0.02" disabled>+0.02</button><button class="btn sm" data-in="0.1" disabled>+0.1</button><button class="btn sm" data-in="1" disabled>+1s</button>
+          </div>
+          </div>
+          <div class="field"><span class="label">Fine-tune clip speed</span>
           <div class="nudges">
             <button class="btn sm" data-v="-0.05">−5%</button><button class="btn sm" data-v="-0.01">−1%</button>
             <button class="btn sm" data-v="0">×1</button>
             <button class="btn sm" data-v="0.01">+1%</button><button class="btn sm" data-v="0.05">+5%</button>
           </div>
-        </div>
+          </div>
         <section class="anal spd off" id="spdCard" aria-labelledby="h-spd">
           <div class="spd-top"><h3 id="h-spd">Speed graph</h3>
             <label class="switch"><input type="checkbox" id="spdOn" aria-describedby="spdHelp"> <span id="spdOnTxt">Off</span></label></div>
@@ -705,10 +754,15 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           </div>
           <p class="hint" id="spdNote">Blue ticks are the dance hits and orange ticks are the song's beats, where they land with this curve. Drag along the top strip to move through the clip.</p>
         </section>
-        <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>
+            <label class="check mv-only"><input type="checkbox" id="recBody"> Draw the skeleton on recorded takes</label>
+          </div>
+          <div class="row mv-only"><button class="btn sm" id="mvClip">Mirror and practise this clip (Body)</button></div>
+        </details>
       </section>
 
-      <!-- SONG -->
+      <!-- SONG: 1 add the song · 2 its beat (check it, the 1, the click) and where it starts · 3 more options -->
       <section class="panel song" id="p-song" role="tabpanel" aria-labelledby="t-song" hidden>
         <div class="filebar">
           <span class="fname" id="audName">No song yet</span>
@@ -719,16 +773,10 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="subhead"><h3>Beat</h3><span class="hint" id="songDet"></span></div>
           <div class="row" id="songCands"></div>
           <div class="row">
-            <button class="btn sm" id="beatHalf">Shift beat ½</button>
-            <button class="btn sm" id="beatUseDet">Use detected beat</button>
-            <label class="check"><input type="checkbox" id="clickOn"> Click</label>
-            <select id="clickWhat" class="sel sm" aria-label="What the click plays on"><option value="beat">on each beat</option><option value="riddim">on the riddim</option></select>
-          </div>
-          <div class="row">
             <button class="btn sm" id="beatCheck">Tap to check</button>
             <button class="btn sm" id="beatOne">This is the 1</button>
-            <button class="btn ghost sm" id="beatClear">Clear beat</button>
-            <button class="btn sm" id="beatFind">Find the beat again</button>
+            <label class="check"><input type="checkbox" id="clickOn"> Click</label>
+            <select id="clickWhat" class="sel sm" aria-label="What the click plays on"><option value="beat">on each beat</option><option value="riddim">on the riddim</option></select>
           </div>
           <p class="hint" id="beatCheckMsg"></p>
           <ul class="warnlist" id="songWarn"></ul>
@@ -739,21 +787,33 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         <div class="field">
           <div class="field-top"><label class="label" for="offset">Song starts at</label><span class="val" id="offOut">0:00.00</span></div>
           <input type="range" id="offset" min="0" max="180" step="0.01" value="0">
+          <p class="hint">The part of the song that plays when the dance starts. Fine-tune it under More options.</p>
+        </div>
+        <details class="more" data-more="song">
+          <summary>More options <span>fine-tune the start, fix or redo the beat, song speed</span></summary>
+          <div class="field"><span class="label">Fine-tune song start</span>
           <div class="nudges">
             <button class="btn sm" data-o="-1">−1s</button><button class="btn sm" data-o="-0.1">−0.1</button><button class="btn sm" data-o="-0.02">−0.02</button>
             <button class="btn sm" data-o="0.02">+0.02</button><button class="btn sm" data-o="0.1">+0.1</button><button class="btn sm" data-o="1">+1s</button>
           </div>
-          <p class="hint">The part of the song that plays when the dance starts. Nudge until the hits land on the beat.</p>
-        </div>
-        <hr class="sep">
-        <div class="field">
-          <div class="field-top"><label class="label" for="aRate">Song speed</label><span class="val" id="aRateOut">×1.00</span></div>
-          <input type="range" id="aRate" min="0.5" max="1.5" step="0.01" value="1">
-          <p class="hint">Also changes the pitch. Usually only the clip speed needs changing.</p>
-        </div>
+          </div>
+          <div class="field"><span class="label">The beat</span>
+          <div class="row">
+            <button class="btn sm" id="beatHalf">Shift beat ½</button>
+            <button class="btn sm" id="beatUseDet">Use detected beat</button>
+            <button class="btn sm" id="beatFind">Find the beat again</button>
+            <button class="btn ghost sm" id="beatClear">Clear beat</button>
+          </div>
+          </div>
+          <div class="field">
+            <div class="field-top"><label class="label" for="aRate">Song speed</label><span class="val" id="aRateOut">×1.00</span></div>
+            <input type="range" id="aRate" min="0.5" max="1.5" step="0.01" value="1">
+            <p class="hint">Also changes the pitch. Usually only the clip speed needs changing.</p>
+          </div>
+        </details>
       </section>
 
-      <!-- TEMPO -->
+      <!-- TEMPO: 2 beat cues, the two tempos and the match · 3 more options (sound delay, clearing) -->
       <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
         <div class="field" id="cueBox">
           <div class="subhead"><span class="label">Beat cues</span>
@@ -763,17 +823,6 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
               <button data-bv="ball" aria-pressed="true" style="padding:0 12px">Ball</button>
             </div></div>
           <p class="hint">Ball: over the video, the left ball lands on each hit of the riddim (big amber ring for a kick or bass hit, white for a snare, clap or rim) and the right ball lands on each of the dancer's hits (it appears once they're found: Find hits in the Clip tab, or body tracking). Watch it fall to see the hit coming. When both land together, a line joins them. Count shows 1 2 3 4 under the video. When the app isn't sure, the cues go dim with a "?".</p>
-        </div>
-        <div class="field" id="delayBox">
-          <div class="field-top"><span class="label">Sound delay</span><span class="val" id="delayOut">0 ms</span></div>
-          <div class="seg" id="delaySeg" role="group" aria-label="Sound delay" style="grid-template-columns:repeat(3,auto)">
-            <button data-d="0" aria-pressed="true" style="padding:0 10px">Speaker / wired</button>
-            <button data-d="200" aria-pressed="false" style="padding:0 10px">Bluetooth</button>
-            <button data-d="custom" aria-pressed="false" style="padding:0 10px">Custom</button>
-          </div>
-          <input type="range" id="delay" min="-100" max="400" step="5" value="0" aria-label="Sound delay in milliseconds">
-          <div class="row"><button class="btn sm" id="delayTest" aria-pressed="false">Check it</button><canvas id="delayCv" class="delaycv" aria-hidden="true" hidden></canvas></div>
-          <p class="hint" id="delayHint">Bluetooth headphones and speakers play sound later than the screen shows it (often 150–250 ms). This shifts the ball and the dancer video to match what you hear. Check it: a click plays and the ball should land on it; move the slider until it does.</p>
         </div>
         <div class="pair">
           <div class="field">
@@ -787,7 +836,6 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </div>
         <div class="row" style="justify-content:space-between">
           <span class="chip idle" id="verdict">Needs both tempos</span>
-          <div class="row" style="gap:6px"><button class="btn ghost" id="tClear">Clear both</button><button class="btn ghost" id="tAll">Clear all tracking</button></div>
         </div>
         <div class="readout">
           <div class="d"><span class="label">Dance now</span><span class="num" id="dEff">—</span></div>
@@ -801,7 +849,25 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <button class="btn" data-m="1" disabled><span>Beat for beat</span><b>—</b><small>&nbsp;</small></button>
           <button class="btn" data-m="2" disabled><span>Double-time</span><b>—</b><small>&nbsp;</small></button>
         </div>
-        <p class="hint">Tap along while it plays: steps on the dance, beat on the song (start on a 1). Your last tap sets where the count starts. The blue (dance) and orange (song) beats show under the video. Pick a match to set the clip speed. Jersey club usually sits around 130–145 BPM.</p>
+        <p class="hint">Tap along while it plays: steps on the dance, beat on the song (start on a 1). Pick a match to set the clip speed.</p>
+        <details class="more" data-more="tempo">
+          <summary>More options <span>sound delay for Bluetooth, clear tempos and tracking</span></summary>
+        <div class="field" id="delayBox">
+          <div class="field-top"><span class="label">Sound delay</span><span class="val" id="delayOut">0 ms</span></div>
+          <div class="seg" id="delaySeg" role="group" aria-label="Sound delay" style="grid-template-columns:repeat(3,auto)">
+            <button data-d="0" aria-pressed="true" style="padding:0 10px">Speaker / wired</button>
+            <button data-d="200" aria-pressed="false" style="padding:0 10px">Bluetooth</button>
+            <button data-d="custom" aria-pressed="false" style="padding:0 10px">Custom</button>
+          </div>
+          <input type="range" id="delay" min="-100" max="400" step="5" value="0" aria-label="Sound delay in milliseconds">
+          <div class="row"><button class="btn sm" id="delayTest" aria-pressed="false">Check it</button><canvas id="delayCv" class="delaycv" aria-hidden="true" hidden></canvas></div>
+          <p class="hint" id="delayHint">Bluetooth headphones and speakers play sound later than the screen shows it (often 150–250 ms). This shifts the ball and the dancer video to match what you hear. Check it: a click plays and the ball should land on it; move the slider until it does.</p>
+        </div>
+          <div class="field"><span class="label">Clear</span>
+            <div class="row" style="gap:6px"><button class="btn ghost" id="tClear">Clear both tempos</button><button class="btn ghost" id="tAll">Clear all tracking</button></div>
+            <p class="hint">Your last tap sets where the count starts. The blue (dance) and orange (song) beats show under the video. Jersey club usually sits around 130–145 BPM.</p>
+          </div>
+        </details>
       </section>
 
       <!-- MOVES -->
@@ -824,7 +890,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </div>
       </section>
 
-      <!-- ROUTINE -->
+      <!-- ROUTINE: 2 your moves, the routine, beat fit · 3 more options (music and its timing, move speed, fade, checks) -->
       <section class="panel" id="p-routine" role="tabpanel" aria-labelledby="t-routine" hidden>
         <div class="field">
           <div class="subhead"><h3>Your moves</h3><span class="hint">Tap to add · drag down to place</span></div>
@@ -835,9 +901,20 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="subhead"><h3>Routine <span class="hint" id="seqLen" style="font-family:var(--f-body)"></span></h3><div class="row" style="gap:4px"><button class="btn ghost sm" id="fitAll" disabled>Fit all to beat</button><button class="btn ghost sm" id="seqClear" disabled>Clear</button></div></div>
           <p class="hint" id="fitHint" hidden>Set the song BPM in the Tempo tab to fit moves to the beat.</p>
           <div class="tl" id="seqBar" hidden><div class="tl-blocks" id="seqBlocks"></div><canvas class="tl-canvas" id="seqCanvas"></canvas><i class="tl-head" id="seqHead"></i></div>
-          <ol class="list" id="seqList"></ol>
+          <div class="rtl" id="rtlWrap" hidden>
+            <div class="tle tall"><canvas id="rtlCanvas" role="img" aria-label="The routine as a timeline over the song's beats. Tap a move to pick it, press and hold then drag to move it, drag its white edges to trim, pinch to zoom."></canvas></div>
+            <div class="tle-bar">
+              <label class="check"><input type="checkbox" id="rtlSnap" checked> Snap to beat</label>
+              <span class="tle-zoom"><button class="btn sm" id="rtlZoomOut" aria-label="Zoom out">−</button><button class="btn sm" id="rtlZoomIn" aria-label="Zoom in">+</button></span>
+            </div>
+            <p class="hint" id="seqHint" hidden>Tap a move to pick it. <b>Press and hold</b>, then drag it to a new place. Drag its <b>white edges</b> to trim; with Snap to beat they land on beats and "ands". Moves play back to back. Bars are numbered along the top.</p>
+            <div class="rtl-inspect" id="rtlInspect" hidden></div>
+          </div>
           <div class="empty-note drop" id="seqEmpty">Drop moves here, or tap them above. Use them in any order, as many times as you like.</div>
-          <p class="hint" id="seqHint" hidden>Drag ⠿ to reorder. Tap a move to trim it for this spot. Moves always play back to back with no gap.</p>
+          <details class="more" data-more="list">
+            <summary>List view <span>the same moves as a list: drag ⠿ to reorder</span></summary>
+            <ol class="list" id="seqList"></ol>
+          </details>
         </div>
         <section class="fitcard" id="fitCard" hidden aria-labelledby="h-fit">
           <div class="subhead"><h3 id="h-fit">Beat fit</h3>
@@ -860,7 +937,8 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <p class="hint" id="fitMsg"></p>
           <p class="hint">Score = Beat Alignment Score: how close each dance hit lands to a beat or an "and" (100% means every hit is on one; the ms figure is the typical miss). Aligning nudges each move's speed between hits so they land there, favouring the 1 of the bar. The off-beat check takes the best version and moves the song a quarter beat, right between the targets; it should score clearly lower, otherwise the score isn't telling you much.</p>
         </section>
-        <hr class="sep">
+        <details class="more" data-more="routine">
+          <summary>More options <span>routine music and its timing, move speed, fade, sync check, blind test</span></summary>
         <div class="field song">
           <div class="subhead"><h3>Routine music</h3><button class="btn ghost sm" id="rCopy">Copy from Song tab</button></div>
           <div class="filebar">
@@ -901,7 +979,6 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </div>
         <label class="check"><input type="checkbox" id="rFade" checked> Fade the song out at the end of a recording</label>
         <p class="hint">These only apply to the routine, so the sound stays the same however you tweak single clips.</p>
-        <hr class="sep">
         <div class="field">
           <div class="subhead"><h3>Checks</h3></div>
           <div class="row"><button class="btn" id="syncBtn">Sync check</button><button class="btn" id="blindBtn">Make blind test</button></div>
@@ -909,6 +986,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="note" id="syncOut" hidden></div>
           <div class="blind" id="blindBox" hidden></div>
         </div>
+        </details>
       </section>
     </div>
   </div>
@@ -1982,11 +2060,17 @@ function songFail(err){
 function clipEnd(){return S.cOut!=null?S.cOut:(v.duration||0)}
 function moveById(id){return S.moves.find(m=>m.id===id)}
 function routineOn(){return S.useSeq&&S.seq.length>0&&!S.preview}
+/* a clip with parts cut out plays as its kept pieces, back to back (the song keeps going) */
+function clipCut(){if(routineOn()||S.preview||S.study)return false;const n=srcById(S.cur);return !!(n&&n.pieces&&n.pieces.some(p=>!p.on))}
+function segMode(){return routineOn()||clipCut()}
+function keptRanges(n){const a=S.cIn,b=clipEnd(),out=[];for(const p of n.pieces||[]){if(!p.on)continue;const s=Math.max(a,p.s),e=Math.min(b,p.e);if(e-s<0.05)continue;const l=out[out.length-1];if(l&&Math.abs(l[1]-s)<1e-3)l[1]=e;else out.push([s,e])}return out}
 function segs(){
   if(S.preview)return [S.preview];
   if(routineOn())return S.seq.map(x=>segOf(x)).filter(Boolean);
   if(S.study)return [{src:S.cur,s:S.study.a,e:S.study.b,r:S.vr*S.study.rate}];
-  const g={src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}; const k=curveKnots(srcById(S.cur),g); if(k)g.k=k;
+  const n0=srcById(S.cur);
+  if(clipCut()){const K=keptRanges(n0);if(K.length)return K.map(([s,e])=>{const g={src:S.cur,s,e,r:S.vr};const k=curveKnots(n0,g);if(k)g.k=k;return g})}
+  const g={src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}; const k=curveKnots(n0,g); if(k)g.k=k;
   return [g];
 }
 /* a routine move as a playable piece. k = time-warp knots [[source, output-from-start]...] when aligned */
@@ -2042,7 +2126,7 @@ function ensureEl2(n){
 }
 function swapTo(e,srcId){
   const n=srcById(srcId), prev=v;
-  if(S.cur!==srcId){const old=srcById(S.cur);if(old){old.cIn=S.cIn;old.cOut=S.cOut}S.cIn=n.cIn||0;S.cOut=n.cOut??null;S.cur=srcId;$('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');renderSources()}
+  if(S.cur!==srcId){const old=srcById(S.cur);if(old){old.cIn=S.cIn;old.cOut=S.cOut}S.cIn=n.cIn||0;S.cOut=n.cOut??null;S.cur=srcId;try{CUT.sel=null;if(CUT.tl)CUT.tl.fitted=false}catch(e){}$('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');renderSources()}
   const cg=segs()[S.segIdx]; v=e; e.playbackRate=cg?rateAt(cg,cg.s):S.vr; e.muted=!$('#origAudio').checked;
   showOnly(e);
   if(S.playing||S.rec)e.play().catch(()=>{});
@@ -2051,7 +2135,7 @@ function swapTo(e,srcId){
 }
 function primeNext(){
   S.primed=null;
-  if(!routineOn()||!(S.playing||S.rec))return;
+  if(!segMode()||!(S.playing||S.rec))return;
   const L=segs(); let i=S.segIdx+1;
   if(i>=L.length){if(S.loop&&!S.rec)i=0;else return}
   if(S.stopAtT!=null&&segStart(i,L)>=S.stopAtT-0.02)return;
@@ -2187,7 +2271,7 @@ function syncSong(force){
   /* just after pressing play the song often starts late; nudging it now (while it is only just starting) can't be heard */
   if(now-(S.playAt||0)<900&&Math.abs(drift)>0.03&&!a.seeking&&a.readyState>=3&&!S.switchPending&&now-(S.earlyFix||0)>200){S.earlyFix=now;S.driftEma=0;seekSong(e);return}
   /* a big jump (user seek): fix at once; a steady offset above 80 ms (e.g. the sound starting late): fix once it's clear */
-  if((Math.abs(drift)>(routineOn()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
+  if((Math.abs(drift)>(segMode()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
 }
 
 function syncSteady(force){
@@ -2212,7 +2296,7 @@ function syncSteady(force){
   if(S.seekCheck||busy)return;
   S.driftEma=0.8*(S.driftEma||0)+0.2*drift;
   snd.frames++;if(Math.abs(drift)<0.04)snd.within++;snd.maxLate=Math.max(snd.maxLate,Math.abs(drift));
-  const limit=routineOn()?0.5:0.35;
+  const limit=segMode()?0.5:0.35;
   if(Math.abs(S.driftEma)>limit&&now-S.lastFix>2000){S.lastFix=now;S.driftEma=0;snd.jumps++;seekSong(e);setV(0);return}
   /* steady: nudge the video, in 0.5% steps so its speed isn't changed every frame */
   /* proportional plus a slow learned part, so a video that runs steadily slow ends up exactly in time, not 40 ms off */
@@ -2245,8 +2329,10 @@ function play(){
   if(routineOn()){const gone=S.seq.map(x=>moveById(x.id)).filter(m=>m&&srcById(m.src)&&srcById(m.src).missing);
     if(gone.length){recMsg('Re-add "'+srcById(gone[0].src).name+'" first. Tap Projects.',true);return}}
   if(S.hasV&&!S.rec){
-    const g=segs()[S.segIdx];
-    if(!g||(g.src&&g.src!==S.cur)||v.currentTime<g.s-0.05||v.currentTime>=g.e-0.05)toStart();
+    const L0=segs(), g=L0[S.segIdx];
+    if(!g||(g.src&&g.src!==S.cur)||v.currentTime<g.s-0.05||v.currentTime>=g.e-0.05){
+      const j=clipCut()?L0.findIndex(q=>v.currentTime>=q.s-0.02&&v.currentTime<q.e-0.05):-1;
+      if(j>=0){S.segIdx=j;primeNext()}else toStart()}
   }
   setPlaying(true);
   if(S.hasA&&!S.hasV&&a.ended)a.currentTime=0;
@@ -2291,9 +2377,9 @@ function wire(el){
     if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
     if(me())$('#vidName').textContent="This video can't play here";
   });
-  el.addEventListener('seeked',()=>{if(me()){syncSong(!routineOn());recSync(true)}});
+  el.addEventListener('seeked',()=>{if(me()){syncSong(!segMode());recSync(true)}});
   /* a short video hiccup no longer stops the song (that was a cut-out); only a stall over 0.6 s pauses it */
-  el.addEventListener('waiting',()=>{if(!me()||S.switchPending||routineOn())return;
+  el.addEventListener('waiting',()=>{if(!me()||S.switchPending||segMode())return;
     if(S.rec){S.stalled=true;a.pause();recStopSong();return}
     clearTimeout(S.stallTimer);S.stallTimer=setTimeout(()=>{if(me()&&el.readyState<3&&S.playing){S.stalled=true;a.pause();recStopSong();if(S.snd)S.snd.stalls=(S.snd.stalls||0)+1}},600)});  /* routine: the song keeps going */
   el.addEventListener('playing',()=>{if(me()){clearTimeout(S.stallTimer);S.stalled=false;syncSong(false);recSync(true)}});
@@ -2309,7 +2395,7 @@ function createSource(f,meta){
   if(!S.sources.some(x=>x.el===vid))ve=vid;
   else{ve=document.createElement('video');ve.setAttribute('playsinline','');ve.muted=true;ve.preload='auto';ve.classList.add('off');$('#stage').insertBefore(ve,$('#empty'));wire(ve)}
   const num=meta.num||++srcCount; if(num>srcCount)srcCount=num;
-  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,
+  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,pieces:Array.isArray(meta.pieces)?meta.pieces.map(p=>({s:+p.s,e:+p.e,on:!!p.on})):null,
     name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
     key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0,
     motion:meta.motion||null, curve:meta.curve||null};
@@ -2434,7 +2520,7 @@ document.addEventListener('keydown',e=>{
   if(e.code!=='Space'||e.target.matches('input[type=number],input[type=text],button,label'))return;
   e.preventDefault(); if(!$('#play').disabled)toggle();
 });
-$('#scrub').addEventListener('input',e=>{const x=+e.target.value; if(routineOn())seekT(x); else v.currentTime=x});
+$('#scrub').addEventListener('input',e=>{const x=+e.target.value; if(segMode())seekT(x); else v.currentTime=x});
 $('#origAudio').addEventListener('change',e=>{v.muted=!e.target.checked});
 
 /* speeds */
@@ -2469,14 +2555,15 @@ $$('[data-ro]').forEach(b=>b.addEventListener('click',()=>setROffset(S.rt.offset
 
 /* clip start / end points */
 function updateTrim(){
-  const d=v.duration||0, e=clipEnd(), ro=routineOn();
+  const d=v.duration||0, e=clipEnd(), ro=routineOn(), sm=segMode();
   $('#inVal').textContent=fmt2(S.cIn);
   const ir=$('#inRange'); ir.max=d||1; if(document.activeElement!==ir)ir.value=S.cIn;
   $('#outVal').textContent=S.cOut!=null?fmt(S.cOut):(d?'End · '+fmt(d):'End');
   $('#clipNote').hidden=!ro;
   const f=$('#trimFill');
-  if(ro||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
-  $('#scrub').max=ro?Math.max(0.01,segStart(segs().length,segs())):(d||1);
+  if(sm||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
+  $('#scrub').max=sm?Math.max(0.01,segStart(segs().length,segs())):(d||1);
+  try{cutUI()}catch(err){}
   const r=$('#repeat'); r.classList.toggle('on',S.loop); r.setAttribute('aria-pressed',S.loop);
   $('#modeSeg').hidden=!S.seq.length;
   $('#modeClip').setAttribute('aria-pressed',!ro); $('#modeSeq').setAttribute('aria-pressed',ro);
@@ -2598,6 +2685,7 @@ function updateSeqStats(){
   const each=S.rt.spMode==='each';
   $('#spdAll').setAttribute('aria-pressed',!each); $('#spdEach').setAttribute('aria-pressed',each);
   $('#spdAllBox').hidden=each; $('#spdEachHint').hidden=!each;
+  try{rtlInspectorLen();RTL.tl&&RTL.tl.redraw()}catch(err){}
 }
 function renderMoves(){
   /* Moves tab: the library */
@@ -2640,10 +2728,10 @@ function renderMoves(){
     const acts=el('div','acts');
     acts.append(iconBtn('Play from here','▶',()=>playRange(segStart(i,segsFor()),segStart(i+1,segsFor()))),iconBtn('Remove from routine','✕',()=>removeSeq(i)));
     li.append(h,el('span','n',String(i+1)),thumbEl(m),meta,acts);
-    if(S.sel===x.uid)li.append(editor(x,m,i,li));
     sl.append(li);
   });
-  $('#seqEmpty').hidden=S.seq.length>0; $('#seqHint').hidden=!S.seq.length; $('#seqBar').hidden=!S.seq.length;
+  $('#seqEmpty').hidden=S.seq.length>0; $('#seqHint').hidden=!S.seq.length; $('#seqBar').hidden=true; $('#rtlWrap').hidden=!S.seq.length;
+  try{rtlInspector();RTL.tl&&RTL.tl.redraw()}catch(err){}
   $('#seqClear').disabled=!S.seq.length;
   $('#fitAll').disabled=!S.seq.length||!beatLen(); $('#fitHint').hidden=!S.seq.length||!!beatLen();
   /* timeline strip */
@@ -3286,7 +3374,7 @@ function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.
 function snapshot(){
   return {v:1,
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
-      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null})),
+      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
     beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
     cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.loop, useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
@@ -3876,20 +3964,26 @@ async function sendClip(){
   const n=srcById(S.cur);
   if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
   const B=bodyOf(n);
-  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,
+  /* the song goes too, with what's needed to keep it in time with the clip: song = offset + (clip time - cIn) × ar / vr
+     (offset includes the same corrections the player uses, and the sound delay) */
+  let song=null;const so=S.liveSong;
+  if(so&&so.ready&&!so.missing){let sb=so.blob||null;if(!sb)try{sb=await mediaGet(so.key)}catch(e){}
+    if(sb&&sb.size)song={blob:sb,name:so.name||'Song',offset:S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar,ar:S.ar,vr:S.vr,cIn:S.cIn}}
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
       body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}
-  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').');return false}
+  catch(e){hMsg('Couldn’t open the clip in Body on this phone ('+(e&&e.message||e)+').');return false}
 }
 $('#mvClip').addEventListener('click',sendClip);
 /* coming back from MirrorView's bottom bar: open the section that was tapped there */
-function takeTabReq(){let r=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click()}
+function takeTabReq(){let r=null,pj=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req');pj=localStorage.getItem('rs-open-proj');localStorage.removeItem('rs-open-proj')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click();
+  if(pj)setTimeout(()=>$('#projBtn').click(),200)}   /* Projects tapped in Body */
 window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
 $('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob&&!routineOn())sendClip();else goMirror(null)});
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();
   try{const id=await handOff('take',take.blob,'Riddim Swap take '+new Date().toISOString().slice(0,16).replace('T',' ')+'.'+take.ext,{songBpm:G&&G.bpm||null});goMirror(id)}
-  catch(e){saveMsg('Couldn’t pass the take to MirrorView ('+(e&&e.message||e)+').',true)}
+  catch(e){saveMsg('Couldn’t open the take in Body ('+(e&&e.message||e)+').',true)}
 });
 
 /* ---------- dance hits (motion beats) ---------- */
@@ -4061,7 +4155,7 @@ function drawSeqCanvas(list,G,off,ar){
 function drawHitStrip(){
   const c=$('#hitStrip'); const {w,h,dpr}=sizeCanvas(c), x=c.getContext('2d'); x.clearRect(0,0,w,h);
   if(!S.hasV)return;
-  const ro=routineOn(), list=segs(), G=liveGrid();
+  const ro=segMode(), list=segs(), G=liveGrid();
   if(ro){const tot=list.reduce((t,g)=>t+segLen(g),0)||1;
     if(G){x.fillStyle=tok('--song-hot');for(const b of G.beats){const o=(b-S.offset)/S.ar;if(o<0||o>tot)continue;x.fillRect(o/tot*w,0,dpr,h*0.5)}}
     x.fillStyle=tok('--dance');let T=0;for(const g of list){for(const b of motionIn(g.src,g.s,g.e)||[])x.fillRect((T+toOut(g,b.t))/tot*w,h*0.5,dpr*1.5,h*0.5);T+=segLen(g)}
@@ -4277,12 +4371,12 @@ let knotMemo=null;
 function curveKnots(n,g){
   const c=curveOf(n); if(!c||!(g.e>g.s))return null;
   const key=n.id+'|'+g.s+'|'+g.e+'|'+g.r+'|'+JSON.stringify(c.pts);
-  if(knotMemo&&knotMemo.key===key)return knotMemo.k;
+  if(!(knotMemo instanceof Map))knotMemo=new Map(); if(knotMemo.has(key))return knotMemo.get(key);
   const ts=new Set(); const step=1/40; for(let t=g.s;t<g.e;t+=step)ts.add(+t.toFixed(4)); ts.add(g.e);
   c.pts.forEach(p=>{if(p.t>g.s&&p.t<g.e)ts.add(+p.t.toFixed(4))});
   const T=[...ts].sort((a,b)=>a-b), k=[[T[0],0]]; let o=0;
   for(let i=1;i<T.length;i++){const a=T[i-1],b=T[i];o+=(b-a)/spdRateAt(c,(a+b)/2,g.r);k.push([b,o])}
-  knotMemo={key,k}; return k;
+  if(knotMemo.size>64)knotMemo.clear(); knotMemo.set(key,k); return k;
 }
 function spdCur(){return srcById(S.cur)}
 function spdEnsure(n){if(!n.curve)n.curve={on:false,pts:[]};return n.curve}
@@ -4910,6 +5004,285 @@ function patFilterUI(){
   if(S.patFilter!=='all'&&!have.includes(S.patFilter)){S.patFilter='all'}
 }
 /* test hook: only with #debug in the address */
+/* tests only (#debug in the address): "More options" start open so older tests can reach every control; #debug-closed keeps the real default */
+if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySelectorAll('details.more').forEach(d=>{d.open=true});
+/* ---------- timeline editor: one visual surface for cutting a clip (Clip tab) and arranging the routine ----------
+   Thumbnails of the video along the strip, the song's beats on top (bars numbered), the dancer's hits underneath, a
+   playhead. Gestures: tap to go there and select; drag to scroll; pinch or − / + to zoom; grab a white edge to move it;
+   in the routine, press and hold a move, then drag it to a new place. */
+
+/* thumbnails, made in the background from a hidden copy of each video (never the one on screen) */
+const THUMB={jobs:new Map(),step:0.5,h:72};
+function thumbsFor(n){
+  if(!n||!n.url||!(n.dur>0))return null;
+  let J=THUMB.jobs.get(n.id);
+  if(J&&J.url===n.url)return J;
+  J={url:n.url,map:new Map(),busy:false,done:false,w:0}; THUMB.jobs.set(n.id,J);
+  const el=document.createElement('video');el.muted=true;el.playsInline=true;el.setAttribute('playsinline','');el.preload='auto';el.src=n.url;
+  const times=[];for(let t=0;t<n.dur;t+=THUMB.step)times.push(+t.toFixed(2));
+  /* coarse first (every 2 s), then fill in, so a long clip shows something quickly */
+  const order=times.filter((t,i)=>i%4===0).concat(times.filter((t,i)=>i%4!==0));
+  let k=0;
+  const next=()=>{
+    if(THUMB.jobs.get(n.id)!==J){el.removeAttribute('src');return}
+    if(k>=order.length){J.done=true;el.removeAttribute('src');try{el.load()}catch(e){}return}
+    const t=order[k++];el.currentTime=Math.min(t+0.05,Math.max(0,n.dur-0.05));
+  };
+  el.addEventListener('seeked',()=>{
+    try{const vw=el.videoWidth||16,vh=el.videoHeight||9,h=THUMB.h,w=Math.max(8,Math.round(h*vw/vh));J.w=w;
+      const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(el,0,0,w,h);
+      J.map.set(order[k-1],c);TL.redrawAll();}catch(e){}
+    setTimeout(next,0);
+  });
+  el.addEventListener('loadeddata',()=>{J.busy=true;next()},{once:true});
+  el.addEventListener('error',()=>{J.done=true},{once:true});
+  return J;
+}
+function thumbAt(J,t){if(!J)return null;const s=THUMB.step,base=Math.round(t/s)*s;
+  for(const d of [0,s,-s,2*s,-2*s,3*s,-3*s,4*s,-4*s]){const c=J.map.get(+(base+d).toFixed(2));if(c)return c}return null}
+
+/* the surface */
+class TL{
+  constructor(canvas,o){
+    this.c=canvas;this.o=o;this.t0=0;this.pps=0;this.fitted=false;this.ptrs=new Map();this.drag=null;this.follow=true;
+    TL.all.push(this);
+    const c=canvas;c.style.touchAction='none';
+    c.addEventListener('pointerdown',e=>this.down(e));c.addEventListener('pointermove',e=>this.move(e));
+    c.addEventListener('pointerup',e=>this.up(e));c.addEventListener('pointercancel',e=>this.up(e,true));
+    c.addEventListener('wheel',e=>{e.preventDefault();if(e.ctrlKey||Math.abs(e.deltaY)>Math.abs(e.deltaX))this.zoom(e.deltaY<0?1.25:0.8,this.lx(e));else{this.t0+=e.deltaX/this.pps;this.clampView();this.redraw()}},{passive:false});
+    new ResizeObserver(()=>this.redraw()).observe(c);
+  }
+  len(){return Math.max(0.1,this.o.len())}
+  W(){return this.c.clientWidth||300}
+  lx(e){const r=this.c.getBoundingClientRect();return e.clientX-r.left}
+  ly(e){const r=this.c.getBoundingClientRect();return e.clientY-r.top}
+  X(t){return (t-this.t0)*this.pps}
+  T(x){return this.t0+x/this.pps}
+  fit(){this.pps=this.W()/this.len();this.t0=0;this.fitted=true;this.userZoom=false;this.redraw()}
+  minPps(){return this.W()/this.len()}
+  clampView(){const L=this.len(),W=this.W();if(this.pps<this.minPps())this.pps=this.minPps();this.pps=Math.min(this.pps,W/0.6);this.t0=Math.max(0,Math.min(this.t0,L-W/this.pps))}
+  zoom(f,ax){if(!this.fitted)this.fit();this.userZoom=f>1||this.pps*f>this.minPps()*1.02;const ta=this.T(ax==null?this.W()/2:ax);this.pps*=f;this.clampView();this.t0=ta-(ax==null?this.W()/2:ax)/this.pps;this.clampView();this.follow=false;this.redraw();this.o.onZoom&&this.o.onZoom()}
+  zoomed(){return this.pps>this.minPps()*1.05}
+  show(t){if(!this.fitted)return;const W=this.W(),x=this.X(t);if(x<W*0.08||x>W*0.92){this.t0=t-W*0.3/this.pps;this.clampView();}}
+  down(e){
+    if(!this.fitted)this.fit();
+    this.c.setPointerCapture(e.pointerId);this.ptrs.set(e.pointerId,{x:this.lx(e),y:this.ly(e)});
+    if(this.ptrs.size===2){const [a,b]=[...this.ptrs.values()];this.drag={kind:'pinch',d0:Math.abs(a.x-b.x)||1,pps0:this.pps,tm:this.T((a.x+b.x)/2)};clearTimeout(this.hold);return}
+    const x=this.lx(e),y=this.ly(e),h=this.o.hit?this.o.hit(this,x,y):null;
+    this.drag={kind:h&&h.kind==='handle'?'handle':'press',h,x0:x,y0:y,t00:this.t0,moved:false,start:performance.now()};
+    if(h&&h.kind==='handle'){this.o.handleStart&&this.o.handleStart(h);e.preventDefault();}
+    else if(h&&h.kind==='block'&&this.o.blockDrag){clearTimeout(this.hold);this.hold=setTimeout(()=>{if(this.drag&&this.drag.kind==='press'&&!this.drag.moved){this.drag.kind='block';this.drag.lift=true;try{navigator.vibrate&&navigator.vibrate(12)}catch(err){}this.o.blockDrag.start(h);this.drag.gx=x;this.redraw()}},320)}
+  }
+  move(e){
+    if(!this.ptrs.has(e.pointerId))return;this.ptrs.set(e.pointerId,{x:this.lx(e),y:this.ly(e)});
+    const D=this.drag;if(!D)return;
+    if(D.kind==='pinch'){const [a,b]=[...this.ptrs.values()];if(!b)return;const d=Math.abs(a.x-b.x)||1;this.pps=D.pps0*d/D.d0;this.userZoom=this.pps>this.minPps()*1.02;this.clampView();this.t0=D.tm-((a.x+b.x)/2)/this.pps;this.clampView();this.follow=false;this.redraw();return}
+    const x=this.lx(e),dx=x-D.x0;
+    if(Math.abs(dx)>6||Math.abs(this.ly(e)-D.y0)>10)D.moved=true;
+    if(D.kind==='handle'){this.edge(x);this.o.handleMove(D.h,this.T(x));this.redraw();return}
+    if(D.kind==='block'){D.gx=x;this.edge(x);this.o.blockDrag.move(D.h,this.T(x));this.redraw();return}
+    if(D.moved){clearTimeout(this.hold);this.t0=D.t00-dx/this.pps;this.clampView();this.follow=false;this.redraw()}
+  }
+  /* near the ends while dragging: scroll along */
+  edge(x){const W=this.W();if(!this.zoomed())return;if(x<24){this.t0-=6/this.pps;this.clampView()}else if(x>W-24){this.t0+=6/this.pps;this.clampView()}}
+  up(e,cancel){
+    this.ptrs.delete(e.pointerId);clearTimeout(this.hold);
+    const D=this.drag;if(!D)return;
+    if(D.kind==='pinch'){if(this.ptrs.size===0)this.drag=null;return}
+    this.drag=null;
+    if(D.kind==='handle'){this.o.handleEnd&&this.o.handleEnd(D.h);this.redraw();return}
+    if(D.kind==='block'){this.o.blockDrag.end(D.h,this.T(D.gx),cancel);this.redraw();return}
+    if(!D.moved&&!cancel&&this.o.tap){this.o.tap(this.T(D.x0),D.h,D.y0);this.redraw()}
+  }
+  redraw(){if(this.raf)return;this.raf=requestAnimationFrame(()=>{this.raf=0;this.paint()})}
+  paint(){
+    const c=this.c,dpr=window.devicePixelRatio||1,W=this.W(),H=c.clientHeight||120;
+    if(!W)return;
+    if(c.width!==Math.round(W*dpr)||c.height!==Math.round(H*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr)}
+    /* until you zoom, the whole length always fits (it grows as moves are added) */
+    if(!this.fitted||(!this.userZoom&&!this.drag)||this.pps<this.minPps()*0.999){this.pps=this.minPps();this.t0=0;this.fitted=true}   /* holds still while you drag */
+    const x=c.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,W,H);
+    this.o.draw(x,this,W,H);
+  }
+}
+TL.all=[];
+TL.redrawAll=()=>{for(const t of TL.all)t.redraw()};
+const TLC={ink:'#F3F1EC',mute:'#8A90A2',line:'rgba(255,255,255,.12)',song:'#E8A33D',dance:'#6E8BFF',sel:'#E8A33D',cut:'rgba(10,11,14,.78)'};
+function tlRound(x,X,Y,w,h,r){x.beginPath();if(x.roundRect)x.roundRect(X,Y,w,h,r);else x.rect(X,Y,w,h)}
+/* draw a strip of thumbnails for source time a..b of video n into x..x+w */
+function tlThumbs(ctx,n,a,b,X,Y,w,h,map){
+  const J=thumbsFor(n);if(!J||w<2)return;const tw=Math.max(8,J.w?J.w*h/THUMB.h:h*0.56);
+  ctx.save();ctx.beginPath();ctx.rect(X,Y,w,h);ctx.clip();
+  for(let px=X;px<X+w;px+=tw){const t=map?map(px+tw/2):a+(px+tw/2-X)/w*(b-a);const im=thumbAt(J,t);if(im)ctx.drawImage(im,px,Y,tw,h);else{ctx.fillStyle='#1B1F27';ctx.fillRect(px,Y,tw-1,h)}}
+  ctx.restore();
+}
+function tlTimeLabels(ctx,tl,W,y){
+  const span=W/tl.pps, step=[0.5,1,2,5,10,15,30,60].find(s=>span/s<=7)||60;
+  ctx.fillStyle=TLC.mute;ctx.font='600 10px Figtree,system-ui,sans-serif';ctx.textBaseline='top';ctx.textAlign='left';
+  for(let t=Math.ceil(tl.t0/step)*step;t<tl.t0+span;t+=step){const X=tl.X(t);ctx.fillRect(X,y,1,4);ctx.fillText(t>=60?Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0'):(step<1?t.toFixed(1):Math.round(t))+'s',X+3,y)}
+}
+function tlPlayhead(ctx,X,H){ctx.fillStyle='#FF4D5E';ctx.fillRect(X-1,0,2,H);ctx.beginPath();ctx.moveTo(X-6,0);ctx.lineTo(X+6,0);ctx.lineTo(X,7);ctx.closePath();ctx.fill()}
+
+/* ======================= Clip: cut out the parts you don't want ======================= */
+/* n.pieces: [{s,e,on}] covering the whole video. Parts with on:false are skipped; the song keeps going. */
+const CUT={sel:null,undo:[],tl:null};
+function piecesOf(n){if(!n)return [];const d=n.dur||0;
+  if(!n.pieces||!n.pieces.length)n.pieces=[{s:0,e:d,on:true}];
+  else if(d&&Math.abs(n.pieces[n.pieces.length-1].e-d)>0.05)n.pieces[n.pieces.length-1].e=d;
+  return n.pieces}
+function cutPush(n){CUT.undo.push({id:n.id,p:JSON.stringify(n.pieces||null)});if(CUT.undo.length>40)CUT.undo.shift();$('#cutUndo').disabled=false}
+function pieceAt(n,t){const P=piecesOf(n);for(let i=0;i<P.length;i++)if(t>=P[i].s-1e-6&&t<P[i].e)return i;return P.length-1}
+function cutChanged(){
+  const n=srcById(S.cur);
+  if(n&&n.pieces){const P=n.pieces;for(let i=P.length-1;i>0;i--)if(P[i].e-P[i].s<0.04){P[i-1].e=P[i].e;P.splice(i,1)}}
+  S.segIdx=0;knotMemo=null;
+  /* keep playing from the same moment of the dance if it's still kept */
+  if(S.hasV&&!routineOn()){const L=segs();const t=v.currentTime;let i=L.findIndex(g=>t>=g.s-0.01&&t<g.e);if(i<0)i=L.findIndex(g=>g.s>t);if(i<0)i=0;S.segIdx=i;if(t<L[i].s||t>=L[i].e){if(S.playing)gotoSeg(i);else v.currentTime=L[i].s}primeNext()}
+  updateTrim();scheduleFit();drawHitStrip();cutUI();CUT.tl&&CUT.tl.redraw();try{autosave()}catch(e){}
+}
+function cutUI(){
+  const n=srcById(S.cur),card=$('#cutCard');if(!card)return;
+  const ok=!!(n&&S.hasV&&!routineOn()&&n.dur);card.classList.toggle('off',!ok);
+  ['cutSplit','cutZoomIn','cutZoomOut'].forEach(id=>$('#'+id).disabled=!ok);
+  const P=ok?piecesOf(n):[], sel=CUT.sel!=null&&P[CUT.sel]?P[CUT.sel]:null;
+  const tg=$('#cutToggle');tg.disabled=!sel||(sel.on&&P.filter(p=>p.on).length<=1);tg.textContent=sel&&!sel.on?'Bring this part back':'Cut this part';
+  tg.classList.toggle('danger',!!sel&&sel.on);
+  $('#cutClear').disabled=!P.some(p=>!p.on)&&P.length<=1;
+  const kept=ok?segs().reduce((t,g)=>t+(g.e-g.s),0):0, cuts=P.filter(p=>!p.on).length;
+  $('#cutSum').textContent=ok?(cuts?`${cuts} part${cuts>1?'s':''} cut · keeps ${kept.toFixed(1)} s of ${(clipEnd()-S.cIn).toFixed(1)} s`:P.length>1?`${P.length} parts · nothing cut yet`:''):routineOn()?'Switch to Clip under the video to cut this clip.':'';
+}
+function initCut(){
+  const cv=$('#cutCanvas');if(!cv)return;
+  CUT.tl=new TL(cv,{
+    len:()=>{const n=srcById(S.cur);return n&&n.dur||v.duration||1},
+    hit:(tl,x,y)=>{const n=srcById(S.cur);if(!n)return null;const P=piecesOf(n);
+      for(let i=1;i<P.length;i++){if(Math.abs(tl.X(P[i].s)-x)<16)return {kind:'handle',i}}
+      return {kind:'piece',i:pieceAt(n,tl.T(x))}},
+    tap:(t,h)=>{const n=srcById(S.cur);if(!n||!S.hasV)return;if(S.playing)pause();CUT.sel=h&&h.kind==='piece'?h.i:null;v.currentTime=clamp(t,0,(n.dur||t)-0.03);cutUI()},
+    handleStart:h=>{const n=srcById(S.cur);cutPush(n);if(S.playing)pause()},
+    handleMove:(h,t)=>{const n=srcById(S.cur),P=piecesOf(n),a=P[h.i-1],b=P[h.i];t=clamp(t,a.s+0.1,b.e-0.1);a.e=b.s=+t.toFixed(3);v.currentTime=t;cutUI()},
+    handleEnd:()=>cutChanged(),
+    draw:(x,tl,W,H)=>{
+      const n=srcById(S.cur);x.fillStyle='#12151B';x.fillRect(0,0,W,H);if(!n||!n.dur)return;
+      const top=16,bot=H-12,th=bot-top,P=piecesOf(n),t1=tl.T(W);
+      tlThumbs(x,n,tl.t0,t1,0,top,W,th,px=>tl.T(px));
+      /* outside the clip's start / end */
+      x.fillStyle='rgba(10,11,14,.6)';const a=tl.X(S.cIn),b=tl.X(clipEnd());if(a>0)x.fillRect(0,top,a,th);if(b<W)x.fillRect(b,top,W-b,th);
+      /* cut parts */
+      P.forEach((p,i)=>{const X0=tl.X(p.s),X1=tl.X(p.e);if(X1<0||X0>W)return;
+        if(!p.on){x.fillStyle=TLC.cut;x.fillRect(X0,top,X1-X0,th);x.save();x.beginPath();x.rect(X0,top,X1-X0,th);x.clip();x.strokeStyle='rgba(255,77,94,.55)';x.lineWidth=2;for(let k=X0-th;k<X1;k+=12){x.beginPath();x.moveTo(k,bot);x.lineTo(k+th,top);x.stroke()}x.restore();
+          if(X1-X0>40){x.fillStyle='#FF8A95';x.font='800 12px Figtree,system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('CUT',(X0+X1)/2,top+th/2)}}
+        if(i===CUT.sel){x.strokeStyle=TLC.sel;x.lineWidth=3;tlRound(x,X0+1.5,top+1.5,X1-X0-3,th-3,6);x.stroke()}});
+      /* edges you can drag */
+      for(let i=1;i<P.length;i++){const X=tl.X(P[i].s);if(X<-10||X>W+10)continue;x.fillStyle='#F3F1EC';x.fillRect(X-1.5,top-2,3,th+4);tlRound(x,X-6,top+th/2-14,12,28,6);x.fill();x.fillStyle='#12151B';x.fillRect(X-2,top+th/2-7,1.5,14);x.fillRect(X+0.5,top+th/2-7,1.5,14)}
+      /* song beats (top) and the dancer's hits (bottom), where they land with these cuts */
+      const G=liveGrid(), L=segs();
+      if(G){x.fillStyle=TLC.song;let T=0;for(const g of L){const len=segLen(g);for(const bt of G.beats){const o=(bt-S.offset)/S.ar-T;if(o<0||o>len)continue;const X=tl.X(toSrc(g,o));if(X>=0&&X<=W)x.fillRect(X,top-6,1.5,5)}T+=len}}
+      x.fillStyle=TLC.dance;for(const h of hitsOf(n)){const X=tl.X(h.t);if(X>=0&&X<=W)x.fillRect(X-1,bot+2,2,7)}
+      tlTimeLabels(x,tl,W,1);
+      if(S.cur===n.id)tlPlayhead(x,tl.X(v.currentTime),H);
+    }});
+  $('#cutSplit').addEventListener('click',()=>{const n=srcById(S.cur);if(!n||!n.dur)return;const t=v.currentTime,P=piecesOf(n),i=pieceAt(n,t),p=P[i];
+    if(t-p.s<0.1||p.e-t<0.1){recMsg('Move a little away from the last cut first.');return}
+    cutPush(n);P.splice(i+1,0,{s:+t.toFixed(3),e:p.e,on:p.on});p.e=+t.toFixed(3);CUT.sel=i+1;cutChanged()});
+  $('#cutToggle').addEventListener('click',()=>{const n=srcById(S.cur),P=piecesOf(n),p=P[CUT.sel];if(!p)return;if(p.on&&P.filter(q=>q.on).length<=1)return;cutPush(n);p.on=!p.on;cutChanged()});
+  $('#cutUndo').addEventListener('click',()=>{const u=CUT.undo.pop();if(!u)return;const n=srcById(u.id);if(n)n.pieces=JSON.parse(u.p);CUT.sel=null;$('#cutUndo').disabled=!CUT.undo.length;cutChanged()});
+  $('#cutClear').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;cutPush(n);n.pieces=null;CUT.sel=null;cutChanged()});
+  $('#cutZoomIn').addEventListener('click',()=>CUT.tl.zoom(1.6));$('#cutZoomOut').addEventListener('click',()=>CUT.tl.zoom(1/1.6));
+  cutUI();
+}
+
+/* ======================= Routine: the timeline editor ======================= */
+const RTL={tl:null,drag:null,snap:true};
+function rtlBlocks(){const L=segsFor();let T=0;return S.seq.map((x,i)=>{const g=L[i],len=segLen(g),b={i,x,g,a:T,b:T+len};T+=len;return b})}
+function rtlBeatsOut(){const rs=routineSong(),G=songGrid(rs);if(!G)return null;const out=[];G.beats.forEach(bt=>{const o=(bt-S.rt.offset)/S.rt.ar;out.push({o,down:(G.down||[]).some(d=>Math.abs(d-bt)<0.02)})});return out}
+function rtlSnap(o){
+  if(!RTL.snap)return o;const B=rtlBeatsOut();if(!B||B.length<2)return o;
+  let best=o,bd=1e9;for(let k=0;k<B.length;k++){const c=[B[k].o];if(B[k+1])c.push((B[k].o+B[k+1].o)/2);for(const t of c){const d=Math.abs(t-o);if(d<bd){bd=d;best=t}}}
+  const beat=B.length>1?(B[B.length-1].o-B[0].o)/(B.length-1):0.6;return bd<beat*0.5?best:o;   /* Snap to beat on: always the nearest beat or "and" */
+}
+function rtlInspector(){
+  const box=$('#rtlInspect');if(!box)return;box.textContent='';
+  const i=S.seq.findIndex(x=>x.uid===S.sel);if(i<0){box.hidden=true;return}
+  const x=S.seq[i],m=moveById(x.id);if(!m){box.hidden=true;return}
+  box.hidden=false;
+  const head=el('div','rtl-head');head.append(el('b',null,(i+1)+' · '+m.name),el('span','hlen',lenText(x,m)));
+  const row=el('div','row rtl-acts');
+  const mk=(t,f,cls,dis)=>{const b=el('button','btn sm'+(cls?' '+cls:''),t);b.type='button';b.disabled=!!dis;b.addEventListener('click',f);row.append(b);return b};
+  const L=()=>segsFor();
+  mk('▶ Play',()=>playRange(segStart(i,L()),segStart(i+1,L())));
+  mk('▶ From the one before',()=>playRange(Math.max(0,segStart(i,L())-1.5),segStart(i+1,L())),null,i===0);
+  mk('✂ Split here',()=>rtlSplit(i),null,!(routineOn()&&S.segIdx===i));
+  mk('Fit to beat',()=>{if(fitEntry(x)){renderMoves();updateTrim()}},null,!beatLen());
+  mk('Duplicate',()=>dupSeq(i));
+  mk('Remove',()=>{removeSeq(i);S.sel=null;renderMoves()},'danger');
+  const wrap=el('div');wrap.append(el('span','len'));
+  const ed=editor(x,m,i,wrap);
+  /* the trim box brings its own buttons; the inspector already has them, except Reset */
+  const ea=ed.querySelector('.ed-acts');if(ea){const rs=[...ea.querySelectorAll('button')].find(b=>/Reset/.test(b.textContent));if(rs){rs.textContent='Undo trims';row.append(rs)}ea.remove()}
+  box.append(head,row,ed);
+}
+function rtlSplit(i){
+  const x=S.seq[i];if(!x||!routineOn()||S.segIdx!==i)return;const t=v.currentTime;if(t-x.s<0.15||x.e-t<0.15){recMsg('Move a little further into the move first.');return}
+  const y=JSON.parse(JSON.stringify(x));y.uid=++uidCount;x.e=+t.toFixed(3);y.s=+t.toFixed(3);delete x.warp;delete y.warp;S.seq.splice(i+1,0,y);S.sel=y.uid;renderMoves();updateTrim();try{autosave()}catch(e){}
+}
+function initRoutineTL(){
+  const cv=$('#rtlCanvas');if(!cv)return;
+  RTL.tl=new TL(cv,{
+    len:()=>Math.max(1,seqTotal()+(RTL.drag?0:0.5)),
+    hit:(tl,x,y)=>{const Bs=rtlBlocks();const sel=Bs.find(b=>b.x.uid===S.sel);
+      if(sel){if(Math.abs(tl.X(sel.a)-x)<16&&y>16)return {kind:'handle',side:'s',i:sel.i};if(Math.abs(tl.X(sel.b)-x)<16&&y>16)return {kind:'handle',side:'e',i:sel.i}}
+      const t=tl.T(x),b=Bs.find(b=>t>=b.a&&t<b.b);return b?{kind:'block',i:b.i}:{kind:'bg'}},
+    tap:(t,h)=>{if(h&&h.kind==='block'){const x=S.seq[h.i];S.sel=x.uid;if(S.playing)pause();S.useSeq=true;S.preview=null;updateTrim();seekT(Math.min(t,segStart(h.i+1,segsFor())-0.02));renderMoves()}
+      else{S.sel=null;renderMoves()}},
+    handleStart:h=>{const x=S.seq[h.i];RTL.h={s:x.s,e:x.e,start:segStart(h.i,segsFor())};if(S.playing)pause();delete x.warp},
+    handleMove:(h,t)=>{const x=S.seq[h.i],m=moveById(x.id),n=m&&srcById(m.src),r=rateOf(x),dur=n&&n.dur||x.e+5;
+      if(h.side==='e'){const end=rtlSnap(t);x.e=+clamp(x.s+(end-RTL.h.start)*r,x.s+0.1,dur).toFixed(3);showFrame(m.src,x.e-0.03)}
+      else{/* the move's start: the block's end follows; it snaps so the move still ends on the beat when it can */
+        const keepEnd=RTL.h.start+(RTL.h.e-RTL.h.s)/r, dt=t-RTL.h.start;x.s=+clamp(RTL.h.s+dt*r,0,x.e-0.1).toFixed(3);
+        const end=RTL.h.start+(x.e-x.s)/r, se=rtlSnap(end);if(se!==end){x.s=+clamp(x.e-(se-RTL.h.start)*r,0,x.e-0.1).toFixed(3)}showFrame(m.src,x.s)}
+      updateSeqStats();rtlInspectorLen()},
+    handleEnd:()=>{renderMoves();updateTrim();try{autosave()}catch(e){}},
+    blockDrag:{
+      start:h=>{RTL.drag={from:h.i,to:h.i};S.sel=S.seq[h.i].uid},
+      move:(h,t)=>{const Bs=rtlBlocks();let to=Bs.length-1;for(const b of Bs){if(t<(b.a+b.b)/2){to=b.i;break}}RTL.drag.to=to},
+      end:(h,t,cancel)=>{const D=RTL.drag;RTL.drag=null;if(!D||cancel||D.to===D.from){renderMoves();return}const [x]=S.seq.splice(D.from,1);S.seq.splice(D.to,0,x);renderMoves();updateTrim();try{autosave()}catch(e){}}},
+    draw:(c,tl,W,H)=>{
+      c.fillStyle='#12151B';c.fillRect(0,0,W,H);
+      const top=20,bot=H-12,th=bot-top,Bs=rtlBlocks();
+      /* the song's beats and bars */
+      const B=rtlBeatsOut();let bar=0;
+      if(B)B.forEach(bt=>{const X=tl.X(bt.o);if(bt.down)bar++;if(X<0||X>W)return;c.fillStyle=bt.down?TLC.song:'rgba(232,163,61,.45)';c.fillRect(X,bt.down?2:9,bt.down?2:1,bt.down?14:7);
+        if(bt.down&&tl.pps>24){c.font='700 10px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText(String(bar),X+3,2)}});
+      else tlTimeLabels(c,tl,W,2);
+      /* moves */
+      const D=RTL.drag;
+      Bs.forEach(b=>{const m=moveById(b.x.id),n=m&&srcById(m.src);let X0=tl.X(b.a),X1=tl.X(b.b);if(X1<0||X0>W)return;
+        const lifted=D&&D.from===b.i;c.globalAlpha=lifted?0.35:1;
+        tlRound(c,X0+1,top,X1-X0-2,th,8);c.save();c.clip();if(n)tlThumbs(c,n,b.x.s,b.x.e,X0,top,X1-X0,th,px=>toSrc(b.g,tl.T(px)-b.a));
+        const grd=c.createLinearGradient(0,top,0,bot);grd.addColorStop(0,'rgba(10,11,14,.65)');grd.addColorStop(0.45,'rgba(10,11,14,0)');c.fillStyle=grd;c.fillRect(X0,top,X1-X0,th);
+        c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText((b.i+1)+(X1-X0>70&&m?' '+m.name:''),X0+7,top+5);
+        c.fillStyle=TLC.dance;for(const h of motionIn(b.g.src,b.g.s,b.g.e)||[]){const X=X0+(toOut(b.g,h.t))*tl.pps;c.fillRect(X-1,bot-8,2,7)}
+        c.restore();c.globalAlpha=1;
+        c.strokeStyle=b.x.uid===S.sel?TLC.sel:'rgba(255,255,255,.18)';c.lineWidth=b.x.uid===S.sel?3:1;tlRound(c,X0+1.5,top+0.5,X1-X0-3,th-1,8);c.stroke();
+        if(b.x.uid===S.sel&&!D){for(const X of [X0+1.5,X1-1.5]){c.fillStyle='#F3F1EC';tlRound(c,X-6,top+th/2-15,12,30,6);c.fill();c.fillStyle='#12151B';c.fillRect(X-2,top+th/2-8,1.5,16);c.fillRect(X+0.5,top+th/2-8,1.5,16)}}});
+      /* dragging a move: it follows your finger; a bar shows where it will land */
+      if(D){const b=Bs[D.from],w=Math.max(30,tl.X(b.b)-tl.X(b.a));const gx=(tl.drag&&tl.drag.gx||0)-w/2;
+        const to=Bs[D.to];const ix=tl.X(D.to>D.from?to.b:to.a);c.fillStyle=TLC.sel;c.fillRect(ix-2,top-4,4,th+8);
+        c.globalAlpha=0.9;tlRound(c,gx,top-6,w,th,8);c.fillStyle='#2A2F3B';c.fill();c.strokeStyle=TLC.sel;c.lineWidth=2;c.stroke();c.globalAlpha=1;
+        const m=moveById(b.x.id);c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText(String(D.from+1)+(m?' '+m.name:''),gx+7,top);}
+      if(routineOn())tlPlayhead(c,tl.X(tPos()),H);
+    }});
+  $('#rtlZoomIn').addEventListener('click',()=>RTL.tl.zoom(1.6));$('#rtlZoomOut').addEventListener('click',()=>RTL.tl.zoom(1/1.6));
+  const sn=$('#rtlSnap');try{RTL.snap=localStorage.getItem('rs-snap')!=='0'}catch(e){}sn.checked=RTL.snap;sn.addEventListener('change',()=>{RTL.snap=sn.checked;try{localStorage.setItem('rs-snap',RTL.snap?'1':'0')}catch(e){}});
+}
+function rtlInspectorLen(){const i=S.seq.findIndex(x=>x.uid===S.sel),x=S.seq[i],m=x&&moveById(x.id);const l=document.querySelector('#rtlInspect .rtl-head .hlen');if(l&&m)l.textContent=lenText(x,m)}
+/* keep both timelines moving with the playhead */
+let tlLast=0;
+function tlTick(){const now=performance.now();if(now-tlLast<66)return;tlLast=now;
+  if(CUT.tl&&!$('#p-clip').hidden){if(S.playing&&CUT.tl.follow)CUT.tl.show(v.currentTime);CUT.tl.redraw()}
+  if(RTL.tl&&!$('#p-routine').hidden){if(S.playing&&routineOn()&&RTL.tl.follow)RTL.tl.show(tPos());RTL.tl.redraw()}}
+initCut();initRoutineTL();
 /* ---------- beat cues: a ball that lands on each hit of the riddim, and one that lands on each of the dancer's hits ----------
    Everything runs on one clock: the song position you HEAR (smoothed, minus the sound delay, plus one frame because what's
    drawn now is seen on the next frame). The riddim's hits are in song seconds; the dancer's hits are mapped into song
@@ -5063,16 +5436,16 @@ $('#delayTest').addEventListener('click',()=>{
     if(ct>T.until+0.3){delayTestStop();return}T.raf=requestAnimationFrame(loop)};
   T.raf=requestAnimationFrame(loop);
 });
-if(/debug/.test(location.hash))window.__rs={expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
 function beat(pos,anchor,bpm){const bp=(pos-(anchor??0))*bpm/60, fl=Math.floor(bp);return {idx:((fl%4)+4)%4,pulse:(bp-fl)<0.14}}
 function tick(){
   if(S.hasV){
-    const ro=routineOn();
-    if(document.activeElement!==$('#scrub'))$('#scrub').value=ro?tPos():v.currentTime;
-    $('#time').textContent=ro?fmt(tPos())+' / '+fmt(segStart(segs().length,segs())):fmt(v.currentTime);
+    const ro=routineOn(), sm=segMode();
+    if(document.activeElement!==$('#scrub'))$('#scrub').value=sm?tPos():v.currentTime;
+    $('#time').textContent=sm?fmt(tPos())+' / '+fmt(segStart(segs().length,segs())):fmt(v.currentTime);
     if(S.rec||S.playing){
       const g=segs()[S.segIdx];
       /* a cut has finished seeking: carry on (while recording, the frame grabber confirms it, with a safety timeout) */
@@ -5103,7 +5476,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody(); drawCues(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
+  clickTick(); drawBody(); drawCues(); try{tlTick()}catch(err){} if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.hasA&&!a.paused)s=countAt(heardNow());
