@@ -10,7 +10,16 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 - **Plays the song over the clip and keeps them in sync.** It finds the song's tempo and beats, and the clip's dance hits.
 - **Lets you change timing.** You can fit speed to the beat, draw a speed graph, or use Study ½× (half speed, song pitch kept, 2-second loop).
+- **Cuts a single clip** (Clip → Cut the clip):
+  - The clip shows as a strip of pictures with the song's beats and the dancer's hits.
+  - Split at the playhead, tap a part, then Cut it (or bring it back); drag the white edges to adjust.
+  - Cut parts are skipped and the song keeps going. The speed graph applies to each kept part.
+  - Cuts are saved with the project; recordings and ball cues follow them.
 - **Builds routines.** You cut moves from clips, string them into a routine, and record takes. A take can have the dance body drawn on it.
+  - The routine is a timeline: moves show as thumbnail blocks over the song's numbered bars.
+  - Tap a move to select it (Play, Split here, Fit to beat, Duplicate, Remove, trims, speed).
+  - Press and hold to drag a move to a new place; drag its edges to trim, snapping to the beat or "and".
+  - Pinch or −/+ to zoom; a quick drag scrolls. The list view is under More options.
 - **Tracks the dancer's body** (the *Body* page). One chosen dancer is followed through crowds and occlusion. The tracking draws:
   - a skeleton and pelvis with live Tilt / Sway / Turn gauges, made for Jamaican hip work;
   - hip graphs, hips-on-the-beat scoring and named hip patterns (still, circle, pulse, tilt, sway).
@@ -35,6 +44,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 |---|---|---|
 | Riddim Swap page | `src/` (head, style.css, markup, app.js, tail) | Edit here; `python3 build_src.py` builds everything |
 | Beat analysis | `analysis.js` | Shared with MirrorView's Pulse. `riddim()` finds the drum pattern: low hits from rises in low-band loudness (kick or bass), high hits from noisy, even rises at 1–5 kHz with some body (snare, clap, rim). It snaps them to 16 slots per bar on a smoothed beat grid (`smoothBeats`, a local line fit), and keeps a slot only when this bar has a hit there and the slot belongs to the 1-bar or 2-bar loop around it. |
+| Timeline editor | `src/timeline.js` | One canvas surface (`TL`) for Clip cuts and the Routine: thumbnails from a hidden copy of each video, beat and hit ticks, playhead, tap / scroll / pinch / edge-drag / hold-to-reorder. A clip with cuts plays as its kept pieces through the same piece engine as routines (`clipCut()`, `segMode()`), so the song plays straight through. |
 | Beat cues | `src/cues.js` | One clock: the smoothed song position, minus the sound delay, plus one frame. The dancer's hits are mapped into song time the same way the player lines video up with song. The ball lands exactly on each hit. Clicks are scheduled ahead on the sound engine's clock. |
 | Body tracking | `body.js` (`window.RB`) | MediaPipe Pose Landmarker (full, 3 people, IMAGE mode); one-dancer follower (position, size, clothing colour); zero-phase cleaning; hip series (tilt, sway, turn, twist, thrust); drawing |
 | Installable app | `build_app.py` → `riddim-swap-app/` | Service worker whose version is a content hash; it keeps the tracker model and fonts in a cache that survives updates |
@@ -101,6 +111,22 @@ On real tracks there's no ground truth. The user's clip song gives a steady demb
 - In Split, Overlay and Worldline, nothing covers the video and nothing runs off screen.
 - Practice cycles Sound from its control bar.
 - The song is still there after a reload; Projects returns to Riddim Swap's Projects.
+
+**Cutting and the routine timeline (23 Oct 2026)**
+
+Cutting (Clip):
+- Splitting at 3 s and 6 s and cutting the middle gives two pieces.
+- Playback never shows 3–6 s, and the song runs straight through.
+- The play bar shows the kept 9 s, and a recorded take came out at 9.01 s.
+- Dragging an edge and Undo both work; ball cues use only hits in the kept parts.
+- Cuts work with the speed graph and are saved with the project.
+
+Routine timeline:
+- Tapping a move selects it.
+- Dragging its right edge trimmed it and snapped to a beat or "and" (0 ms off).
+- Press, hold and drag reordered the moves.
+- Zoom works, and a quick drag scrolls.
+- Split here cuts a move in two.
 
 **Not verified (needs a real iPhone)**
 

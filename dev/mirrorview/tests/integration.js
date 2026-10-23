@@ -26,9 +26,9 @@ const R=[];const rec=(name,status,detail)=>{R.push({name,status,detail});console
  let h=null;for(let i=0;i<60;i++){h=await p.evaluate(()=>window.__mvHandoff||null);if(h&&h.status!=='importing')break;await p.waitForTimeout(250)}
  const mvState=()=>p.evaluate(()=>{const s=window.__mv&&window.__mv.state,v=document.getElementById('reference-source');return s?{name:s.name,dur:+(s.duration||0).toFixed(2),demo:s.demo,src:v.src.slice(0,40),t:+v.currentTime.toFixed(2),rs:v.readyState,w:v.videoWidth,muted:v.muted}:null});
  let st=await mvState();
- const cleared=await p.evaluate(()=>new Promise(r=>{const q=indexedDB.open('riddim-bridge',1);q.onsuccess=()=>{const t=q.result.transaction('handoff','readonly').objectStore('handoff').count();t.onsuccess=()=>r(t.result)};q.onerror=()=>r(-1)}));
+ const cleared=await p.evaluate(()=>new Promise(r=>{const q=indexedDB.open('riddim-bridge',1);q.onsuccess=()=>{const t=q.result.transaction('handoff','readonly').objectStore('handoff').getAllKeys();t.onsuccess=()=>r(t.result.filter(k=>!/^(song|you)-current$/.test(k)).length)};q.onerror=()=>r(-1)}));
  rec('Clip hand-off opens the real clip in MirrorView',h&&h.status==='opened'&&st&&!st.demo&&st.dur>14&&st.w>0?'passed':'failed','handoff '+JSON.stringify(h)+' state '+JSON.stringify(st)+' url '+p.url().replace(HOST,''));
- rec('Hand-off record removed and address cleaned',cleared===0&&!/handoff=/.test(p.url())?'passed':'failed','records left '+cleared+' · url '+p.url().replace(HOST,''));
+ rec('Hand-off record removed and address cleaned (the song and My video kept for the clip are separate)',cleared===0&&!/handoff=/.test(p.url())?'passed':'failed','records left '+cleared+' · url '+p.url().replace(HOST,''));
  /* play with original audio, seek */
  await p.evaluate(()=>window.__mv.setPlaying(true));await p.waitForTimeout(1500);
  const pl=await mvState();

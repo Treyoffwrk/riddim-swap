@@ -29,11 +29,11 @@ const [,,HOST,CLIP,SONG]=process.argv;const R=[];const rec=(n,s,d)=>{R.push({nam
   await p.goto(HOST.replace('index.html','')+'mirrorview/');await p.waitForTimeout(2500);
   await p.goto(HOST);await p.waitForTimeout(1500);
   const c=await p.evaluate(async()=>{const ks=await caches.keys();const out={};for(const k of ks){const c=await caches.open(k);for(const r of await c.keys()){if(/\.html$|\/$/.test(r.url)){const t=await (await c.match(r)).text();out[r.url.replace(location.origin,'')]=/<title>[^<]*/.exec(t)[0]}}}return out});
-  rec('Offline cache keeps Riddim Swap and MirrorView pages apart',c['/index.html']&&/Riddim/.test(c['/index.html'])&&c['/mirrorview/index.html']&&/MirrorView/.test(c['/mirrorview/index.html'])?'passed':'failed',JSON.stringify(c));
+  rec('Offline cache keeps Riddim Swap and MirrorView pages apart',c['/index.html']&&/Riddim/.test(c['/index.html'])&&c['/mirrorview/index.html']&&/· Body/.test(c['/mirrorview/index.html'])&&!/· Body/.test(c['/index.html'])?'passed':'failed',JSON.stringify(c));
   await ctx.setOffline(true);
   await p.goto(HOST.replace('index.html','')+'mirrorview/').catch(()=>{});await p.waitForTimeout(800);const t1=await p.title();
   await p.goto(HOST).catch(()=>{});await p.waitForTimeout(800);const t2=await p.title();
-  rec('Both pages open offline from the cache',/MirrorView/.test(t1)&&/Riddim/.test(t2)?'passed':'failed',`offline: mirrorview → "${t1}", host → "${t2}"`);
+  rec('Both pages open offline from the cache',/· Body/.test(t1)&&/Riddim/.test(t2)&&!/· Body/.test(t2)?'passed':'failed',`offline: mirrorview → "${t1}", host → "${t2}"`);
   await b.close()}
  fs.writeFileSync('/tmp/claude-0/-home-claude/c7d6fa6b-e9dd-5d62-903e-3e4d46a3b3b0/scratchpad/take-results.json',JSON.stringify(R,null,1));
 })();

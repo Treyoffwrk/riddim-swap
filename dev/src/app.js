@@ -40,11 +40,17 @@ function songFail(err){
 function clipEnd(){return S.cOut!=null?S.cOut:(v.duration||0)}
 function moveById(id){return S.moves.find(m=>m.id===id)}
 function routineOn(){return S.useSeq&&S.seq.length>0&&!S.preview}
+/* a clip with parts cut out plays as its kept pieces, back to back (the song keeps going) */
+function clipCut(){if(routineOn()||S.preview||S.study)return false;const n=srcById(S.cur);return !!(n&&n.pieces&&n.pieces.some(p=>!p.on))}
+function segMode(){return routineOn()||clipCut()}
+function keptRanges(n){const a=S.cIn,b=clipEnd(),out=[];for(const p of n.pieces||[]){if(!p.on)continue;const s=Math.max(a,p.s),e=Math.min(b,p.e);if(e-s<0.05)continue;const l=out[out.length-1];if(l&&Math.abs(l[1]-s)<1e-3)l[1]=e;else out.push([s,e])}return out}
 function segs(){
   if(S.preview)return [S.preview];
   if(routineOn())return S.seq.map(x=>segOf(x)).filter(Boolean);
   if(S.study)return [{src:S.cur,s:S.study.a,e:S.study.b,r:S.vr*S.study.rate}];
-  const g={src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}; const k=curveKnots(srcById(S.cur),g); if(k)g.k=k;
+  const n0=srcById(S.cur);
+  if(clipCut()){const K=keptRanges(n0);if(K.length)return K.map(([s,e])=>{const g={src:S.cur,s,e,r:S.vr};const k=curveKnots(n0,g);if(k)g.k=k;return g})}
+  const g={src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}; const k=curveKnots(n0,g); if(k)g.k=k;
   return [g];
 }
 /* a routine move as a playable piece. k = time-warp knots [[source, output-from-start]...] when aligned */
@@ -100,7 +106,7 @@ function ensureEl2(n){
 }
 function swapTo(e,srcId){
   const n=srcById(srcId), prev=v;
-  if(S.cur!==srcId){const old=srcById(S.cur);if(old){old.cIn=S.cIn;old.cOut=S.cOut}S.cIn=n.cIn||0;S.cOut=n.cOut??null;S.cur=srcId;$('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');renderSources()}
+  if(S.cur!==srcId){const old=srcById(S.cur);if(old){old.cIn=S.cIn;old.cOut=S.cOut}S.cIn=n.cIn||0;S.cOut=n.cOut??null;S.cur=srcId;try{CUT.sel=null;if(CUT.tl)CUT.tl.fitted=false}catch(e){}$('#vidName').textContent=n.name+(n.dur?' · '+fmt(n.dur):'');renderSources()}
   const cg=segs()[S.segIdx]; v=e; e.playbackRate=cg?rateAt(cg,cg.s):S.vr; e.muted=!$('#origAudio').checked;
   showOnly(e);
   if(S.playing||S.rec)e.play().catch(()=>{});
@@ -109,7 +115,7 @@ function swapTo(e,srcId){
 }
 function primeNext(){
   S.primed=null;
-  if(!routineOn()||!(S.playing||S.rec))return;
+  if(!segMode()||!(S.playing||S.rec))return;
   const L=segs(); let i=S.segIdx+1;
   if(i>=L.length){if(S.loop&&!S.rec)i=0;else return}
   if(S.stopAtT!=null&&segStart(i,L)>=S.stopAtT-0.02)return;
@@ -245,7 +251,7 @@ function syncSong(force){
   /* just after pressing play the song often starts late; nudging it now (while it is only just starting) can't be heard */
   if(now-(S.playAt||0)<900&&Math.abs(drift)>0.03&&!a.seeking&&a.readyState>=3&&!S.switchPending&&now-(S.earlyFix||0)>200){S.earlyFix=now;S.driftEma=0;seekSong(e);return}
   /* a big jump (user seek): fix at once; a steady offset above 80 ms (e.g. the sound starting late): fix once it's clear */
-  if((Math.abs(drift)>(routineOn()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
+  if((Math.abs(drift)>(segMode()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
 }
 
 function syncSteady(force){
@@ -270,7 +276,7 @@ function syncSteady(force){
   if(S.seekCheck||busy)return;
   S.driftEma=0.8*(S.driftEma||0)+0.2*drift;
   snd.frames++;if(Math.abs(drift)<0.04)snd.within++;snd.maxLate=Math.max(snd.maxLate,Math.abs(drift));
-  const limit=routineOn()?0.5:0.35;
+  const limit=segMode()?0.5:0.35;
   if(Math.abs(S.driftEma)>limit&&now-S.lastFix>2000){S.lastFix=now;S.driftEma=0;snd.jumps++;seekSong(e);setV(0);return}
   /* steady: nudge the video, in 0.5% steps so its speed isn't changed every frame */
   /* proportional plus a slow learned part, so a video that runs steadily slow ends up exactly in time, not 40 ms off */
@@ -303,8 +309,10 @@ function play(){
   if(routineOn()){const gone=S.seq.map(x=>moveById(x.id)).filter(m=>m&&srcById(m.src)&&srcById(m.src).missing);
     if(gone.length){recMsg('Re-add "'+srcById(gone[0].src).name+'" first. Tap Projects.',true);return}}
   if(S.hasV&&!S.rec){
-    const g=segs()[S.segIdx];
-    if(!g||(g.src&&g.src!==S.cur)||v.currentTime<g.s-0.05||v.currentTime>=g.e-0.05)toStart();
+    const L0=segs(), g=L0[S.segIdx];
+    if(!g||(g.src&&g.src!==S.cur)||v.currentTime<g.s-0.05||v.currentTime>=g.e-0.05){
+      const j=clipCut()?L0.findIndex(q=>v.currentTime>=q.s-0.02&&v.currentTime<q.e-0.05):-1;
+      if(j>=0){S.segIdx=j;primeNext()}else toStart()}
   }
   setPlaying(true);
   if(S.hasA&&!S.hasV&&a.ended)a.currentTime=0;
@@ -349,9 +357,9 @@ function wire(el){
     if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
     if(me())$('#vidName').textContent="This video can't play here";
   });
-  el.addEventListener('seeked',()=>{if(me()){syncSong(!routineOn());recSync(true)}});
+  el.addEventListener('seeked',()=>{if(me()){syncSong(!segMode());recSync(true)}});
   /* a short video hiccup no longer stops the song (that was a cut-out); only a stall over 0.6 s pauses it */
-  el.addEventListener('waiting',()=>{if(!me()||S.switchPending||routineOn())return;
+  el.addEventListener('waiting',()=>{if(!me()||S.switchPending||segMode())return;
     if(S.rec){S.stalled=true;a.pause();recStopSong();return}
     clearTimeout(S.stallTimer);S.stallTimer=setTimeout(()=>{if(me()&&el.readyState<3&&S.playing){S.stalled=true;a.pause();recStopSong();if(S.snd)S.snd.stalls=(S.snd.stalls||0)+1}},600)});  /* routine: the song keeps going */
   el.addEventListener('playing',()=>{if(me()){clearTimeout(S.stallTimer);S.stalled=false;syncSong(false);recSync(true)}});
@@ -367,7 +375,7 @@ function createSource(f,meta){
   if(!S.sources.some(x=>x.el===vid))ve=vid;
   else{ve=document.createElement('video');ve.setAttribute('playsinline','');ve.muted=true;ve.preload='auto';ve.classList.add('off');$('#stage').insertBefore(ve,$('#empty'));wire(ve)}
   const num=meta.num||++srcCount; if(num>srcCount)srcCount=num;
-  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,
+  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,pieces:Array.isArray(meta.pieces)?meta.pieces.map(p=>({s:+p.s,e:+p.e,on:!!p.on})):null,
     name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
     key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0,
     motion:meta.motion||null, curve:meta.curve||null};
@@ -492,7 +500,7 @@ document.addEventListener('keydown',e=>{
   if(e.code!=='Space'||e.target.matches('input[type=number],input[type=text],button,label'))return;
   e.preventDefault(); if(!$('#play').disabled)toggle();
 });
-$('#scrub').addEventListener('input',e=>{const x=+e.target.value; if(routineOn())seekT(x); else v.currentTime=x});
+$('#scrub').addEventListener('input',e=>{const x=+e.target.value; if(segMode())seekT(x); else v.currentTime=x});
 $('#origAudio').addEventListener('change',e=>{v.muted=!e.target.checked});
 
 /* speeds */
@@ -527,14 +535,15 @@ $$('[data-ro]').forEach(b=>b.addEventListener('click',()=>setROffset(S.rt.offset
 
 /* clip start / end points */
 function updateTrim(){
-  const d=v.duration||0, e=clipEnd(), ro=routineOn();
+  const d=v.duration||0, e=clipEnd(), ro=routineOn(), sm=segMode();
   $('#inVal').textContent=fmt2(S.cIn);
   const ir=$('#inRange'); ir.max=d||1; if(document.activeElement!==ir)ir.value=S.cIn;
   $('#outVal').textContent=S.cOut!=null?fmt(S.cOut):(d?'End · '+fmt(d):'End');
   $('#clipNote').hidden=!ro;
   const f=$('#trimFill');
-  if(ro||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
-  $('#scrub').max=ro?Math.max(0.01,segStart(segs().length,segs())):(d||1);
+  if(sm||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
+  $('#scrub').max=sm?Math.max(0.01,segStart(segs().length,segs())):(d||1);
+  try{cutUI()}catch(err){}
   const r=$('#repeat'); r.classList.toggle('on',S.loop); r.setAttribute('aria-pressed',S.loop);
   $('#modeSeg').hidden=!S.seq.length;
   $('#modeClip').setAttribute('aria-pressed',!ro); $('#modeSeq').setAttribute('aria-pressed',ro);
@@ -656,6 +665,7 @@ function updateSeqStats(){
   const each=S.rt.spMode==='each';
   $('#spdAll').setAttribute('aria-pressed',!each); $('#spdEach').setAttribute('aria-pressed',each);
   $('#spdAllBox').hidden=each; $('#spdEachHint').hidden=!each;
+  try{rtlInspectorLen();RTL.tl&&RTL.tl.redraw()}catch(err){}
 }
 function renderMoves(){
   /* Moves tab: the library */
@@ -698,10 +708,10 @@ function renderMoves(){
     const acts=el('div','acts');
     acts.append(iconBtn('Play from here','▶',()=>playRange(segStart(i,segsFor()),segStart(i+1,segsFor()))),iconBtn('Remove from routine','✕',()=>removeSeq(i)));
     li.append(h,el('span','n',String(i+1)),thumbEl(m),meta,acts);
-    if(S.sel===x.uid)li.append(editor(x,m,i,li));
     sl.append(li);
   });
-  $('#seqEmpty').hidden=S.seq.length>0; $('#seqHint').hidden=!S.seq.length; $('#seqBar').hidden=!S.seq.length;
+  $('#seqEmpty').hidden=S.seq.length>0; $('#seqHint').hidden=!S.seq.length; $('#seqBar').hidden=true; $('#rtlWrap').hidden=!S.seq.length;
+  try{rtlInspector();RTL.tl&&RTL.tl.redraw()}catch(err){}
   $('#seqClear').disabled=!S.seq.length;
   $('#fitAll').disabled=!S.seq.length||!beatLen(); $('#fitHint').hidden=!S.seq.length||!!beatLen();
   /* timeline strip */
@@ -1344,7 +1354,7 @@ function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.
 function snapshot(){
   return {v:1,
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
-      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null})),
+      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
     beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
     cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.loop, useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
@@ -2125,7 +2135,7 @@ function drawSeqCanvas(list,G,off,ar){
 function drawHitStrip(){
   const c=$('#hitStrip'); const {w,h,dpr}=sizeCanvas(c), x=c.getContext('2d'); x.clearRect(0,0,w,h);
   if(!S.hasV)return;
-  const ro=routineOn(), list=segs(), G=liveGrid();
+  const ro=segMode(), list=segs(), G=liveGrid();
   if(ro){const tot=list.reduce((t,g)=>t+segLen(g),0)||1;
     if(G){x.fillStyle=tok('--song-hot');for(const b of G.beats){const o=(b-S.offset)/S.ar;if(o<0||o>tot)continue;x.fillRect(o/tot*w,0,dpr,h*0.5)}}
     x.fillStyle=tok('--dance');let T=0;for(const g of list){for(const b of motionIn(g.src,g.s,g.e)||[])x.fillRect((T+toOut(g,b.t))/tot*w,h*0.5,dpr*1.5,h*0.5);T+=segLen(g)}
@@ -2341,12 +2351,12 @@ let knotMemo=null;
 function curveKnots(n,g){
   const c=curveOf(n); if(!c||!(g.e>g.s))return null;
   const key=n.id+'|'+g.s+'|'+g.e+'|'+g.r+'|'+JSON.stringify(c.pts);
-  if(knotMemo&&knotMemo.key===key)return knotMemo.k;
+  if(!(knotMemo instanceof Map))knotMemo=new Map(); if(knotMemo.has(key))return knotMemo.get(key);
   const ts=new Set(); const step=1/40; for(let t=g.s;t<g.e;t+=step)ts.add(+t.toFixed(4)); ts.add(g.e);
   c.pts.forEach(p=>{if(p.t>g.s&&p.t<g.e)ts.add(+p.t.toFixed(4))});
   const T=[...ts].sort((a,b)=>a-b), k=[[T[0],0]]; let o=0;
   for(let i=1;i<T.length;i++){const a=T[i-1],b=T[i];o+=(b-a)/spdRateAt(c,(a+b)/2,g.r);k.push([b,o])}
-  knotMemo={key,k}; return k;
+  if(knotMemo.size>64)knotMemo.clear(); knotMemo.set(key,k); return k;
 }
 function spdCur(){return srcById(S.cur)}
 function spdEnsure(n){if(!n.curve)n.curve={on:false,pts:[]};return n.curve}
@@ -2976,17 +2986,18 @@ function patFilterUI(){
 /* test hook: only with #debug in the address */
 /* tests only (#debug in the address): "More options" start open so older tests can reach every control; #debug-closed keeps the real default */
 if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySelectorAll('details.more').forEach(d=>{d.open=true});
+/*@timeline*/
 /*@cues*/
-if(/debug/.test(location.hash))window.__rs={expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
 function beat(pos,anchor,bpm){const bp=(pos-(anchor??0))*bpm/60, fl=Math.floor(bp);return {idx:((fl%4)+4)%4,pulse:(bp-fl)<0.14}}
 function tick(){
   if(S.hasV){
-    const ro=routineOn();
-    if(document.activeElement!==$('#scrub'))$('#scrub').value=ro?tPos():v.currentTime;
-    $('#time').textContent=ro?fmt(tPos())+' / '+fmt(segStart(segs().length,segs())):fmt(v.currentTime);
+    const ro=routineOn(), sm=segMode();
+    if(document.activeElement!==$('#scrub'))$('#scrub').value=sm?tPos():v.currentTime;
+    $('#time').textContent=sm?fmt(tPos())+' / '+fmt(segStart(segs().length,segs())):fmt(v.currentTime);
     if(S.rec||S.playing){
       const g=segs()[S.segIdx];
       /* a cut has finished seeking: carry on (while recording, the frame grabber confirms it, with a safety timeout) */
@@ -3017,7 +3028,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody(); drawCues(); if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
+  clickTick(); drawBody(); drawCues(); try{tlTick()}catch(err){} if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.hasA&&!a.paused)s=countAt(heardNow());

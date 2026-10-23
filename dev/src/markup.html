@@ -198,6 +198,17 @@
           </div>
         </div>
         </div>
+        <div class="anal lv2 cutcard" id="cutCard">
+          <div class="subhead"><h3>Cut the clip</h3><span class="hint" id="cutSum"></span></div>
+          <div class="tle"><canvas id="cutCanvas" role="img" aria-label="The clip as a strip of pictures: cut parts are crossed out. Tap to go there, drag to scroll, pinch to zoom, drag the white edges to adjust."></canvas></div>
+          <div class="tle-bar">
+            <button class="btn sm primary" id="cutSplit" disabled>✂ Split here</button>
+            <button class="btn sm" id="cutToggle" disabled>Cut this part</button>
+            <button class="btn sm ghost" id="cutUndo" disabled>Undo</button>
+            <span class="tle-zoom"><button class="btn sm" id="cutZoomOut" aria-label="Zoom out" disabled>−</button><button class="btn sm" id="cutZoomIn" aria-label="Zoom in" disabled>+</button></span>
+          </div>
+          <p class="hint">Get rid of the parts you don't need instead of speeding through them. Play or scrub to a spot and tap <b>Split here</b>, tap a part to pick it, then <b>Cut this part</b>. Drag the white edges to adjust. Cut parts are skipped and the song keeps going. <button class="linkbtn" id="cutClear" disabled>Clear all cuts</button></p>
+        </div>
         <div class="anal lv2" id="danceCard">
           <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
           <div class="prog" id="danceProg" hidden><i></i></div>
@@ -396,9 +407,20 @@
           <div class="subhead"><h3>Routine <span class="hint" id="seqLen" style="font-family:var(--f-body)"></span></h3><div class="row" style="gap:4px"><button class="btn ghost sm" id="fitAll" disabled>Fit all to beat</button><button class="btn ghost sm" id="seqClear" disabled>Clear</button></div></div>
           <p class="hint" id="fitHint" hidden>Set the song BPM in the Tempo tab to fit moves to the beat.</p>
           <div class="tl" id="seqBar" hidden><div class="tl-blocks" id="seqBlocks"></div><canvas class="tl-canvas" id="seqCanvas"></canvas><i class="tl-head" id="seqHead"></i></div>
-          <ol class="list" id="seqList"></ol>
+          <div class="rtl" id="rtlWrap" hidden>
+            <div class="tle tall"><canvas id="rtlCanvas" role="img" aria-label="The routine as a timeline over the song's beats. Tap a move to pick it, press and hold then drag to move it, drag its white edges to trim, pinch to zoom."></canvas></div>
+            <div class="tle-bar">
+              <label class="check"><input type="checkbox" id="rtlSnap" checked> Snap to beat</label>
+              <span class="tle-zoom"><button class="btn sm" id="rtlZoomOut" aria-label="Zoom out">−</button><button class="btn sm" id="rtlZoomIn" aria-label="Zoom in">+</button></span>
+            </div>
+            <p class="hint" id="seqHint" hidden>Tap a move to pick it. <b>Press and hold</b>, then drag it to a new place. Drag its <b>white edges</b> to trim; with Snap to beat they land on beats and "ands". Moves play back to back. Bars are numbered along the top.</p>
+            <div class="rtl-inspect" id="rtlInspect" hidden></div>
+          </div>
           <div class="empty-note drop" id="seqEmpty">Drop moves here, or tap them above. Use them in any order, as many times as you like.</div>
-          <p class="hint" id="seqHint" hidden>Drag ⠿ to reorder. Tap a move to trim it for this spot. Moves always play back to back with no gap.</p>
+          <details class="more" data-more="list">
+            <summary>List view <span>the same moves as a list: drag ⠿ to reorder</span></summary>
+            <ol class="list" id="seqList"></ol>
+          </details>
         </div>
         <section class="fitcard" id="fitCard" hidden aria-labelledby="h-fit">
           <div class="subhead"><h3 id="h-fit">Beat fit</h3>
