@@ -6,7 +6,7 @@
     <p>Put a dance clip on a different song and change its speed until the moves land on the beat.</p>
     <div class="hdr-r">
       <span class="savestate" id="saveState" aria-live="polite"></span>
-      <button class="btn sm ghost mv-only" id="mvBtn" title="Pose tracking, Worldline, Pulse and practice">MirrorView</button>
+      <button class="btn sm ghost mv-only" id="mvBtn" hidden title="Body: mirror, Worldline, Pulse and practice">Body</button>
       <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>
     </div>
   </header>
@@ -128,7 +128,7 @@
         <div class="row">
           <button class="btn primary" id="saveBtn">Save video</button>
           <button class="btn" id="discardBtn">Discard</button>
-          <button class="btn mv-only" id="mvTake">Practise in MirrorView</button>
+          <button class="btn mv-only" id="mvTake">Practise this take in Body</button>
           <span class="hint" id="saveMsg"></span>
         </div>
       </section>
@@ -150,7 +150,7 @@
         <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1">Tempo</button>
         <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1">Moves</button>
         <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
-        <button class="tab mv-only" id="t-body" type="button" title="Body tracking, Worldline and practice (MirrorView)">Body</button>
+        <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice">Body</button>
       </div>
 
       <!-- CLIP -->
@@ -188,7 +188,7 @@
             <p class="hint">Tap the graph to jump there. On the video, the pink bar is the hips, the dashed line is level, and the meter shows tilt, the hips' path under the chest (a whine draws a loop) and which way they face.</p>
           </section>
           <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
-          <div class="row mv-only"><button class="btn sm" id="mvClip">Study this clip in MirrorView</button></div>
+          <div class="row mv-only"><button class="btn sm" id="mvClip">Mirror and practise this clip (Body)</button></div>
           <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
           <button class="btn bigtap" id="hitTap" hidden>Hit</button>
           <p class="hint" id="hitCheckMsg"></p>

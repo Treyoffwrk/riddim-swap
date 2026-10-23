@@ -22,7 +22,10 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
   - The 1-2-3-4 count follows the detected beats.
   - The click can play on the beat or on the riddim, so you can check the cues by ear.
   - A **Sound delay** setting (speaker or wired / Bluetooth / custom, with a check) shifts the cues and the dancer video to match what you hear.
-- **MirrorView** (the original Mirror app, built in) shows the reference video and your camera side by side, with the skeleton overlaid. You choose the layout and mirroring, and loop it.
+- **Body** (the Mirror app, built in as a Riddim Swap section):
+  - The reference video and your camera, side by side (Split), on top of each other (Overlay) or as a 3D path (Worldline), with the skeleton drawn on.
+  - **Sound** in every view: Song (Riddim Swap's song, in time with the clip, at its own speed: song = offset + (clip time − clip start) × song speed ÷ clip speed; the song leads and the clip is nudged up to ±6%), Clip (the video's own sound) or Off. It doesn't depend on Pulse, so sound still plays when Pulse can't read a clip's audio.
+  - It uses Riddim Swap's header, with Projects, and its section bar. MirrorView's own Load video, Start here and Diagnostics sit in the ⋯ menu.
 - **Keeps your work.** Projects save on the phone. Backups and `.riddim` share bundles carry videos, songs and tracking.
 - **Works offline after the first visit.** This includes the body tracker.
 
@@ -35,7 +38,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 | Beat cues | `src/cues.js` | One clock: the smoothed song position, minus the sound delay, plus one frame. The dancer's hits are mapped into song time the same way the player lines video up with song. The ball lands exactly on each hit. Clicks are scheduled ahead on the sound engine's clock. |
 | Body tracking | `body.js` (`window.RB`) | MediaPipe Pose Landmarker (full, 3 people, IMAGE mode); one-dancer follower (position, size, clothing colour); zero-phase cleaning; hip series (tilt, sway, turn, twist, thrust); drawing |
 | Installable app | `build_app.py` → `riddim-swap-app/` | Service worker whose version is a content hash; it keeps the tracker model and fonts in a cache that survives updates |
-| MirrorView | `mirrorview/build_mirrorview.py` | Untouched baseline plus three change files (theme, shared Pulse, shared body tracker). Rollback = build the baseline alone |
+| Body (MirrorView) | `mirrorview/build_mirrorview.py` | Untouched baseline plus four change files: theme, shared Pulse, shared body tracker, and `mv_rs_block.py` (Riddim Swap header, Sound switch with the song from Riddim Swap, phone layout fixes). Rollback = build the baseline alone. The song travels in the hand-off record and is kept for that clip under `song-current` in `riddim-bridge` |
 | Old build chain | `history/` | v20 base plus patch files; replays to identical bytes; reference only |
 
 **Key behaviours**
@@ -89,6 +92,15 @@ Why the old lights were unreliable:
 | Bluetooth, 200 ms | Song runs 193–205 ms ahead of the video; ball lands about 200 ms later |
 
 On real tracks there's no ground truth. The user's clip song gives a steady dembow pattern bar after bar; their MP3 shows a two-bar riddim, now handled. The ear check is the click "on the riddim". On the MP3 the beat phase is uncertain (0.10), and the cues show that as a hollow "?" ball.
+
+**Body sound and layout (23 Oct 2026)**, measured with a 0.9× clip and a song offset of 1.5 s:
+- The song plays at its own speed with a typical gap of 4 ms (90th percentile 27 ms).
+- It follows seeks (16 ms).
+- At half speed: song 0.500×, clip 0.450×, pitch kept.
+- Clip and Off work, including when Pulse couldn't read the audio.
+- In Split, Overlay and Worldline, nothing covers the video and nothing runs off screen.
+- Practice cycles Sound from its control bar.
+- The song is still there after a reload; Projects returns to Riddim Swap's Projects.
 
 **Not verified (needs a real iPhone)**
 

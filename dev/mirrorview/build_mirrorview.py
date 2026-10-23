@@ -12,8 +12,8 @@ Added:
 """
 import hashlib, pathlib, re
 
-BASE = pathlib.Path(__file__).resolve().parent / 'baseline' / 'index.html'
-OUT = pathlib.Path(__import__('os').environ.get('MV_OUT', str(pathlib.Path(__file__).resolve().parents[2] / 'mirrorview' / 'index.html')))
+BASE = pathlib.Path('/home/claude/mv/handoff/baseline/index.html')
+OUT = pathlib.Path('/home/claude/riddim-swap-app/mirrorview/index.html')
 EXPECT = '9229eb1ccf5560e942391b23bc1f08f9bc5cbbf3f8463a5241df8f2dd4cc9867'
 
 raw = BASE.read_bytes()
@@ -137,6 +137,9 @@ if(/debug/.test(location.hash))window.__mv={state,importFile,seek,setPlaying,get
 '''
 new_app = end[:-len('})();')] + bridge + '\n})();\n'
 s = s[:app.start(1)] + new_app + s[app.end(1):]
+
+# ---- part of Riddim Swap: header, sound in every view, phone layout (see mv_rs_block.py) ----
+exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_rs_block.py').read_text(), 'mv_rs_block.py', 'exec'))
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(s)

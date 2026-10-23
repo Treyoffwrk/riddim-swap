@@ -1,5 +1,12 @@
 # MirrorView inside Riddim Swap: integration notes
 
+> **Update, 23 Oct 2026:** MirrorView now appears as Riddim Swap's **Body** section. `mv_rs_block.py` adds:
+> - Riddim Swap's header, with Projects and a ⋯ menu for Load video, Start here and Diagnostics.
+> - A **Sound** switch in every view: Song, Clip or Off.
+> - Phone layout fixes.
+>
+> The hand-off record's `meta` now carries `song: {blob, name, offset, ar, vr, cIn}`. MirrorView keeps a copy under the fixed id `song-current` (`{song, clip: <clip name>}`), so the song comes back after a reload. In Song mode the song leads, at its own speed × MirrorView's speed, and the clip's rate is nudged up to ±6% to follow it, as Riddim Swap does. Practice's sound button cycles the same setting. The baseline file and its rollback are unchanged.
+
 **Host:** Riddim Swap, an installable web app (PWA) on GitHub Pages: `https://treyoffwrk.github.io/riddim-swap/`. It's a single-page app in plain JavaScript and HTML, with no framework, account or backend. It's built by `dev/build_app.py` from `riddim-swap.html` plus `dev/patch_depth.py`.
 
 **Guest:** MirrorView v0.13. It's plain JavaScript and HTML in one 572,966-byte file (SHA-256 `9229eb1c…cc9867`), checked against the handover's manifest.

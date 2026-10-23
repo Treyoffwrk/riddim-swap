@@ -1934,20 +1934,26 @@ async function sendClip(){
   const n=srcById(S.cur);
   if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
   const B=bodyOf(n);
-  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,
+  /* the song goes too, with what's needed to keep it in time with the clip: song = offset + (clip time - cIn) × ar / vr
+     (offset includes the same corrections the player uses, and the sound delay) */
+  let song=null;const so=S.liveSong;
+  if(so&&so.ready&&!so.missing){let sb=so.blob||null;if(!sb)try{sb=await mediaGet(so.key)}catch(e){}
+    if(sb&&sb.size)song={blob:sb,name:so.name||'Song',offset:S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar,ar:S.ar,vr:S.vr,cIn:S.cIn}}
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
       body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}
-  catch(e){hMsg('Couldn’t pass the clip to MirrorView on this phone ('+(e&&e.message||e)+').');return false}
+  catch(e){hMsg('Couldn’t open the clip in Body on this phone ('+(e&&e.message||e)+').');return false}
 }
 $('#mvClip').addEventListener('click',sendClip);
 /* coming back from MirrorView's bottom bar: open the section that was tapped there */
-function takeTabReq(){let r=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click()}
+function takeTabReq(){let r=null,pj=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req');pj=localStorage.getItem('rs-open-proj');localStorage.removeItem('rs-open-proj')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click();
+  if(pj)setTimeout(()=>$('#projBtn').click(),200)}   /* Projects tapped in Body */
 window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
 $('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob&&!routineOn())sendClip();else goMirror(null)});
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();
   try{const id=await handOff('take',take.blob,'Riddim Swap take '+new Date().toISOString().slice(0,16).replace('T',' ')+'.'+take.ext,{songBpm:G&&G.bpm||null});goMirror(id)}
-  catch(e){saveMsg('Couldn’t pass the take to MirrorView ('+(e&&e.message||e)+').',true)}
+  catch(e){saveMsg('Couldn’t open the take in Body ('+(e&&e.message||e)+').',true)}
 });
 
 /* ---------- dance hits (motion beats) ---------- */
