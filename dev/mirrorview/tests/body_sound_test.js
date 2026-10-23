@@ -51,6 +51,22 @@ const q=(a,p)=>{const b=a.slice().sort((x,y)=>x-y);return b[Math.min(b.length-1,
    rec(`${mode[0].toUpperCase()+mode.slice(1)}: Sound switch there, nothing covering the video or off screen`,issues.length?'failed':'passed',issues.join(', ')||'ok');
    await p.screenshot({path:`${SHOT}-${mode}.png`});
  }
+ /* skeleton on your own camera: one tap, in plain sight */
+ await p.click('[data-mode="split"]');await p.waitForTimeout(500);
+ const cam=()=>p.evaluate(()=>{const v=document.getElementById('camera-source'),st=v&&v.srcObject;return {live:!!(st&&st.getVideoTracks().some(t=>t.readyState==='live')),camPose:window.__mv.state.camPose,
+   groups:[...document.querySelectorAll('.rs-grp')].map(g=>g.innerText.replace(/\s+/g,' ').trim()),note:(document.getElementById('you-note')||{}).textContent}});
+ const k0=await cam();
+ rec('Under the video: a Dancer group and a You group, each with its own Skeleton and Mirror',k0.groups.length===2&&/^DANCER Skeleton Cut out Mirror/i.test(k0.groups[0])&&/^YOU Camera Skeleton Mirror/i.test(k0.groups[1])&&!k0.live?'passed':'failed',JSON.stringify(k0));
+ await p.screenshot({path:SHOT+'-groups.png'});
+ await p.click('#you-skel');for(let i=0;i<40;i++){await p.waitForTimeout(300);const k=await cam();if(k.live&&k.camPose)break}
+ const k1=await cam();
+ rec('You → Skeleton turns your camera on and tracks your pose',k1.live&&k1.camPose&&await p.getAttribute('#you-skel','aria-pressed')==='true'&&await p.getAttribute('#you-cam','aria-pressed')==='true'?'passed':'failed',JSON.stringify(k1));
+ await p.screenshot({path:SHOT+'-you-skel.png'});
+ const mc0=await p.evaluate(()=>({cam:window.__mv.state.mirrorCam,ref:window.__mv.state.mirrorRef}));await p.click('#you-mirror');await p.waitForTimeout(300);
+ const mc1=await p.evaluate(()=>({cam:window.__mv.state.mirrorCam,ref:window.__mv.state.mirrorRef,pressed:document.getElementById('you-mirror').getAttribute('aria-pressed')}));await p.click('#you-mirror');
+ rec('You → Mirror flips your camera only',mc1.cam!==mc0.cam&&mc1.ref===mc0.ref&&mc1.pressed===String(mc1.cam)?'passed':'failed',JSON.stringify({before:mc0,after:mc1}));
+ await p.click('#you-cam');await p.waitForTimeout(800);const k2=await cam();
+ rec('You → Camera turns it off again (and your skeleton with it)',!k2.live&&!k2.camPose?'passed':'failed',JSON.stringify(k2));
  /* Practice: its sound button cycles the same setting */
  await p.click('[data-mode="split"]');await p.waitForTimeout(500);
  const pb=p.locator('.stage-entry-actions button',{hasText:'Practice'}).first();

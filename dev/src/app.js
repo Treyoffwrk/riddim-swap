@@ -2974,6 +2974,8 @@ function patFilterUI(){
   if(S.patFilter!=='all'&&!have.includes(S.patFilter)){S.patFilter='all'}
 }
 /* test hook: only with #debug in the address */
+/* tests only (#debug in the address): "More options" start open so older tests can reach every control; #debug-closed keeps the real default */
+if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySelectorAll('details.more').forEach(d=>{d.open=true});
 /*@cues*/
 if(/debug/.test(location.hash))window.__rs={expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */

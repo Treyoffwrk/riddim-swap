@@ -153,32 +153,23 @@
         <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice">Body</button>
       </div>
 
-      <!-- CLIP -->
+      <!-- CLIP: 1 your videos and the dancer's body · 2 speed, start and end, hits, compare · 3 more options -->
       <section class="panel clip" id="p-clip" role="tabpanel" aria-labelledby="t-clip">
         <div class="field">
           <span class="label">Videos</span>
           <div class="chips srcChips" id="srcChips"></div>
           <p class="hint" id="vidName">Add one or more dance videos. Moves from any of them can go in one routine.</p>
         </div>
-        <div class="anal" id="danceCard">
-          <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
-          <div class="prog" id="danceProg" hidden><i></i></div>
-          <p class="hint" id="danceInfo">Finds the moments the dancer hits: sharp stops and changes of direction. They show as blue ticks under the video, next to the song's beats in orange.</p>
-          <ul class="warnlist" id="danceWarn"></ul>
-          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>
-          <div class="subhead" id="hitLevelRow" hidden><span class="label">Hits per move</span>
-            <div class="seg" id="hitLevel" role="group" aria-label="How many hits to show">
-              <button data-hl="fewer" aria-pressed="false">Fewer</button><button data-hl="normal" aria-pressed="true">Normal</button><button data-hl="more" aria-pressed="false">More</button></div></div>
+        <div class="anal lv1 mv-only" id="bodyCard">
+          <div class="subhead"><h3>Dancer’s body</h3></div>
           <div class="bodyrow mv-only" id="bodyRow">
-            <button class="btn sm" id="bodyTrack" disabled>Track body</button>
-            <label class="check"><input type="checkbox" id="bodyShow" checked> Show body</label>
+            <button class="btn sm primary" id="bodyTrack" disabled>Track body</button>
+            <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
-            <label class="check"><input type="checkbox" id="recBody"> Draw it on recorded takes</label>
           </div>
           <div class="prog" id="bodyProg" hidden><i></i></div>
           <div class="row mv-only" id="pickRow"><button class="btn sm" id="bodyPick">Choose the dancer</button><span class="hint" id="pickMsg"></span></div>
-          <div class="cmprow mv-only" id="cmpRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
-          <p class="hint mv-only" id="cmpOut"></p>
+          <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
           <section class="hipcard mv-only" id="hipCard" hidden aria-labelledby="h-hip">
             <div class="subhead"><h3 id="h-hip">Hip moves</h3><span class="hint" id="hipNow"></span></div>
             <div class="hipgraph"><canvas id="hipCanvas" role="img" aria-label="Hip tilt and sway over the clip"></canvas></div>
@@ -187,20 +178,16 @@
             <div class="hipkey"><span><i style="background:var(--hips)"></i>Tilt (up = right side higher)</span><span><i style="background:#F3F1EC"></i>Sway (up = hips to the right)</span><span><i style="background:var(--song)"></i>Beats</span><span><i style="background:var(--ok);border-radius:50%;width:8px;height:8px"></i>Hip hit on the beat</span><span><i style="background:var(--hips);border-radius:50%;width:8px;height:8px"></i>Hip hit off it</span></div>
             <p class="hint">Tap the graph to jump there. On the video, the pink bar is the hips, the dashed line is level, and the meter shows tilt, the hips' path under the chest (a whine draws a loop) and which way they face.</p>
           </section>
-          <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
-          <div class="row mv-only"><button class="btn sm" id="mvClip">Mirror and practise this clip (Body)</button></div>
-          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
-          <button class="btn bigtap" id="hitTap" hidden>Hit</button>
-          <p class="hint" id="hitCheckMsg"></p>
         </div>
         <p class="note" id="clipNote" hidden>Routine is on, so the start and end below are paused. Switch to "Clip" under the video to use them.</p>
+        <div class="anal lv2" id="timingCard">
+        <div class="field">
+          <div class="field-top"><label class="label" for="vRate">Clip speed</label><span class="val" id="vRateOut">×1.00</span></div>
+          <input type="range" id="vRate" min="0.25" max="2.5" step="0.01" value="1">
+        </div>
         <div class="field">
           <div class="field-top"><label class="label" for="inRange">Clip starts at</label><span class="val" id="inVal">0:00.00</span></div>
           <input type="range" id="inRange" min="0" max="1" step="0.01" value="0" disabled>
-          <div class="nudges">
-            <button class="btn sm" data-in="-1" disabled>−1s</button><button class="btn sm" data-in="-0.1" disabled>−0.1</button><button class="btn sm" data-in="-0.02" disabled>−0.02</button>
-            <button class="btn sm" data-in="0.02" disabled>+0.02</button><button class="btn sm" data-in="0.1" disabled>+0.1</button><button class="btn sm" data-in="1" disabled>+1s</button>
-          </div>
           <p class="hint">Drag to the moment the dance should begin. The video shows that frame as you drag, and the song lines up from here.</p>
         </div>
         <div class="row" style="justify-content:space-between">
@@ -210,16 +197,39 @@
             <button class="btn sm" id="clearOut" disabled>Full clip</button>
           </div>
         </div>
-        <hr class="sep">
-        <div class="field">
-          <div class="field-top"><label class="label" for="vRate">Clip speed</label><span class="val" id="vRateOut">×1.00</span></div>
-          <input type="range" id="vRate" min="0.25" max="2.5" step="0.01" value="1">
+        </div>
+        <div class="anal lv2" id="danceCard">
+          <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
+          <div class="prog" id="danceProg" hidden><i></i></div>
+          <p class="hint" id="danceInfo">Finds the moments the dancer hits: sharp stops and changes of direction. They show as blue ticks under the video, next to the song's beats in orange.</p>
+          <ul class="warnlist" id="danceWarn"></ul>
+          <div class="row" id="hitRow" hidden><button class="btn sm" id="hitCheck">Tap to check</button><button class="btn ghost sm" id="hitClear">Clear hits</button></div>
+          <div class="subhead" id="hitLevelRow" hidden><span class="label">Hits per move</span>
+            <div class="seg" id="hitLevel" role="group" aria-label="How many hits to show">
+              <button data-hl="fewer" aria-pressed="false">Fewer</button><button data-hl="normal" aria-pressed="true">Normal</button><button data-hl="more" aria-pressed="false">More</button></div></div>
+          <div class="row"><button class="btn sm" id="hitMark">Mark hits myself</button><button class="btn ghost sm" id="hitUndo" hidden>Undo</button></div>
+          <button class="btn bigtap" id="hitTap" hidden>Hit</button>
+          <p class="hint" id="hitCheckMsg"></p>
+        </div>
+        <div class="anal lv2 mv-only" id="cmpCard">
+          <div class="cmprow mv-only" id="cmpRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
+          <p class="hint mv-only" id="cmpOut"></p>
+        </div>
+        <details class="more" data-more="clip">
+          <summary>More options <span>fine-tune start and speed, speed graph, clip sound, takes</span></summary>
+          <div class="field"><span class="label">Fine-tune clip start</span>
+          <div class="nudges">
+            <button class="btn sm" data-in="-1" disabled>−1s</button><button class="btn sm" data-in="-0.1" disabled>−0.1</button><button class="btn sm" data-in="-0.02" disabled>−0.02</button>
+            <button class="btn sm" data-in="0.02" disabled>+0.02</button><button class="btn sm" data-in="0.1" disabled>+0.1</button><button class="btn sm" data-in="1" disabled>+1s</button>
+          </div>
+          </div>
+          <div class="field"><span class="label">Fine-tune clip speed</span>
           <div class="nudges">
             <button class="btn sm" data-v="-0.05">−5%</button><button class="btn sm" data-v="-0.01">−1%</button>
             <button class="btn sm" data-v="0">×1</button>
             <button class="btn sm" data-v="0.01">+1%</button><button class="btn sm" data-v="0.05">+5%</button>
           </div>
-        </div>
+          </div>
         <section class="anal spd off" id="spdCard" aria-labelledby="h-spd">
           <div class="spd-top"><h3 id="h-spd">Speed graph</h3>
             <label class="switch"><input type="checkbox" id="spdOn" aria-describedby="spdHelp"> <span id="spdOnTxt">Off</span></label></div>
@@ -239,10 +249,15 @@
           </div>
           <p class="hint" id="spdNote">Blue ticks are the dance hits and orange ticks are the song's beats, where they land with this curve. Drag along the top strip to move through the clip.</p>
         </section>
-        <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>
+            <label class="check mv-only"><input type="checkbox" id="recBody"> Draw the skeleton on recorded takes</label>
+          </div>
+          <div class="row mv-only"><button class="btn sm" id="mvClip">Mirror and practise this clip (Body)</button></div>
+        </details>
       </section>
 
-      <!-- SONG -->
+      <!-- SONG: 1 add the song · 2 its beat (check it, the 1, the click) and where it starts · 3 more options -->
       <section class="panel song" id="p-song" role="tabpanel" aria-labelledby="t-song" hidden>
         <div class="filebar">
           <span class="fname" id="audName">No song yet</span>
@@ -253,16 +268,10 @@
           <div class="subhead"><h3>Beat</h3><span class="hint" id="songDet"></span></div>
           <div class="row" id="songCands"></div>
           <div class="row">
-            <button class="btn sm" id="beatHalf">Shift beat ½</button>
-            <button class="btn sm" id="beatUseDet">Use detected beat</button>
-            <label class="check"><input type="checkbox" id="clickOn"> Click</label>
-            <select id="clickWhat" class="sel sm" aria-label="What the click plays on"><option value="beat">on each beat</option><option value="riddim">on the riddim</option></select>
-          </div>
-          <div class="row">
             <button class="btn sm" id="beatCheck">Tap to check</button>
             <button class="btn sm" id="beatOne">This is the 1</button>
-            <button class="btn ghost sm" id="beatClear">Clear beat</button>
-            <button class="btn sm" id="beatFind">Find the beat again</button>
+            <label class="check"><input type="checkbox" id="clickOn"> Click</label>
+            <select id="clickWhat" class="sel sm" aria-label="What the click plays on"><option value="beat">on each beat</option><option value="riddim">on the riddim</option></select>
           </div>
           <p class="hint" id="beatCheckMsg"></p>
           <ul class="warnlist" id="songWarn"></ul>
@@ -273,21 +282,33 @@
         <div class="field">
           <div class="field-top"><label class="label" for="offset">Song starts at</label><span class="val" id="offOut">0:00.00</span></div>
           <input type="range" id="offset" min="0" max="180" step="0.01" value="0">
+          <p class="hint">The part of the song that plays when the dance starts. Fine-tune it under More options.</p>
+        </div>
+        <details class="more" data-more="song">
+          <summary>More options <span>fine-tune the start, fix or redo the beat, song speed</span></summary>
+          <div class="field"><span class="label">Fine-tune song start</span>
           <div class="nudges">
             <button class="btn sm" data-o="-1">−1s</button><button class="btn sm" data-o="-0.1">−0.1</button><button class="btn sm" data-o="-0.02">−0.02</button>
             <button class="btn sm" data-o="0.02">+0.02</button><button class="btn sm" data-o="0.1">+0.1</button><button class="btn sm" data-o="1">+1s</button>
           </div>
-          <p class="hint">The part of the song that plays when the dance starts. Nudge until the hits land on the beat.</p>
-        </div>
-        <hr class="sep">
-        <div class="field">
-          <div class="field-top"><label class="label" for="aRate">Song speed</label><span class="val" id="aRateOut">×1.00</span></div>
-          <input type="range" id="aRate" min="0.5" max="1.5" step="0.01" value="1">
-          <p class="hint">Also changes the pitch. Usually only the clip speed needs changing.</p>
-        </div>
+          </div>
+          <div class="field"><span class="label">The beat</span>
+          <div class="row">
+            <button class="btn sm" id="beatHalf">Shift beat ½</button>
+            <button class="btn sm" id="beatUseDet">Use detected beat</button>
+            <button class="btn sm" id="beatFind">Find the beat again</button>
+            <button class="btn ghost sm" id="beatClear">Clear beat</button>
+          </div>
+          </div>
+          <div class="field">
+            <div class="field-top"><label class="label" for="aRate">Song speed</label><span class="val" id="aRateOut">×1.00</span></div>
+            <input type="range" id="aRate" min="0.5" max="1.5" step="0.01" value="1">
+            <p class="hint">Also changes the pitch. Usually only the clip speed needs changing.</p>
+          </div>
+        </details>
       </section>
 
-      <!-- TEMPO -->
+      <!-- TEMPO: 2 beat cues, the two tempos and the match · 3 more options (sound delay, clearing) -->
       <section class="panel" id="p-tempo" role="tabpanel" aria-labelledby="t-tempo" hidden>
         <div class="field" id="cueBox">
           <div class="subhead"><span class="label">Beat cues</span>
@@ -297,17 +318,6 @@
               <button data-bv="ball" aria-pressed="true" style="padding:0 12px">Ball</button>
             </div></div>
           <p class="hint">Ball: over the video, the left ball lands on each hit of the riddim (big amber ring for a kick or bass hit, white for a snare, clap or rim) and the right ball lands on each of the dancer's hits (it appears once they're found: Find hits in the Clip tab, or body tracking). Watch it fall to see the hit coming. When both land together, a line joins them. Count shows 1 2 3 4 under the video. When the app isn't sure, the cues go dim with a "?".</p>
-        </div>
-        <div class="field" id="delayBox">
-          <div class="field-top"><span class="label">Sound delay</span><span class="val" id="delayOut">0 ms</span></div>
-          <div class="seg" id="delaySeg" role="group" aria-label="Sound delay" style="grid-template-columns:repeat(3,auto)">
-            <button data-d="0" aria-pressed="true" style="padding:0 10px">Speaker / wired</button>
-            <button data-d="200" aria-pressed="false" style="padding:0 10px">Bluetooth</button>
-            <button data-d="custom" aria-pressed="false" style="padding:0 10px">Custom</button>
-          </div>
-          <input type="range" id="delay" min="-100" max="400" step="5" value="0" aria-label="Sound delay in milliseconds">
-          <div class="row"><button class="btn sm" id="delayTest" aria-pressed="false">Check it</button><canvas id="delayCv" class="delaycv" aria-hidden="true" hidden></canvas></div>
-          <p class="hint" id="delayHint">Bluetooth headphones and speakers play sound later than the screen shows it (often 150–250 ms). This shifts the ball and the dancer video to match what you hear. Check it: a click plays and the ball should land on it; move the slider until it does.</p>
         </div>
         <div class="pair">
           <div class="field">
@@ -321,7 +331,6 @@
         </div>
         <div class="row" style="justify-content:space-between">
           <span class="chip idle" id="verdict">Needs both tempos</span>
-          <div class="row" style="gap:6px"><button class="btn ghost" id="tClear">Clear both</button><button class="btn ghost" id="tAll">Clear all tracking</button></div>
         </div>
         <div class="readout">
           <div class="d"><span class="label">Dance now</span><span class="num" id="dEff">—</span></div>
@@ -335,7 +344,25 @@
           <button class="btn" data-m="1" disabled><span>Beat for beat</span><b>—</b><small>&nbsp;</small></button>
           <button class="btn" data-m="2" disabled><span>Double-time</span><b>—</b><small>&nbsp;</small></button>
         </div>
-        <p class="hint">Tap along while it plays: steps on the dance, beat on the song (start on a 1). Your last tap sets where the count starts. The blue (dance) and orange (song) beats show under the video. Pick a match to set the clip speed. Jersey club usually sits around 130–145 BPM.</p>
+        <p class="hint">Tap along while it plays: steps on the dance, beat on the song (start on a 1). Pick a match to set the clip speed.</p>
+        <details class="more" data-more="tempo">
+          <summary>More options <span>sound delay for Bluetooth, clear tempos and tracking</span></summary>
+        <div class="field" id="delayBox">
+          <div class="field-top"><span class="label">Sound delay</span><span class="val" id="delayOut">0 ms</span></div>
+          <div class="seg" id="delaySeg" role="group" aria-label="Sound delay" style="grid-template-columns:repeat(3,auto)">
+            <button data-d="0" aria-pressed="true" style="padding:0 10px">Speaker / wired</button>
+            <button data-d="200" aria-pressed="false" style="padding:0 10px">Bluetooth</button>
+            <button data-d="custom" aria-pressed="false" style="padding:0 10px">Custom</button>
+          </div>
+          <input type="range" id="delay" min="-100" max="400" step="5" value="0" aria-label="Sound delay in milliseconds">
+          <div class="row"><button class="btn sm" id="delayTest" aria-pressed="false">Check it</button><canvas id="delayCv" class="delaycv" aria-hidden="true" hidden></canvas></div>
+          <p class="hint" id="delayHint">Bluetooth headphones and speakers play sound later than the screen shows it (often 150–250 ms). This shifts the ball and the dancer video to match what you hear. Check it: a click plays and the ball should land on it; move the slider until it does.</p>
+        </div>
+          <div class="field"><span class="label">Clear</span>
+            <div class="row" style="gap:6px"><button class="btn ghost" id="tClear">Clear both tempos</button><button class="btn ghost" id="tAll">Clear all tracking</button></div>
+            <p class="hint">Your last tap sets where the count starts. The blue (dance) and orange (song) beats show under the video. Jersey club usually sits around 130–145 BPM.</p>
+          </div>
+        </details>
       </section>
 
       <!-- MOVES -->
@@ -358,7 +385,7 @@
         </div>
       </section>
 
-      <!-- ROUTINE -->
+      <!-- ROUTINE: 2 your moves, the routine, beat fit · 3 more options (music and its timing, move speed, fade, checks) -->
       <section class="panel" id="p-routine" role="tabpanel" aria-labelledby="t-routine" hidden>
         <div class="field">
           <div class="subhead"><h3>Your moves</h3><span class="hint">Tap to add · drag down to place</span></div>
@@ -394,7 +421,8 @@
           <p class="hint" id="fitMsg"></p>
           <p class="hint">Score = Beat Alignment Score: how close each dance hit lands to a beat or an "and" (100% means every hit is on one; the ms figure is the typical miss). Aligning nudges each move's speed between hits so they land there, favouring the 1 of the bar. The off-beat check takes the best version and moves the song a quarter beat, right between the targets; it should score clearly lower, otherwise the score isn't telling you much.</p>
         </section>
-        <hr class="sep">
+        <details class="more" data-more="routine">
+          <summary>More options <span>routine music and its timing, move speed, fade, sync check, blind test</span></summary>
         <div class="field song">
           <div class="subhead"><h3>Routine music</h3><button class="btn ghost sm" id="rCopy">Copy from Song tab</button></div>
           <div class="filebar">
@@ -435,7 +463,6 @@
         </div>
         <label class="check"><input type="checkbox" id="rFade" checked> Fade the song out at the end of a recording</label>
         <p class="hint">These only apply to the routine, so the sound stays the same however you tweak single clips.</p>
-        <hr class="sep">
         <div class="field">
           <div class="subhead"><h3>Checks</h3></div>
           <div class="row"><button class="btn" id="syncBtn">Sync check</button><button class="btn" id="blindBtn">Make blind test</button></div>
@@ -443,6 +470,7 @@
           <div class="note" id="syncOut" hidden></div>
           <div class="blind" id="blindBox" hidden></div>
         </div>
+        </details>
       </section>
     </div>
   </div>

@@ -429,3 +429,14 @@ html.rs-hosted .tab.mv-only,html.rs-hosted .bodyrow.mv-only{display:flex!importa
 #storeBox .store-list .dot{width:8px;height:8px;border-radius:50%;flex:none}
 #storeBox .store-list .tot{border-top:1px solid var(--line,rgba(255,255,255,.1));margin-top:4px;padding-top:6px}
 #storeBox .store-list .warn span,#storeBox .store-list .ok span{opacity:.75;font-size:12px}
+
+/* three levels: 1 always on screen (video, play, record), 2 each section's main tools, 3 "More options" (closed) */
+details.more{border:1px solid var(--line);border-radius:14px;background:var(--surface);margin-top:6px}
+details.more>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;padding:14px 16px;font:700 15px var(--f-body);color:var(--ink);min-height:48px;box-sizing:border-box}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::after{content:"";margin-left:auto;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translateY(-3px);transition:transform .2s}
+details.more[open]>summary::after{transform:rotate(225deg) translateY(-1px)}
+details.more>summary span{font:500 13px var(--f-body);color:var(--muted);flex-basis:100%;order:3}
+details.more[open]{padding-bottom:6px}
+details.more>:not(summary){margin-left:14px;margin-right:14px}
+details.more .field{margin-top:8px}
