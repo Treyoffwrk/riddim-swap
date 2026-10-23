@@ -87,11 +87,18 @@
               <button type="button" data-bg="dark" aria-label="Dark background" aria-pressed="true" style="background:#08090C"></button>
               <button type="button" data-bg="colour" aria-label="Colour background" aria-pressed="false" style="background:#2B2F6B"></button>
               <button type="button" data-bg="blur" aria-label="Blurred background" aria-pressed="false" style="background:linear-gradient(135deg,#6b6f78,#2a2d33)"></button>
+              <button type="button" data-bg="dim" aria-label="Dim the rest of the frame" aria-pressed="false" style="background:linear-gradient(90deg,#08090C 50%,#4a4f5a 50%)"></button>
+            </span>
+            <span class="partpick" id="dkPart" hidden role="group" aria-label="Which part of the body">
+              <button type="button" data-part="all" aria-pressed="true">Whole</button>
+              <button type="button" data-part="upper" aria-pressed="false">Upper</button>
+              <button type="button" data-part="legs" aria-pressed="false">Legs</button>
             </span>
           </div>
           <div class="recdot" id="recDot" hidden>Recording</div>
           <div class="studytag" id="studyTag" hidden>Study · ½ speed · looping</div>
         </div>
+        <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
             <button class="playbtn" id="play" aria-label="Play" disabled>

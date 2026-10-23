@@ -457,3 +457,16 @@ details.more .field{margin-top:8px}
 .rtl-head b{font:800 16px var(--f-body)}.rtl-head .hlen{color:var(--muted);font-size:13px}
 .rtl-acts{flex-wrap:wrap;gap:6px;margin-bottom:6px}
 #cutCard .subhead{flex-wrap:wrap;row-gap:2px}#cutSum{flex-basis:100%}
+
+/* isolation picker on the video */
+.cutbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:8px 0 2px}
+.cutbar[hidden]{display:none}.cutbar>.label{font-size:11px}
+.cutbar .bgpick{display:inline-flex;gap:6px}
+.cutbar .partpick,.dock .partpick{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:rgba(14,16,20,.8);border:1px solid rgba(255,255,255,.14);pointer-events:auto}
+.cutbar .partpick[hidden],.dock .partpick[hidden]{display:none}
+.cutbar .partpick button,.dock .partpick button{min-height:34px;padding:0 11px;border-radius:999px;border:0;background:transparent;color:#C9CDD6;font:700 13px var(--f-body);cursor:pointer}
+.cutbar .partpick button[aria-pressed="true"],.dock .partpick button[aria-pressed="true"]{background:#F3F1EC;color:#0E1014}
+.cutbar .bgpick[hidden]{display:none}
+.cutbar .bgpick button{min-height:30px;width:30px;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.22);cursor:pointer}
+.cutbar .bgpick button[aria-pressed="true"]{outline:2px solid #F3F1EC;outline-offset:2px}
+.cutbar .partpick{background:var(--surface)!important;border-color:var(--line)!important}

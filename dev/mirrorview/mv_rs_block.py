@@ -61,6 +61,9 @@ RS_CSS = r"""
 .rs-grp .you-line{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
 .rs-grp .you-line[hidden]{display:none}
 .rs-grp .you-line button{min-height:36px!important;padding:0 10px!important;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);font:700 13px Figtree,sans-serif}
+.rs-grp .rs-part{gap:4px}.rs-grp .rs-part[hidden]{display:none}.rs-grp .rs-part>span{font:700 12px Figtree,sans-serif;color:var(--muted);padding-right:4px}
+.rs-grp .rs-part button{min-height:36px!important;padding:0 12px!important;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--text);font:700 13px Figtree,sans-serif}
+.rs-grp .rs-part button[aria-pressed="true"]{background:#F3F1EC!important;color:#0E1014!important;border-color:#F3F1EC!important}
 .rs-grp .you-line i{font:600 12px 'JetBrains Mono',monospace;font-style:normal;color:var(--muted);padding:0 4px}
 /* ---- transport row: wrap rather than push the speed menu off screen ---- */
 .transport-row{flex-wrap:wrap;row-gap:8px}
@@ -352,3 +355,14 @@ rep("""  box.addEventListener('click',e=>{const b=e.target.closest('[data-snd]')
 
 # the empty You half points to both ways in
 s = s.replace('Enable your camera to practise alongside the reference.', 'Turn on your camera to practise live, or tap My video below to use a video you filmed of yourself.')
+# ---- isolation in Body: the Dancer's Cut out can show the whole dancer, just the upper body, or just the legs ----
+rep("prepCutCtx.drawImage(RB.maskCanvas(preparedBody,k),0,0,W,H);","prepCutCtx.drawImage(RB.partMask(preparedBody,k,state.cutPart||'all'),0,0,W,H);")
+rep("""  setInterval(()=>{const c=document.getElementById('music-card');""","""  {const g1=document.querySelector('.rs-grp.dancer');if(g1){
+    const pr=document.createElement('div');pr.className='rs-sub rs-part';pr.id='dancer-part';pr.hidden=true;pr.setAttribute('role','group');pr.setAttribute('aria-label','Which part of the dancer');
+    pr.innerHTML='<span>Show</span><button type="button" data-part="all" aria-pressed="true">Whole</button><button type="button" data-part="upper" aria-pressed="false">Upper body</button><button type="button" data-part="legs" aria-pressed="false">Legs</button>';
+    g1.append(pr);
+    try{const cp=localStorage.getItem('rs-mv-cutpart');if(cp==='upper'||cp==='legs')state.cutPart=cp;}catch(e){}
+    pr.addEventListener('click',e=>{const b=e.target.closest('[data-part]');if(!b)return;state.cutPart=b.dataset.part;state.refCutout=null;try{lastFrame.reference='';renderRevision++;localStorage.setItem('rs-mv-cutpart',state.cutPart);}catch(err){}partSync();});
+    const partSync=()=>{const on=!!state.maskRef&&preparedReady();if(pr.hidden===on)pr.hidden=!on;pr.querySelectorAll('[data-part]').forEach(b=>{const v=String((state.cutPart||'all')===b.dataset.part);if(b.getAttribute('aria-pressed')!==v)b.setAttribute('aria-pressed',v);});};
+    setInterval(partSync,300);}}
+  setInterval(()=>{const c=document.getElementById('music-card');""")

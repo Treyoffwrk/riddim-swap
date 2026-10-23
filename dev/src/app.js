@@ -1161,7 +1161,7 @@ function drawBodyOnTake(el,t){
   const n=srcOfEl(el),B=n&&bodyOf(n);if(!B)return;
   const rect=RB.containRect(cv.width,cv.height,el.videoWidth||B.w,el.videoHeight||B.h);
   try{
-    if(S.cutOn&&RB.hasCutout(B))RB.cutout(cx,B,t,el,rect,{bg:S.cutBg,colour:'#2B2F6B'});
+    if(S.cutOn&&RB.hasCutout(B))RB.cutout(cx,B,t,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
     if($('#bodyShow').checked)RB.draw(cx,B,t,rect,{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked});
   }catch(e){}
 }
@@ -1855,7 +1855,7 @@ $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.
 const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 let bodyKey='';
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
@@ -1864,7 +1864,7 @@ function drawBody(){
   if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
-  if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B'});
+  if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
   if($('#bodyShow').checked)RB.draw(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr});
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
@@ -1895,6 +1895,7 @@ $('#bodyTrack').addEventListener('click',async()=>{
 /* ---------- quick controls on the video ---------- */
 S.cutOn=false; S.cutBg='dark'; try{S.everPlayed=localStorage.getItem('rs-played')==='1'}catch(e){}
 try{S.cutBg=localStorage.getItem('rs-cutbg')||'dark'}catch(e){}
+S.cutPart='all';try{const cp=localStorage.getItem('rs-cutpart');if(cp==='upper'||cp==='legs')S.cutPart=cp}catch(e){}
 function dockUpdate(){
   const n=srcById(S.cur), B=n&&bodyOf(n), show=!!(S.hasV&&window.RS_HOSTED);
   $('#dock').hidden=!show; if(!show)return;
@@ -1904,6 +1905,8 @@ function dockUpdate(){
   $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
   const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
   $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
+  $('#dkPart').hidden=!(canCut&&S.cutOn); $$('#dkPart button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===S.cutPart)));
+  $('#cutBar').hidden=!(canCut&&S.cutOn);
 }
 $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
   if(!bodyOf(n)){$('#bodyTrack').click();return}
@@ -1911,6 +1914,14 @@ $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
 $('#dkHips').addEventListener('click',()=>{$('#hipShow').checked=!$('#hipShow').checked;$('#hipShow').dispatchEvent(new Event('change'));dockUpdate()});
 $('#dkCut').addEventListener('click',()=>{S.cutOn=!S.cutOn;dockUpdate()});
 $$('#dkBg button').forEach(b=>b.addEventListener('click',()=>{S.cutBg=b.dataset.bg;try{localStorage.setItem('rs-cutbg',S.cutBg)}catch(e){}dockUpdate()}));
+/* the cut-out's options sit just under the video, so they never cover the dancer */
+{const bar=$('#cutBar');bar.append(el('span','label','Show'),$('#dkPart'),el('span','label','Behind'),$('#dkBg'))}
+/* isolation: the whole dancer, just the upper body, or just the legs (the first time you isolate, the rest dims so you keep the context) */
+$$('#dkPart button').forEach(b=>b.addEventListener('click',()=>{const was=S.cutPart;S.cutPart=b.dataset.part;
+  let chose=false;try{chose=!!localStorage.getItem('rs-cutbg-set')}catch(e){}
+  if(was==='all'&&S.cutPart!=='all'&&!chose){S.cutBg='dim';try{localStorage.setItem('rs-cutbg','dim')}catch(e){}}
+  try{localStorage.setItem('rs-cutpart',S.cutPart)}catch(e){}dockUpdate()}));
+$$('#dkBg button').forEach(b=>b.addEventListener('click',()=>{try{localStorage.setItem('rs-cutbg-set','1')}catch(e){}}));
 /* get started: three steps for a new project */
 function startUpdate(){
   const v=!!S.hasV, so=!!S.mainSong, played=!!S.everPlayed, card=$('#startCard');
