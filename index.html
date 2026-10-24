@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-72338f5b54'</script>
+<script>window.RS_BUILD='rs-e0adbf4354'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -1613,12 +1613,30 @@ if(typeof module!=='undefined')module.exports=RA;
       const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
       const model=new Uint8Array(await r.arrayBuffer());
       /* person masks (segmentation) come from the same pass, for the cut-out */
-      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:document.createElement('canvas'),runningMode:'IMAGE',numPoses:CFG.numPoses,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
+      const gcv=document.createElement('canvas');
+      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:gcv,runningMode:'IMAGE',numPoses:CFG.numPoses,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
       let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
       try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
-      runtime={task,delegate}; return runtime;
+      runtime={task,delegate,sdk,gcv}; return runtime;
     })();
     try{return await loading}catch(e){loading=null;throw e}
+  }
+
+  /* Person masks on the graphics chip: reading the mask's numbers back (getAsFloat32Array) gives all zeros there (seen on
+     iPhone, and reproduced in Chrome), so the cut-out showed nothing. Instead the mask is drawn on the tracker's own GPU
+     canvas (MediaPipe's DrawingUtils: person white, rest black), and that picture is shrunk into a small 2D canvas and
+     read. Returns null if anything fails, so the frame simply has no mask. */
+  let gmc=null,gmx=null;
+  function gpuMask(rt,m,mw,mh){
+    try{
+      if(!rt.du){const gl=rt.gcv.getContext('webgl2');if(!gl||!rt.sdk.DrawingUtils)return null;rt.du=new rt.sdk.DrawingUtils(gl)}
+      rt.du.drawConfidenceMask(m,[0,0,0,255],[255,255,255,255]);
+      if(!gmc){gmc=document.createElement('canvas');gmx=gmc.getContext('2d',{willReadFrequently:true})}
+      if(gmc.width!==mw||gmc.height!==mh){gmc.width=mw;gmc.height=mh}
+      gmx.imageSmoothingEnabled=true;gmx.imageSmoothingQuality='high';gmx.clearRect(0,0,mw,mh);gmx.drawImage(rt.gcv,0,0,mw,mh);
+      const d=gmx.getImageData(0,0,mw,mh).data,out=new Uint8Array(mw*mh);for(let i=0;i<out.length;i++)out[i]=d[i*4];
+      return out;
+    }catch(e){return null}
   }
 
   /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
@@ -1684,7 +1702,8 @@ if(typeof module!=='undefined')module.exports=RA;
           const ch=choose(cands,prev,opt.pick&&!pickPose?opt.pick:null,asp,lost,!!opt.pick);
           const M0=performance.now();if(ch){const m=r.segmentationMasks&&r.segmentationMasks[ch.i];
             /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
-            if(m){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
+            if(m&&rt.delegate==='GPU'){mk=gpuMask(rt,m,mw,mh)}
+            else if(m){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
               for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
                 for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
                   for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}}
@@ -2000,7 +2019,14 @@ if(typeof module!=='undefined')module.exports=RA;
      frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
   let mcv=null, mcx=null, ccv=null, ccx=null, bcv=null, bcx=null;
   function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
-  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
+  /* a saved outline that's empty everywhere (tracked on a phone's graphics chip before the fix) can't make a cut-out */
+  function maskUsable(B){
+    if(!B||!B.mask||!B.mask.frames)return false;if(B.mask._ok!=null)return B.mask._ok;
+    const M=B.mask,per=M.w*M.h;let seen=0,lit=0;
+    for(let k=0;k<M.n;k+=Math.max(1,Math.floor(M.n/24))){if(isNaN(B.data[k*STRIDE+1]))continue;seen++;let c=0;for(let i=0;i<per;i+=3)if(M.data[k*per+i]>128)c++;if(c*3>per*0.004)lit++}
+    M._ok=seen>0&&lit>=Math.max(1,seen*0.3);return M._ok;
+  }
+  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames&&maskUsable(B))}
   function maskCanvas(B,k){
     const M=B.mask,mw=M.w,mh=M.h;
     if(!mcv){mcv=document.createElement('canvas');mcx=mcv.getContext('2d')}
@@ -2065,7 +2091,7 @@ if(typeof module!=='undefined')module.exports=RA;
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
@@ -2326,6 +2352,15 @@ function syncSong(force){
   if((Math.abs(drift)>(segMode()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
 }
 
+/* put the video where the song is (the inverse of expected(), with the sound delay) */
+function videoToSong(){
+  const sd=S.sndDelay||0, base=S.offset+(S.variant&&S.variant.shift||0);
+  S.catchUp=performance.now();
+  if(S.study){const t=S.cIn+((a.currentTime-S.offset)/S.ar-(S.avComp||0)-sd)*S.vr;if(t>=S.study.a&&t<S.study.b)v.currentTime=t;return}
+  const T=(a.currentTime-base)/S.ar-(S.avComp||0)-sd, L=segs(), tot=segStart(L.length,L);
+  if(T<0||T>=tot-0.05)return;
+  seekT(T);
+}
 function syncSteady(force){
   const e=expected()+(S.rec?0:(S.sndDelay||0)*S.ar), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
   const setV=n=>{S.vNudge=n;const g=segs()[S.segIdx];if(!g||S.switchPending)return;const r=vNudged(rateAt(g,v.currentTime));if(Math.abs(v.playbackRate-r)>0.006)v.playbackRate=r};
@@ -2349,7 +2384,10 @@ function syncSteady(force){
   S.driftEma=0.8*(S.driftEma||0)+0.2*drift;
   snd.frames++;if(Math.abs(drift)<0.04)snd.within++;snd.maxLate=Math.max(snd.maxLate,Math.abs(drift));
   const limit=segMode()?0.5:0.35;
-  if(Math.abs(S.driftEma)>limit&&now-S.lastFix>2000){S.lastFix=now;S.driftEma=0;snd.jumps++;seekSong(e);setV(0);return}
+  /* far out: move the VIDEO to the song, never the song. On iPhone every song jump is ~0.4 s of silence, and if the
+     video keeps falling behind (a busy phone) the song would cut out over and over; a video catching up a few frames is
+     much less noticeable than the music stopping. */
+  if(Math.abs(S.driftEma)>limit&&now-S.lastFix>1200){S.lastFix=now;S.driftEma=0;snd.vjumps=(snd.vjumps||0)+1;videoToSong();S.vI=0;setV(0);return}
   /* steady: nudge the video, in 0.5% steps so its speed isn't changed every frame */
   /* proportional plus a slow learned part, so a video that runs steadily slow ends up exactly in time, not 40 ms off */
   S.vI=clamp((S.vI||0)+0.015*S.driftEma,-0.05,0.05);
@@ -2429,11 +2467,12 @@ function wire(el){
     if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
     if(me())$('#vidName').textContent="This video can't play here";
   });
-  el.addEventListener('seeked',()=>{if(me()){syncSong(!segMode());recSync(true)}});
+  el.addEventListener('seeked',()=>{if(me()){if(S.catchUp&&performance.now()-S.catchUp<1500){S.catchUp=0;syncSong(false)}else syncSong(!segMode());recSync(true)}});   /* our own catch-up seek doesn't move the song */
   /* a short video hiccup no longer stops the song (that was a cut-out); only a stall over 0.6 s pauses it */
   el.addEventListener('waiting',()=>{if(!me()||S.switchPending||segMode())return;
     if(S.rec){S.stalled=true;a.pause();recStopSong();return}
-    clearTimeout(S.stallTimer);S.stallTimer=setTimeout(()=>{if(me()&&el.readyState<3&&S.playing){S.stalled=true;a.pause();recStopSong();if(S.snd)S.snd.stalls=(S.snd.stalls||0)+1}},600)});  /* routine: the song keeps going */
+    /* the song keeps going through a video stall (stopping it is what you hear); the video catches up when it resumes */
+    clearTimeout(S.stallTimer);S.stallTimer=setTimeout(()=>{if(me()&&el.readyState<3&&S.playing){if(S.snd)S.snd.stalls=(S.snd.stalls||0)+1}},600)});
   el.addEventListener('playing',()=>{if(me()){clearTimeout(S.stallTimer);S.stalled=false;syncSong(false);recSync(true)}});
   el.addEventListener('pause',()=>{if(me()&&S.playing&&!el.ended&&!S.rec&&!S.switchPending)pause()});
   el.addEventListener('ended',()=>{if(!me()||!(S.playing||S.rec))return;atSegEnd();if((S.playing||S.rec)&&v.paused)v.play().catch(()=>{})});
@@ -3975,7 +4014,8 @@ function dockUpdate(){
   if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%'+(S.bodyLeft?' · '+S.bodyLeft.replace('about ','').replace(' left',''):'');bb.setAttribute('aria-pressed','false');bb.disabled=true}
   else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
   $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
-  const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
+  const canCut=!!(B&&RB.hasCutout(B)), staleCut=!!(B&&B.mask&&B.mask.frames&&!canCut);
+  $('#dkCut').hidden=!canCut&&!staleCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn)); $('#dkCut').dataset.stale=staleCut?'1':'';
   $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
   $('#dkPart').hidden=!(canCut&&S.cutOn); $$('#dkPart button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===S.cutPart)));
   $('#cutBar').hidden=!(canCut&&S.cutOn);
@@ -3984,7 +4024,10 @@ $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
   if(!bodyOf(n)){$('#bodyTrack').click();return}
   $('#bodyShow').checked=!$('#bodyShow').checked;$('#bodyShow').dispatchEvent(new Event('change'));dockUpdate()});
 $('#dkHips').addEventListener('click',()=>{$('#hipShow').checked=!$('#hipShow').checked;$('#hipShow').dispatchEvent(new Event('change'));dockUpdate()});
-$('#dkCut').addEventListener('click',()=>{S.cutOn=!S.cutOn;dockUpdate()});
+$('#dkCut').addEventListener('click',()=>{
+  /* tracked before the fix on a phone: the outline was saved empty; tracking again makes it */
+  if($('#dkCut').dataset.stale){if(confirm('This clip was tracked before a fix: its outline came out empty on your phone, so Cut out can\'t show the dancer. Track it again now? (It plays through once, silently.)')){S.cutOn=true;$('#bodyTrack').click()}return}
+  S.cutOn=!S.cutOn;dockUpdate()});
 $$('#dkBg button').forEach(b=>b.addEventListener('click',()=>{S.cutBg=b.dataset.bg;try{localStorage.setItem('rs-cutbg',S.cutBg)}catch(e){}dockUpdate()}));
 /* the cut-out's options sit just under the video, so they never cover the dancer */
 {const bar=$('#cutBar');bar.append(el('span','label','Show'),$('#dkPart'),el('span','label','Behind'),$('#dkBg'))}
@@ -4834,7 +4877,7 @@ window.addEventListener('unhandledrejection',e=>noteErr('promise: '+((e.reason&&
 function soundReport(){const s=(S.snd&&S.snd.frames>10)?S.snd:S.sndLast;if(!s||!s.frames)return '';
   const secs=(performance.now()-s.started)/1000,pct=Math.round(100*s.within/s.frames);
   const span=((s.endAt||performance.now())-s.started)/1000, fps=span>0.5?Math.round(s.frames/span):0;
-  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).`}
+  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.vjumps?`, video caught up ${s.vjumps} time${s.vjumps>1?'s':''}`:''}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).`}
 $('#projBtn').addEventListener('click',()=>{$('#sndReport').textContent=soundReport()});
 async function phoneCheck(){
   const L=[],add=(k,v)=>{if(v!=null&&v!=='')L.push(k+': '+v)};
@@ -4847,7 +4890,7 @@ async function phoneCheck(){
   add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
   const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
   const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
-  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
