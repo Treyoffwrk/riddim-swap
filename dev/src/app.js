@@ -2714,13 +2714,18 @@ async function checkUpdate(onReturn){
   if(!window.RS_HOSTED)return;
   const now=Date.now();if(now-UPD.checkedAt<(onReturn?20000:9*60000))return;UPD.checkedAt=now;
   const v=await serverVersion();if(!v)return;
-  if(!UPD.boot){UPD.boot=v;return}
+  if(!UPD.boot){UPD.boot=window.RS_BUILD||v;if(v===UPD.boot)return}
   if(v===UPD.boot)return;
   UPD.ready=true;
   if(onReturn&&idleNow())reloadSaved();else showUpdateBar();
 }
 if(window.RS_HOSTED){
-  serverVersion().then(v=>{UPD.boot=v;UPD.checkedAt=Date.now();$('#appVer').textContent=v?'This version: '+v.replace(/^rs-/,''):''});
+  /* the version this page was built as (stamped by the build), not whatever the server says now */
+  UPD.boot=window.RS_BUILD||null;$('#appVer').textContent=UPD.boot?'This version: '+UPD.boot.replace(/^rs-/,''):'';
+  serverVersion().then(v=>{UPD.checkedAt=Date.now();if(!UPD.boot){UPD.boot=v;$('#appVer').textContent=v?'This version: '+v.replace(/^rs-/,''):''}
+    else if(v&&v!==UPD.boot){UPD.ready=true;let tried=null;try{tried=sessionStorage.getItem('rs-upd-try')}catch(e){}
+      /* one automatic reload per new version; if the old page comes back anyway, show the Update bar instead of looping */
+      if(tried!==v&&idleNow()){try{sessionStorage.setItem('rs-upd-try',v)}catch(e){}reloadSaved()}else showUpdateBar()}});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate(true)});
   setInterval(()=>checkUpdate(false),10*60000);
 }

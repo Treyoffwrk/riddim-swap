@@ -102,7 +102,7 @@ MV_UPD = r"""
 /* Riddim Swap integration: iPhone resumes a Home Screen app instead of restarting it, so check for a new version on return */
 (function(){
   const ver=async()=>{try{const r=await fetch('../sw.js?v='+Date.now(),{cache:'no-store'});if(!r.ok)return null;const m=(await r.text()).match(/VERSION='([^']+)'/);return m?m[1]:null}catch(e){return null}};
-  let boot=null,at=0;ver().then(v=>{boot=v;at=Date.now()});
+  let boot=window.RS_BUILD||null,at=0;ver().then(v=>{if(!boot)boot=v;at=Date.now();if(v&&boot&&v!==boot){let tried=null;try{tried=sessionStorage.getItem('mv-upd-try')}catch(e){}if(tried!==v){try{sessionStorage.setItem('mv-upd-try',v)}catch(e){}location.reload()}}});
   document.addEventListener('visibilitychange',async()=>{
     if(document.hidden||!boot||Date.now()-at<20000)return;at=Date.now();
     const v=await ver();if(!v||v===boot)return;

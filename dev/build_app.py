@@ -108,6 +108,15 @@ for f in sorted(OUT.rglob('*')):
         h.update(f.read_bytes())
 version = h.hexdigest()[:10]
 
+# each page carries the version it was built as, so the app can tell when the server has a newer one (comparing the
+# server with itself, which is what the update check did before, never finds a difference)
+for page in [OUT / 'index.html', OUT / 'mirrorview' / 'index.html']:
+    if page.exists():
+        t = page.read_text()
+        assert '<head>' in t
+        t = t.replace('<head>', "<head>\n<script>window.RS_BUILD='rs-%s'</script>" % version, 1)
+        page.write_text(t)
+
 sw = """/* Riddim Swap offline support. Version changes on every build. */
 const VERSION='rs-%s';
 const SHELL=['./','./index.html','./mirrorview/','./mirrorview/index.html','./manifest.webmanifest','./vendor/mp4-muxer.js',
@@ -124,7 +133,8 @@ self.addEventListener('fetch',e=>{
      Each page is cached under its own address, so opening MirrorView never replaces the saved Riddim Swap page. */
   if(req.mode==='navigate'||(url.origin===location.origin&&url.pathname.endsWith('.html'))){
     const key=new URL(url.pathname.endsWith('/')?url.pathname+'index.html':url.pathname,location.origin).href;
-    e.respondWith(fetch(req).then(r=>{if(r.ok&&r.type==='basic'){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
+    /* always check with the server (a quick 'has it changed?'), so a new version isn't hidden by the browser's cache */
+    e.respondWith(fetch(req.mode==='navigate'?new Request(url.href,{cache:'no-cache',credentials:'same-origin'}):req).then(r=>{if(r.ok&&(r.type==='basic'||r.type==='default')){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
       .catch(()=>caches.match(key).then(m=>m||caches.match('./index.html'))));
     return;
   }

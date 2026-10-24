@@ -1,5 +1,5 @@
 /* Riddim Swap offline support. Version changes on every build. */
-const VERSION='rs-7f612bcf4c';
+const VERSION='rs-72338f5b54';
 const SHELL=['./','./index.html','./mirrorview/','./mirrorview/index.html','./manifest.webmanifest','./vendor/mp4-muxer.js',
   './icons/icon-192.png','./icons/icon-512.png','./icons/maskable-512.png','./icons/apple-touch-icon.png','./icons/favicon-32.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
@@ -14,7 +14,8 @@ self.addEventListener('fetch',e=>{
      Each page is cached under its own address, so opening MirrorView never replaces the saved Riddim Swap page. */
   if(req.mode==='navigate'||(url.origin===location.origin&&url.pathname.endsWith('.html'))){
     const key=new URL(url.pathname.endsWith('/')?url.pathname+'index.html':url.pathname,location.origin).href;
-    e.respondWith(fetch(req).then(r=>{if(r.ok&&r.type==='basic'){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
+    /* always check with the server (a quick 'has it changed?'), so a new version isn't hidden by the browser's cache */
+    e.respondWith(fetch(req.mode==='navigate'?new Request(url.href,{cache:'no-cache',credentials:'same-origin'}):req).then(r=>{if(r.ok&&(r.type==='basic'||r.type==='default')){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
       .catch(()=>caches.match(key).then(m=>m||caches.match('./index.html'))));
     return;
   }
