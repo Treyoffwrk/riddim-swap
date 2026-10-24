@@ -7,12 +7,37 @@
     <div class="hdr-r">
       <span class="savestate" id="saveState" aria-live="polite"></span>
       <button class="btn sm ghost mv-only" id="mvBtn" hidden title="Body: mirror, Worldline, Pulse and practice">Body</button>
+      <button class="btn sm ghost" id="lookBtn" aria-haspopup="dialog" title="Colours, sounds and themes">Look</button>
       <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>
     </div>
   </header>
   <div class="missbar" id="missBar" hidden>
     <span id="missText"></span>
     <button class="btn sm" id="missFix">Re-add files</button>
+  </div>
+
+  <div class="sheet-back" id="lookBack" hidden></div>
+  <section class="sheet" id="lookSheet" role="dialog" aria-modal="true" aria-labelledby="lookTitle" hidden>
+    <div class="subhead"><h3 id="lookTitle">Look &amp; sound</h3><button class="btn sm ghost" id="lookClose">Done</button></div>
+    <div class="field">
+      <span class="label">Your colours</span>
+      <div class="picks">
+        <label class="pick"><input type="color" id="pickBallRiddim"><span>Riddim ball</span></label>
+        <label class="pick"><input type="color" id="pickBallDancer"><span>Dancer ball</span></label>
+        <label class="pick"><input type="color" id="pickSkelDance"><span>Skeleton</span></label>
+        <label class="pick"><input type="color" id="pickSkelHips"><span>Hips</span></label>
+      </div>
+      <div class="row"><button class="btn sm ghost" id="pickReset">Back to the app's colours</button></div>
+      <p class="hint">Free, always. Packs below are ready-made looks; picking a colour here changes it on top of whichever pack you use.</p>
+    </div>
+    <p class="hint" id="lookStoreNote" hidden>Packs only change how the app looks and sounds. Every feature stays free.</p>
+    <p class="hint" id="lookMsg" hidden></p>
+    <div id="lookPacks"></div>
+  </section>
+  <div class="lookbar" id="lookBar" role="status" hidden>
+    <span id="lookBarName"></span>
+    <button class="btn sm" id="lookBarUse">Use it</button>
+    <button class="btn sm ghost" id="lookBarStop">Stop</button>
   </div>
 
   <div class="sheet-back" id="sheetBack" hidden></div>
