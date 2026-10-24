@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 24 Oct 2026 · version rs-e0adbf4354 · repo Treyoffwrk/riddim-swap_
+_Last updated 24 Oct 2026 · version rs-2acc5fd05a · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -37,6 +37,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
   - **Sound** in every view: Song (Riddim Swap's song, in time with the clip, at its own speed: song = offset + (clip time − clip start) × song speed ÷ clip speed; the song leads and the clip is nudged up to ±6%), Clip (the video's own sound) or Off. It doesn't depend on Pulse, so sound still plays when Pulse can't read a clip's audio.
   - It uses Riddim Swap's header, with Projects, and its section bar. MirrorView's own Load video, Start here and Diagnostics sit in the ⋯ menu.
 - **Keeps your work.** Projects save on the phone. Backups and `.riddim` share bundles carry videos, songs and tracking.
+- **Look & sound** (the Look button in the header). A sheet with free colour pickers for the balls and skeleton, and 16 cosmetic packs: balls, skeleton (some with a glow), click sounds and app themes, a free Classic plus three extras of each. Nothing is locked on the web. Paid packs are only gated when the store is on (`?store=1`, or inside the App Store app): then they show a price, Buy and Try it (a preview with a bar to buy or stop), with a note that every feature stays free. Purchases are test purchases for now (no money taken). Source: `src/look.js`, packs in `src/packs.json`.
 - **Works offline after the first visit.** This includes the body tracker.
 
 ## Architecture
@@ -67,7 +68,11 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 43 suites, all passed (24 Oct 2026), at rs-e0adbf4354, including isolation with tracking on the GPU and a slow-video test (video plays 15% slower than asked: 0 song jumps in 10 s).
+**Last full regression:** 47 suites at rs-2acc5fd05a (24 Oct 2026, Look & sound merged): all passed, including Look (24/24), isolation with tracking on the GPU, slow video, skeleton drawing and tracking with a silent frame clock. Three checks failed in the full run: the hip meter check (it expected gauges while ball cues are on; updated for the new behaviour), and Body camera start and the quick-flick swipe, which passed when re-run alone (timing under load).
+
+**Earlier:** 43 suites at rs-e0adbf4354, including a slow-video test (video plays 15% slower than asked: 0 song jumps in 10 s).
+
+**Skeleton on phones (24 Oct 2026, rs-2acc5fd05a):** on iPhone, tracking could stop part-way through a clip (the hidden video stops reporting frames) and still say it was complete ("197 of 197 frames" on a 35 s clip), so the skeleton vanished after about 6 s. Tracking now carries on through to the end, and the Clip tab and phone check say how much of the clip is covered. Also: no skeleton on the old picture while a loop restarts, and the hip gauges are hidden while the ball cues use the side bars. Tests: with the frame clock going silent after 100 frames, the old build covered 2.6 s of a 12 s clip and the new one all of it.
 
 **Cut-out on phones (24 Oct 2026):** masks made on the GPU (as on iPhone) were all zero, so Upper / Legs / Cut out showed nothing. They are now drawn through MediaPipe's DrawingUtils and read back (median IoU 0.964 against CPU masks). Clips tracked before this have empty masks; Cut out detects that and offers Track again.
 
@@ -132,6 +137,9 @@ Routine timeline:
 - Split here cuts a move in two.
 
 **Not verified (needs a real iPhone)**
+
+- Look & sound: the skeleton glow on real tracked footage, and the sheet and store on a real iPhone.
+- That tracking now covers the whole clip on iPhone (simulated in tests, not yet seen on the phone).
 
 - How fast tracking runs on the phone's GPU.
 - AAC priming on Safari recordings.

@@ -46,9 +46,14 @@ const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
  /* find a tilted frame and look at the drawing */
  const tT=await p.evaluate(()=>{const B=window.__rs.srcById(window.__rs.S.cur).body;let best=0,bt=0;for(let i=0;i<B.n;i++){const t=B.data[i*RB.STRIDE],h=RB.hipsAt(B,t);if(h&&h.tilt!=null&&Math.abs(h.tilt)>Math.abs(best)){best=h.tilt;bt=t}}return {t:bt,tilt:best}});
  await p.evaluate(t=>{window.__rs.v().currentTime=t},tT.t);await p.waitForTimeout(700);
- const px=await p.evaluate(()=>{const c=document.getElementById('bodyCanvas'),x=c.getContext('2d'),v=window.__rs.v(),r=RB.containRect(c.width,c.height,v.videoWidth,v.videoHeight);
+ const meterPx=()=>p.evaluate(()=>{const c=document.getElementById('bodyCanvas'),x=c.getContext('2d'),v=window.__rs.v(),r=RB.containRect(c.width,c.height,v.videoWidth,v.videoHeight);
    const d=x.getImageData(0,Math.round(r.y),Math.round(r.x+r.w*0.6),Math.round(r.h*0.6)).data;let pink=0,dark=0;for(let i=0;i<d.length;i+=4){if(d[i]>200&&d[i+1]<140&&d[i+2]>120)pink++;if(d[i+3]>150&&d[i]<40&&d[i+1]<40)dark++}return {pink,dark}});
- rec('Hip meter drawn (beside a tall video, or over its top corner)',px.pink>40&&px.dark>500?'passed':'failed',JSON.stringify(px)+` at ${tT.t.toFixed(2)} s, tilt ${tT.tilt.toFixed(1)}°`);
+ /* with the ball cues on, the balls use the side bars, so the gauges are hidden; with cues off they're drawn */
+ const bv0=await p.evaluate(()=>window.__rs.S.beatView);const withBalls=bv0==='ball'?await meterPx():null;
+ await p.evaluate(()=>document.querySelector('#bvSeg [data-bv="off"]').click());await p.waitForTimeout(500);const px=await meterPx();
+ await p.evaluate(b=>{const e=document.querySelector(`#bvSeg [data-bv="${b}"]`);if(e)e.click()},bv0);await p.waitForTimeout(300);
+ rec('Hip meter hidden while the ball cues are on (they share the side bars)',withBalls==null||withBalls.dark<200?'passed':'failed',JSON.stringify(withBalls)+' cues '+bv0);
+ rec('Hip meter drawn with cues off (beside a tall video, or over its top corner)',px.pink>40&&px.dark>500?'passed':'failed',JSON.stringify(px)+` at ${tT.t.toFixed(2)} s, tilt ${tT.tilt.toFixed(1)}°`);
  await p.locator('#stage').screenshot({path:SHOT+'-tilt.png'});
  await p.click('#t-clip');await p.locator('#hipCard').scrollIntoViewIfNeeded();await p.waitForTimeout(500);
  rec('Hip moves graph shows under body tracking',await p.isVisible('#hipCanvas')?'passed':'failed','now: '+await p.textContent('#hipNow'));

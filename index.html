@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-e0adbf4354'</script>
+<script>window.RS_BUILD='rs-2acc5fd05a'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -492,6 +492,21 @@ details.more .field{margin-top:8px}
 .cutbar .bgpick button{min-height:30px;width:30px;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.22);cursor:pointer}
 .cutbar .bgpick button[aria-pressed="true"]{outline:2px solid #F3F1EC;outline-offset:2px}
 .cutbar .partpick{background:var(--surface)!important;border-color:var(--line)!important}
+
+/* ---------- Look & sound sheet ---------- */
+.picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.pick{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}
+.pick input[type=color]{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:50%;background:none;cursor:pointer;flex:none}
+#lookPacks h4{margin:14px 0 6px;font-family:var(--f-display);font-size:15px}
+.look-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.pack{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:6px;background:var(--sunk);align-content:start}
+.pack[aria-current="true"]{border-color:var(--song-hot);box-shadow:0 0 0 1px var(--song-hot)}
+.pack-top{display:grid;gap:6px}
+.dots{display:flex;align-items:center;gap:5px}
+.dots i{display:inline-block;width:16px;height:16px;border-radius:50%;border:1px solid rgba(255,255,255,.25)}
+.dots small{font-size:11px;color:var(--muted);margin-left:2px}
+.lookbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);z-index:70;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px;max-width:calc(100% - 16px)}
+.lookbar[hidden]{display:none}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -515,12 +530,37 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
     <div class="hdr-r">
       <span class="savestate" id="saveState" aria-live="polite"></span>
       <button class="btn sm ghost mv-only" id="mvBtn" hidden title="Body: mirror, Worldline, Pulse and practice">Body</button>
+      <button class="btn sm ghost" id="lookBtn" aria-haspopup="dialog" title="Colours, sounds and themes">Look</button>
       <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>
     </div>
   </header>
   <div class="missbar" id="missBar" hidden>
     <span id="missText"></span>
     <button class="btn sm" id="missFix">Re-add files</button>
+  </div>
+
+  <div class="sheet-back" id="lookBack" hidden></div>
+  <section class="sheet" id="lookSheet" role="dialog" aria-modal="true" aria-labelledby="lookTitle" hidden>
+    <div class="subhead"><h3 id="lookTitle">Look &amp; sound</h3><button class="btn sm ghost" id="lookClose">Done</button></div>
+    <div class="field">
+      <span class="label">Your colours</span>
+      <div class="picks">
+        <label class="pick"><input type="color" id="pickBallRiddim"><span>Riddim ball</span></label>
+        <label class="pick"><input type="color" id="pickBallDancer"><span>Dancer ball</span></label>
+        <label class="pick"><input type="color" id="pickSkelDance"><span>Skeleton</span></label>
+        <label class="pick"><input type="color" id="pickSkelHips"><span>Hips</span></label>
+      </div>
+      <div class="row"><button class="btn sm ghost" id="pickReset">Back to the app's colours</button></div>
+      <p class="hint">Free, always. Packs below are ready-made looks; picking a colour here changes it on top of whichever pack you use.</p>
+    </div>
+    <p class="hint" id="lookStoreNote" hidden>Packs only change how the app looks and sounds. Every feature stays free.</p>
+    <p class="hint" id="lookMsg" hidden></p>
+    <div id="lookPacks"></div>
+  </section>
+  <div class="lookbar" id="lookBar" role="status" hidden>
+    <span id="lookBarName"></span>
+    <button class="btn sm" id="lookBarUse">Use it</button>
+    <button class="btn sm ghost" id="lookBarStop">Stop</button>
   </div>
 
   <div class="sheet-back" id="sheetBack" hidden></div>
@@ -1639,6 +1679,16 @@ if(typeof module!=='undefined')module.exports=RA;
     }catch(e){return null}
   }
 
+  /* How much of the clip the tracking covers (time spans with no frame looked at for over half a second count as missing; frames where nobody was found still count). */
+  function coverage(B){
+    if(!B||!B.n||!B.data||!isFinite(B.end)||!(B.end>(B.start||0)))return null;
+    const st=B.data.length/B.n, s0=B.start||0, s1=B.end; let prev=s0, miss=0, from=null, to=null;
+    for(let k=0;k<B.n;k++){const t=B.data[k*st];if(from==null)from=t;to=t;if(t-prev>0.5)miss+=t-prev;prev=t}
+    if(s1-prev>0.5)miss+=s1-prev;
+    const pct=Math.round(100*(1-miss/(s1-s0)));
+    return {from:from??s0,to:to??s0,pct,short:pct<90};
+  }
+
   /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
      skipped however slow the phone is. Each sample keeps the frame's own media time. */
   async function track(url,opt){
@@ -1676,7 +1726,7 @@ if(typeof module!=='undefined')module.exports=RA;
       if(opt.pick&&isFinite(opt.pick.t)){anchor=0;let bd=1e9;want.forEach((w,k)=>{const d=Math.abs(w-opt.pick.t);if(d<bd){bd=d;anchor=k}});
         order=[];for(let k=anchor;k<want.length;k++)order.push(k);for(let k=anchor-1;k>=0;k--)order.push(k)}
       const slot=new Array(want.length).fill(null); let ms=0, n=0, done=0, multi=0;
-      let prev=null, lost=0, pickPose=null;
+      let prev=null, lost=0, pickPose=null, clockMiss=0, clockHits=0;
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(opt.signal&&opt.signal.aborted)break;
@@ -1687,7 +1737,11 @@ if(typeof module!=='undefined')module.exports=RA;
         const tol=Math.max(1.5/fps,0.06);
         let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null; if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
         /* no new frame showed (a variable-rate clip has fewer frames than the steps): nothing new to track here */
-        if(mt==null&&hasRVFC){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
+        /* (iPhone can stop reporting frames for a hidden video part-way through: skipping then dropped the rest of the
+           clip, so the skeleton vanished after a few seconds. Now the frame is tracked at the asked time unless the frame
+           clock is clearly working and says this step showed no new frame.) */
+        if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
+        else if(mt!=null){clockMiss=0;clockHits++}
         const t=mt!=null?mt:want[k]-0.5/fps;
         const P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
@@ -2091,7 +2145,7 @@ if(typeof module!=='undefined')module.exports=RA;
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
@@ -3273,7 +3327,7 @@ function drawBodyOnTake(el,t){
   const rect=RB.containRect(cv.width,cv.height,el.videoWidth||B.w,el.videoHeight||B.h);
   try{
     if(S.cutOn&&RB.hasCutout(B))RB.cutout(cx,B,t,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
-    if($('#bodyShow').checked)RB.draw(cx,B,t,rect,{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked});
+    if($('#bodyShow').checked)LOOK.drawBody(cx,B,t,rect,{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked},1);
   }catch(e){}
 }
 
@@ -3966,17 +4020,19 @@ $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.
 const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 let bodyKey='';
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
-  if(!on){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false}return}
+  /* while the video is seeking (a loop restarting, a jump) it still shows the old frame: drawing the new pose over it
+     puts the skeleton on the wrong picture (e.g. the end screen), so draw nothing until the frame arrives */
+  if(!on||el.seeking){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false;bodyKey=''}return}
   const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);
   if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
-  if($('#bodyShow').checked)RB.draw(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{dance:tok('--dance'),hips:tok('--hips'),hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr});
+  if($('#bodyShow').checked)LOOK.drawBody(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
 }
@@ -4747,6 +4803,9 @@ function etaText(t0,p){if(!t0||p-t0.p<0.03)return '';const el=(performance.now()
   return left<45?'about '+Math.max(5,Math.round(left/5)*5)+' s left':'about '+Math.round(left/60)+' min left'}
 function bodyInfoText(n,B){
   let t=`Body tracked on ${B.seen} of ${B.n} frames.`;
+  /* how much of the clip the tracking covers: a run that stopped part-way used to look complete ("197 of 197") */
+  const cov=RB.coverage?RB.coverage(B):null;
+  if(cov&&cov.short)t=`Body tracked from ${fmt(cov.from)} to ${fmt(cov.to)} only (${cov.pct}% of the clip): the skeleton is missing outside that. Track again to cover the whole clip.`;
   if(B.v<2)t+=' Tracked with the older tracker: Track again for steadier tracking, hip turn and following one dancer.';
   else if(B.multi&&B.multi>0.1*B.n)t+=` More than one person in ${Math.round(B.multi/B.n*100)}% of frames: following ${B.pick?'the dancer you chose':'the biggest one'}. Use "Choose the dancer" to follow someone else.`;
   if(B.clean&&B.clean.flips)t+=` Fixed ${B.clean.flips} left/right mix-up${B.clean.flips>1?'s':''}.`;
@@ -4890,7 +4949,7 @@ async function phoneCheck(){
   add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
   const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
   const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
-  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}${(()=>{const c=RB.coverage&&RB.coverage(B);return c?' · covers '+c.pct+'% of the clip':''})()}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
@@ -5410,7 +5469,7 @@ function songNow(){
   return c.mt+(now-c.pt)/1000*r;
 }
 const heardNow=()=>{const r=a.playbackRate||1;return songNow()-CUE.delay*r+r/60};
-function cueCols(){const now=performance.now();if(!CUE.col||now-CUE.colAt>3000){CUE.col={song:tok('--song-hot'),dance:tok('--dance'),ink:'#F3F1EC'};CUE.colAt=now}return CUE.col}
+function cueCols(){const now=performance.now();if(!CUE.col||now-CUE.colAt>3000){const b=LOOK.ball();CUE.col={song:b.riddim,dance:b.dancer,ink:'#F3F1EC',ring:b.ring,glow:b.glow};CUE.colAt=now}return CUE.col}
 /* the riddim's hits (song seconds) — or the steady beat when the riddim can't be seen or the beat was tapped */
 function riddimEvents(){
   const so=S.liveSong, an=so&&so.an, G=liveGrid(); if(!G)return {ev:[],label:'Beat',sure:false,beat:0.6};
@@ -5441,7 +5500,7 @@ function lane(E,H,beat){
   const land=pv&&H-pv.t<0.22?{age:H-pv.t,kind:pv.kind,w:pv.w,t:pv.t}:null;
   return {y,land,nearNext,next:nx};
 }
-function cueBall(c,x,floor,R,hop,L,col,unsure){
+function cueBall(c,x,floor,R,hop,L,col,unsure,st){
   const lift=L.y*hop, ag=L.land?L.land.age:1, sq=ag<0.07?1-ag/0.07:0;
   /* shadow: sharpens as the ball comes down, so the landing can be read before it happens */
   c.fillStyle=`rgba(0,0,0,${0.18+0.32*(1-L.y)})`;c.beginPath();c.ellipse(x,floor+R*0.15,R*(1.25-0.5*L.y),R*0.32*(1-0.5*L.y),0,0,Math.PI*2);c.fill();
@@ -5449,12 +5508,16 @@ function cueBall(c,x,floor,R,hop,L,col,unsure){
   if(L.land&&ag<0.22){const k=L.land.kind,p=ag/0.22, big=k==='kick'||k==='both'||k==='one';
     const rr=R*(1.1+p*(big?2.6:1.9))*(k==='dance'?0.7+0.3*clamp(L.land.w,0.3,1.5):1);
     c.lineWidth=R*(big?0.42:0.26)*(1-p);c.strokeStyle=k==='snare'?`rgba(243,241,236,${1-p})`:col;c.globalAlpha=k==='snare'?1:(1-p);
-    c.beginPath();c.ellipse(x,floor,rr,rr*0.42,0,0,Math.PI*2);c.stroke();
+    c.beginPath();c.ellipse(x,floor,rr,rr*0.42,0,0,Math.PI*2);
+    if(st&&st.ring==='filled'&&k!=='snare'){c.save();c.globalAlpha=0.28*(1-p);c.fillStyle=col;c.fill();c.restore()}
+    c.stroke();
+    if(st&&st.ring==='double'&&k!=='snare'){c.beginPath();c.ellipse(x,floor,rr*0.68,rr*0.68*0.42,0,0,Math.PI*2);c.lineWidth*=0.6;c.globalAlpha=0.7*(1-p);c.stroke()}
     if(k==='both'){c.strokeStyle=`rgba(243,241,236,${1-p})`;c.globalAlpha=1;c.lineWidth=R*0.2*(1-p);c.beginPath();c.ellipse(x,floor,rr*0.7,rr*0.3,0,0,Math.PI*2);c.stroke()}
     c.globalAlpha=1}
   /* the ball: squashes for a moment when it lands */
   const sx=1+0.28*sq, sy=1-0.3*sq, cy=floor-R*sy-lift;
   c.save();c.translate(x,cy);c.scale(sx,sy);c.beginPath();c.arc(0,0,R,0,Math.PI*2);
+  if(st&&st.glow){c.shadowColor=col;c.shadowBlur=R*st.glow*1.6}
   if(unsure){c.lineWidth=R*0.22;c.strokeStyle=col;c.globalAlpha=0.55;c.stroke()}else{c.fillStyle=col;c.fill();c.fillStyle='rgba(255,255,255,.35)';c.beginPath();c.arc(-R*0.3,-R*0.32,R*0.32,0,Math.PI*2);c.fill()}
   c.restore();c.globalAlpha=1;
 }
@@ -5481,9 +5544,9 @@ function drawCues(){
   const xL=inBars?side/2:rect.x+pad, xR=inBars?w-side/2:rect.x+rect.w-pad;
   const rid=riddimEvents(), dEv=S.hasV?dancerEvents():[];
   const Lr=lane(rid.ev,H,rid.beat);
-  cueBall(c,xL,floor,R,hop,Lr,col.song,!rid.sure); cueLabel(c,xL,floor,R,rid.label+(rid.sure?'':' ?'),col.song);
+  cueBall(c,xL,floor,R,hop,Lr,col.song,!rid.sure,col); cueLabel(c,xL,floor,R,rid.label+(rid.sure?'':' ?'),col.song);
   if(dEv.length){const Ld=lane(dEv,H,rid.beat);
-    cueBall(c,xR,floor,R,hop,Ld,col.dance,!danceSure()); cueLabel(c,xR,floor,R,'Dancer'+(danceSure()?'':' ?'),col.dance);
+    cueBall(c,xR,floor,R,hop,Ld,col.dance,!danceSure(),col); cueLabel(c,xR,floor,R,'Dancer'+(danceSure()?'':' ?'),col.dance);
     /* both landed together (within 60 ms): join them */
     if(Lr.land&&Ld.land&&Math.abs(Lr.land.t-Ld.land.t)<0.06&&Ld.land.age<0.2){const p=Ld.land.age/0.2;c.strokeStyle=`rgba(243,241,236,${0.85*(1-p)})`;c.lineWidth=R*0.22*(1-p);
       c.beginPath();c.moveTo(xL+R*1.3,floor);c.lineTo(xR-R*1.3,floor);c.stroke()}}
@@ -5513,10 +5576,11 @@ function clickTick(){
   let lo=0,hi=ev.length;while(lo<hi){const m=(lo+hi)>>1;if(ev[m].t<now-0.005)lo=m+1;else hi=m}
   for(let i=lo;i<ev.length&&ev[i].t<now+ahead*r;i++){const e=ev[i],id=Math.round(e.t*1000);if(CLK.sched.has(id))continue;CLK.sched.add(id);
     const when=c.currentTime+Math.max(0,(e.t-now)/r);
+    const K=LOOK.snd(),kd=e.kind==='kick'||e.kind==='snare'||e.kind==='both'||e.kind==='one'?e.kind:'beat';
     const o=c.createOscillator(),g=c.createGain();
-    const f=e.kind==='kick'?520:e.kind==='snare'?2100:e.kind==='both'?900:e.kind==='one'?1600:1000;
-    o.frequency.value=f; g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime(e.kind==='kick'?0.5:0.32,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+(e.kind==='kick'?0.09:0.05));
-    o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.1);CLK.nodes.push({o,at:when})}
+    const f=K.freq[kd];
+    o.type=K.wave; o.frequency.value=f; g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime((e.kind==='kick'?0.5:0.32)*K.gain,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+(e.kind==='kick'?0.09:0.05)*K.decay);
+    o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.1*Math.max(1,K.decay));CLK.nodes.push({o,at:when})}
   if(CLK.nodes.length>64)CLK.nodes=CLK.nodes.filter(n=>n.at>c.currentTime-0.2);
   if(CLK.sched.size>400)CLK.sched=new Set([...CLK.sched].slice(-100));
 }
@@ -5547,7 +5611,144 @@ $('#delayTest').addEventListener('click',()=>{
     if(ct>T.until+0.3){delayTestStop();return}T.raf=requestAnimationFrame(loop)};
   T.raf=requestAnimationFrame(loop);
 });
-if(/debug/.test(location.hash))window.__rs={hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+/* ---------- look: how the balls, the skeleton, the click and the app colours look and sound ----------
+   Nothing here changes what the app can do. A "pack" is a small record (src/packs.json) that says how one thing looks or sounds;
+   the app reads the current look from LOOK instead of fixed colours, shapes and sounds. A pack field of null means "use the
+   app's own colour", so the Classic packs reproduce the app exactly as it was.
+   Order of strength, from strongest to weakest: a colour you picked yourself > the pack in use > the theme > the app's own colour.
+   On the web version every pack can be used. Only with the store on (inside the App Store app, or ?store=1 to test) do paid packs
+   need to be owned. */
+const PACKS=[
+  {"id":"ball-classic","type":"ball","name":"Classic","free":true,
+    "riddim":null,"dancer":null,"ring":"single","glow":0},
+  {"id":"ball-neon","type":"ball","name":"Neon","price":"£0.99",
+    "riddim":"#FF3DF2","dancer":"#3DFFE0","ring":"double","glow":0.7},
+  {"id":"ball-carnival","type":"ball","name":"Carnival","price":"£0.99",
+    "riddim":"#FFD23F","dancer":"#2EC4B6","ring":"filled","glow":0.25},
+  {"id":"ball-chalk","type":"ball","name":"Chalk","price":"£0.99",
+    "riddim":"#F3F1EC","dancer":"#AEB8CF","ring":"double","glow":0},
+
+  {"id":"skel-classic","type":"skeleton","name":"Classic","free":true,
+    "dance":null,"hips":null,"glow":0},
+  {"id":"skel-glow","type":"skeleton","name":"Glow","price":"£0.99",
+    "dance":"#7DF9FF","hips":"#FF7AD9","glow":0.9},
+  {"id":"skel-hologram","type":"skeleton","name":"Hologram","price":"£0.99",
+    "dance":"#5CFFB0","hips":"#C9FFE6","glow":0.55},
+  {"id":"skel-paint","type":"skeleton","name":"Paint","price":"£0.99",
+    "dance":"#FFB347","hips":"#FF6B9A","glow":0},
+
+  {"id":"snd-classic","type":"sound","name":"Classic","free":true,
+    "wave":"sine","freq":{"kick":520,"snare":2100,"both":900,"one":1600,"beat":1000},"decay":1},
+  {"id":"snd-woodblock","type":"sound","name":"Woodblock","price":"£0.99",
+    "wave":"triangle","freq":{"kick":330,"snare":1500,"both":620,"one":1250,"beat":820},"decay":0.7},
+  {"id":"snd-cowbell","type":"sound","name":"Cowbell","price":"£0.99",
+    "wave":"square","freq":{"kick":540,"snare":830,"both":660,"one":800,"beat":587},"decay":1.6},
+  {"id":"snd-soft","type":"sound","name":"Soft","price":"£0.99",
+    "wave":"sine","freq":{"kick":260,"snare":900,"both":450,"one":700,"beat":500},"decay":1.3},
+
+  {"id":"theme-classic","type":"theme","name":"Classic","free":true,"vars":{}},
+  {"id":"theme-dancehall","type":"theme","name":"Dancehall","price":"£1.99",
+    "vars":{"--bg":"#0B100C","--surface":"#141C16","--sunk":"#1B261E","--line":"#2A3A2E","--muted":"#9DB0A2",
+      "--song":"#FFD23F","--song-hot":"#FFD23F","--dance":"#3DDC84","--hips":"#FF5A5F","--stage":"#070A08"}},
+  {"id":"theme-sunset","type":"theme","name":"Sunset","price":"£1.99",
+    "vars":{"--bg":"#160E14","--surface":"#22151D","--sunk":"#2C1B26","--line":"#43283A","--muted":"#C0A3B4",
+      "--song":"#FF9A62","--song-hot":"#FF9A62","--dance":"#C28BFF","--hips":"#FF5FA2","--stage":"#0E080C"}},
+  {"id":"theme-midnight","type":"theme","name":"Midnight","price":"£1.99",
+    "vars":{"--bg":"#080B14","--surface":"#101626","--sunk":"#161E34","--line":"#243052","--muted":"#8E9BBF",
+      "--song":"#6FE3FF","--song-hot":"#6FE3FF","--dance":"#9AA8FF","--hips":"#FF7AD9","--stage":"#04060C"}}
+];
+const PACK_BY=new Map(PACKS.map(p=>[p.id,p]));
+const LOOK_TYPES={ball:'ball-classic',skeleton:'skel-classic',sound:'snd-classic',theme:'theme-classic'};
+const LOOK_PICKS={ballRiddim:'ball',ballDancer:'ball',skelDance:'skeleton',skelHips:'skeleton'};   /* colour you picked → the pack group it belongs to */
+const STORE={on:false,owned:new Set(),test:false};
+try{STORE.on=/[?&]store=1/.test(location.search)||!!window.Capacitor||localStorage.getItem('rs-store')==='1';STORE.test=!window.Capacitor}catch(e){}
+try{(JSON.parse(localStorage.getItem('rs-owned')||'[]')||[]).forEach(id=>STORE.owned.add(String(id)))}catch(e){}
+const LOOK={sel:{...LOOK_TYPES},pick:{},preview:{}};
+const packOwned=p=>!!p&&(!!p.free||!STORE.on||STORE.owned.has(p.id));
+function lookSave(){try{localStorage.setItem('rs-look',JSON.stringify({sel:LOOK.sel,pick:LOOK.pick}))}catch(e){}}
+try{const o=JSON.parse(localStorage.getItem('rs-look')||'null');if(o&&typeof o==='object'){
+  for(const t in LOOK_TYPES){const p=PACK_BY.get(o.sel&&o.sel[t]);if(p&&p.type===t&&packOwned(p))LOOK.sel[t]=p.id}
+  for(const k in LOOK_PICKS)if(o.pick&&/^#[0-9a-f]{6}$/i.test(o.pick[k]))LOOK.pick[k]=o.pick[k]}}catch(e){}
+/* the pack in use for one type (a preview wins while one is running) */
+LOOK.pack=t=>PACK_BY.get(LOOK.preview[t]||LOOK.sel[t])||PACK_BY.get(LOOK_TYPES[t]);
+const lookPicks=t=>LOOK.preview[t]?{}:LOOK.pick;   /* a preview shows the pack as designed, without your own colours */
+LOOK.ball=()=>{const p=LOOK.pack('ball'),k=lookPicks('ball');return {riddim:k.ballRiddim||p.riddim||tok('--song-hot'),dancer:k.ballDancer||p.dancer||tok('--dance'),ring:p.ring||'single',glow:p.glow||0}};
+LOOK.skel=()=>{const p=LOOK.pack('skeleton'),k=lookPicks('skeleton');return {dance:k.skelDance||p.dance||tok('--dance'),hips:k.skelHips||p.hips||tok('--hips'),glow:p.glow||0}};
+LOOK.snd=()=>{const p=LOOK.pack('sound');return {wave:p.wave||'sine',freq:p.freq,decay:p.decay||1,gain:p.gain||1}};
+/* the skeleton, drawn in the current look (glow is added around the same drawing; the drawing itself is unchanged) */
+LOOK.drawBody=(c,B,t,rect,o,dpr)=>{const s=LOOK.skel();c.save();try{if(s.glow){c.shadowColor=s.dance;c.shadowBlur=s.glow*14*(dpr||1)}RB.draw(c,B,t,rect,{...o,dance:s.dance,hips:s.hips})}finally{c.restore()}};
+/* theme colours go on the page as !important inline values (the page's own palette is !important too) */
+const LOOK_VARS=new Set();
+LOOK.apply=()=>{const root=document.documentElement;for(const v of LOOK_VARS)root.style.removeProperty(v);LOOK_VARS.clear();
+  const vars=LOOK.pack('theme').vars||{};for(const k in vars){root.style.setProperty(k,vars[k],'important');LOOK_VARS.add(k)}
+  CUE.col=null;CUE.stillKey='';try{drawBody()}catch(e){}};
+/* hear a click pack: a 1 and three beats */
+LOOK.hear=pk=>{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{});const t0=c.currentTime+0.05,d=pk.decay||1,pg=pk.gain||1;
+  ['one','beat','beat','beat'].forEach((kd,i)=>{const when=t0+i*0.4,o=c.createOscillator(),g=c.createGain();o.type=pk.wave||'sine';o.frequency.value=pk.freq[kd];
+    g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime(0.32*pg,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+0.05*d);o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.1*Math.max(1,d))})};
+/* choosing, previewing and buying */
+LOOK.use=id=>{const p=PACK_BY.get(id);if(!p||!packOwned(p))return false;LOOK.sel[p.type]=id;LOOK.preview={};
+  for(const k in LOOK_PICKS)if(LOOK_PICKS[k]===p.type)delete LOOK.pick[k];   /* a pack looks as designed until you pick a colour again */
+  lookSave();LOOK.apply();return true};
+LOOK.tryOn=id=>{const p=PACK_BY.get(id);if(!p)return false;LOOK.preview={[p.type]:id};LOOK.apply();return true};
+LOOK.stopTry=()=>{LOOK.preview={};LOOK.apply()};
+LOOK.setPick=(k,v)=>{if(!(k in LOOK_PICKS)||!/^#[0-9a-f]{6}$/i.test(v))return false;LOOK.pick[k]=v;lookSave();LOOK.apply();return true};
+LOOK.resetPicks=()=>{LOOK.pick={};lookSave();LOOK.apply()};
+/* buying: the App Store app connects real purchases here later. Until then only a clearly labelled test purchase works (no money moves) */
+STORE.buy=async id=>{const p=PACK_BY.get(id);if(!p||p.free)return {ok:false,why:'Nothing to buy'};
+  if(!STORE.test)return {ok:false,why:'Purchases are not connected yet.'};
+  STORE.owned.add(id);try{localStorage.setItem('rs-owned',JSON.stringify([...STORE.owned]))}catch(e){}return {ok:true,test:true}};
+
+/* ---------- the Look sheet ---------- */
+const LOOK_GROUPS=[['ball','Balls and cues'],['skeleton','Skeleton'],['sound','Click sounds'],['theme','App theme']];
+const hex6=s=>/^#[0-9a-f]{6}$/i.test(s)?s:(/^#[0-9a-f]{3}$/i.test(s)?'#'+s.slice(1).split('').map(x=>x+x).join(''):'#888888');
+let lookFrom=null;
+function lookMsg(t,err){const m=$('#lookMsg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('err',!!err)}
+function packDots(p){const w=el('span','dots');w.setAttribute('aria-hidden','true');
+  let cols=[];if(p.type==='ball')cols=[p.riddim||tok('--song-hot'),p.dancer||tok('--dance')];else if(p.type==='skeleton')cols=[p.dance||tok('--dance'),p.hips||tok('--hips')];
+  else if(p.type==='theme'){const v=p.vars||{};cols=[v['--bg']||tok('--bg'),v['--song-hot']||tok('--song-hot'),v['--dance']||tok('--dance')]}
+  else cols=[tok('--ink')];
+  cols.forEach(c=>{const i=document.createElement('i');i.style.background=c;w.append(i)});if(p.type==='sound'){const s=el('small',null,p.wave);w.append(s)}return w}
+function renderLook(){
+  const k=LOOK.ball(),s=LOOK.skel();
+  [['#pickBallRiddim',LOOK.pick.ballRiddim||k.riddim],['#pickBallDancer',LOOK.pick.ballDancer||k.dancer],['#pickSkelDance',LOOK.pick.skelDance||s.dance],['#pickSkelHips',LOOK.pick.skelHips||s.hips]].forEach(([id,v])=>{$(id).value=hex6(v)});
+  const box=$('#lookPacks');box.textContent='';
+  for(const [type,title] of LOOK_GROUPS){
+    const h=el('h4',null,title),grid=el('div','look-grid');grid.dataset.type=type;
+    for(const p of PACKS.filter(x=>x.type===type)){
+      const inUse=LOOK.sel[type]===p.id, own=packOwned(p), card=el('div','pack');card.dataset.pack=p.id;card.setAttribute('aria-current',String(inUse));
+      const top=el('div','pack-top');top.append(el('b',null,p.name),packDots(p));card.append(top);
+      if(STORE.on&&!p.free)card.append(el('span','hint',own?'Owned':p.price||''));
+      const row=el('div','row');row.style.gap='6px';
+      if(inUse){const b=el('button','btn sm','In use');b.disabled=true;row.append(b)}
+      else if(own){const b=el('button','btn sm','Use');b.dataset.act='use';b.addEventListener('click',()=>{LOOK.use(p.id);lookPreviewBar();renderLook()});row.append(b)}
+      else{const b=el('button','btn sm','Buy '+(p.price||''));b.dataset.act='buy';b.addEventListener('click',async()=>{const r=await STORE.buy(p.id);
+          if(r.ok){LOOK.use(p.id);lookMsg((r.test?'Test purchase (no money taken). ':'')+p.name+' is yours.')}else lookMsg(r.why,true);renderLook()});row.append(b)}
+      if(type==='sound'){const b=el('button','btn sm ghost','Hear it');b.dataset.act='hear';b.addEventListener('click',()=>LOOK.hear(p));row.append(b)}
+      else if(!inUse){const b=el('button','btn sm ghost','Try it');b.dataset.act='try';b.addEventListener('click',()=>{LOOK.tryOn(p.id);lookPreviewBar();closeLook()});row.append(b)}
+      card.append(row);grid.append(card)}
+    box.append(h,grid)}
+  $('#lookStoreNote').hidden=!STORE.on}
+function lookPreviewBar(){const t=Object.keys(LOOK.preview)[0],bar=$('#lookBar');
+  if(!t){bar.hidden=true;return}
+  const p=PACK_BY.get(LOOK.preview[t]),own=packOwned(p);bar.hidden=false;$('#lookBarName').textContent='Trying '+p.name;
+  const act=$('#lookBarUse');act.textContent=own?'Use it':'Buy '+(p.price||'');act.dataset.id=p.id}
+function openLook(){lookFrom=document.activeElement;LOOK.stopTry();lookPreviewBar();lookMsg('');renderLook();$('#lookSheet').hidden=false;$('#lookBack').hidden=false;$('#lookClose').focus()}
+function closeLook(){$('#lookSheet').hidden=true;$('#lookBack').hidden=true;if(lookFrom&&lookFrom.focus)lookFrom.focus()}
+$('#lookBtn').addEventListener('click',openLook);
+$('#lookClose').addEventListener('click',closeLook);
+$('#lookBack').addEventListener('click',closeLook);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#lookSheet').hidden)closeLook()});
+for(const [id,key] of [['#pickBallRiddim','ballRiddim'],['#pickBallDancer','ballDancer'],['#pickSkelDance','skelDance'],['#pickSkelHips','skelHips']])
+  $(id).addEventListener('input',e=>{LOOK.setPick(key,e.target.value);renderLookCards()});
+function renderLookCards(){$$('#lookPacks .pack').forEach(c=>c.setAttribute('aria-current',String(LOOK.sel[PACK_BY.get(c.dataset.pack).type]===c.dataset.pack)))}
+$('#pickReset').addEventListener('click',()=>{LOOK.resetPicks();renderLook()});
+$('#lookBarStop').addEventListener('click',()=>{LOOK.stopTry();lookPreviewBar()});
+$('#lookBarUse').addEventListener('click',async e=>{const id=e.currentTarget.dataset.id,p=PACK_BY.get(id);if(!p)return;
+  if(!packOwned(p)){const r=await STORE.buy(id);if(!r.ok){$('#lookBarName').textContent=r.why;return}}
+  LOOK.use(id);lookPreviewBar()});
+LOOK.apply();
+if(/debug/.test(location.hash))window.__rs={LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;

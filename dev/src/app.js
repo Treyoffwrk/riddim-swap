@@ -1868,17 +1868,19 @@ $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.
 const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 let bodyKey='';
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
-  if(!on){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false}return}
+  /* while the video is seeking (a loop restarting, a jump) it still shows the old frame: drawing the new pose over it
+     puts the skeleton on the wrong picture (e.g. the end screen), so draw nothing until the frame arrives */
+  if(!on||el.seeking){if(bodyDrawn){const c=bodyCv.getContext('2d');c.clearRect(0,0,bodyCv.width,bodyCv.height);bodyDrawn=false;bodyKey=''}return}
   const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);
   if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
-  if($('#bodyShow').checked)LOOK.drawBody(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked,tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  if($('#bodyShow').checked)LOOK.drawBody(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
 }
@@ -2649,6 +2651,9 @@ function etaText(t0,p){if(!t0||p-t0.p<0.03)return '';const el=(performance.now()
   return left<45?'about '+Math.max(5,Math.round(left/5)*5)+' s left':'about '+Math.round(left/60)+' min left'}
 function bodyInfoText(n,B){
   let t=`Body tracked on ${B.seen} of ${B.n} frames.`;
+  /* how much of the clip the tracking covers: a run that stopped part-way used to look complete ("197 of 197") */
+  const cov=RB.coverage?RB.coverage(B):null;
+  if(cov&&cov.short)t=`Body tracked from ${fmt(cov.from)} to ${fmt(cov.to)} only (${cov.pct}% of the clip): the skeleton is missing outside that. Track again to cover the whole clip.`;
   if(B.v<2)t+=' Tracked with the older tracker: Track again for steadier tracking, hip turn and following one dancer.';
   else if(B.multi&&B.multi>0.1*B.n)t+=` More than one person in ${Math.round(B.multi/B.n*100)}% of frames: following ${B.pick?'the dancer you chose':'the biggest one'}. Use "Choose the dancer" to follow someone else.`;
   if(B.clean&&B.clean.flips)t+=` Fixed ${B.clean.flips} left/right mix-up${B.clean.flips>1?'s':''}.`;
@@ -2792,7 +2797,7 @@ async function phoneCheck(){
   add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
   const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
   const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
-  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}${(()=>{const c=RB.coverage&&RB.coverage(B);return c?' · covers '+c.pct+'% of the clip':''})()}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}

@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-e0adbf4354'</script>
+<script>window.RS_BUILD='rs-2acc5fd05a'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -784,6 +784,16 @@ main{padding-bottom:12px}
     }catch(e){return null}
   }
 
+  /* How much of the clip the tracking covers (time spans with no frame looked at for over half a second count as missing; frames where nobody was found still count). */
+  function coverage(B){
+    if(!B||!B.n||!B.data||!isFinite(B.end)||!(B.end>(B.start||0)))return null;
+    const st=B.data.length/B.n, s0=B.start||0, s1=B.end; let prev=s0, miss=0, from=null, to=null;
+    for(let k=0;k<B.n;k++){const t=B.data[k*st];if(from==null)from=t;to=t;if(t-prev>0.5)miss+=t-prev;prev=t}
+    if(s1-prev>0.5)miss+=s1-prev;
+    const pct=Math.round(100*(1-miss/(s1-s0)));
+    return {from:from??s0,to:to??s0,pct,short:pct<90};
+  }
+
   /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
      skipped however slow the phone is. Each sample keeps the frame's own media time. */
   async function track(url,opt){
@@ -821,7 +831,7 @@ main{padding-bottom:12px}
       if(opt.pick&&isFinite(opt.pick.t)){anchor=0;let bd=1e9;want.forEach((w,k)=>{const d=Math.abs(w-opt.pick.t);if(d<bd){bd=d;anchor=k}});
         order=[];for(let k=anchor;k<want.length;k++)order.push(k);for(let k=anchor-1;k>=0;k--)order.push(k)}
       const slot=new Array(want.length).fill(null); let ms=0, n=0, done=0, multi=0;
-      let prev=null, lost=0, pickPose=null;
+      let prev=null, lost=0, pickPose=null, clockMiss=0, clockHits=0;
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(opt.signal&&opt.signal.aborted)break;
@@ -832,7 +842,11 @@ main{padding-bottom:12px}
         const tol=Math.max(1.5/fps,0.06);
         let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null; if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
         /* no new frame showed (a variable-rate clip has fewer frames than the steps): nothing new to track here */
-        if(mt==null&&hasRVFC){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
+        /* (iPhone can stop reporting frames for a hidden video part-way through: skipping then dropped the rest of the
+           clip, so the skeleton vanished after a few seconds. Now the frame is tracked at the asked time unless the frame
+           clock is clearly working and says this step showed no new frame.) */
+        if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
+        else if(mt!=null){clockMiss=0;clockHits++}
         const t=mt!=null?mt:want[k]-0.5/fps;
         const P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
@@ -1236,7 +1250,7 @@ main{padding-bottom:12px}
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
