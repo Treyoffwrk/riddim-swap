@@ -33,12 +33,30 @@
       const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
       const model=new Uint8Array(await r.arrayBuffer());
       /* person masks (segmentation) come from the same pass, for the cut-out */
-      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:document.createElement('canvas'),runningMode:'IMAGE',numPoses:CFG.numPoses,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
+      const gcv=document.createElement('canvas');
+      const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:gcv,runningMode:'IMAGE',numPoses:CFG.numPoses,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
       let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
       try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
-      runtime={task,delegate}; return runtime;
+      runtime={task,delegate,sdk,gcv}; return runtime;
     })();
     try{return await loading}catch(e){loading=null;throw e}
+  }
+
+  /* Person masks on the graphics chip: reading the mask's numbers back (getAsFloat32Array) gives all zeros there (seen on
+     iPhone, and reproduced in Chrome), so the cut-out showed nothing. Instead the mask is drawn on the tracker's own GPU
+     canvas (MediaPipe's DrawingUtils: person white, rest black), and that picture is shrunk into a small 2D canvas and
+     read. Returns null if anything fails, so the frame simply has no mask. */
+  let gmc=null,gmx=null;
+  function gpuMask(rt,m,mw,mh){
+    try{
+      if(!rt.du){const gl=rt.gcv.getContext('webgl2');if(!gl||!rt.sdk.DrawingUtils)return null;rt.du=new rt.sdk.DrawingUtils(gl)}
+      rt.du.drawConfidenceMask(m,[0,0,0,255],[255,255,255,255]);
+      if(!gmc){gmc=document.createElement('canvas');gmx=gmc.getContext('2d',{willReadFrequently:true})}
+      if(gmc.width!==mw||gmc.height!==mh){gmc.width=mw;gmc.height=mh}
+      gmx.imageSmoothingEnabled=true;gmx.imageSmoothingQuality='high';gmx.clearRect(0,0,mw,mh);gmx.drawImage(rt.gcv,0,0,mw,mh);
+      const d=gmx.getImageData(0,0,mw,mh).data,out=new Uint8Array(mw*mh);for(let i=0;i<out.length;i++)out[i]=d[i*4];
+      return out;
+    }catch(e){return null}
   }
 
   /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
@@ -104,7 +122,8 @@
           const ch=choose(cands,prev,opt.pick&&!pickPose?opt.pick:null,asp,lost,!!opt.pick);
           const M0=performance.now();if(ch){const m=r.segmentationMasks&&r.segmentationMasks[ch.i];
             /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
-            if(m){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
+            if(m&&rt.delegate==='GPU'){mk=gpuMask(rt,m,mw,mh)}
+            else if(m){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
               for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
                 for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
                   for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}}
@@ -420,7 +439,14 @@
      frame within 50 ms) is softened at the edge and scaled up with smoothing. bg: 'dark' | 'colour' | 'blur'. */
   let mcv=null, mcx=null, ccv=null, ccx=null, bcv=null, bcx=null;
   function maskIndex(B,t){if(!B||!B.mask||!B.n)return -1;const i=index(B,t);let best=-1,bd=1e9;for(const k of [i-1,i,i+1]){if(k<0||k>=B.n)continue;const d=Math.abs(tAt(B,k)-t);if(d<bd){bd=d;best=k}}return bd<=0.05?best:-1}
-  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames)}
+  /* a saved outline that's empty everywhere (tracked on a phone's graphics chip before the fix) can't make a cut-out */
+  function maskUsable(B){
+    if(!B||!B.mask||!B.mask.frames)return false;if(B.mask._ok!=null)return B.mask._ok;
+    const M=B.mask,per=M.w*M.h;let seen=0,lit=0;
+    for(let k=0;k<M.n;k+=Math.max(1,Math.floor(M.n/24))){if(isNaN(B.data[k*STRIDE+1]))continue;seen++;let c=0;for(let i=0;i<per;i+=3)if(M.data[k*per+i]>128)c++;if(c*3>per*0.004)lit++}
+    M._ok=seen>0&&lit>=Math.max(1,seen*0.3);return M._ok;
+  }
+  function hasCutout(B){return !!(B&&B.mask&&B.mask.frames&&maskUsable(B))}
   function maskCanvas(B,k){
     const M=B.mask,mw=M.w,mh=M.h;
     if(!mcv){mcv=document.createElement('canvas');mcx=mcv.getContext('2d')}
@@ -485,6 +511,6 @@
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

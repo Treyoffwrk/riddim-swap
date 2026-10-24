@@ -254,6 +254,15 @@ function syncSong(force){
   if((Math.abs(drift)>(segMode()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
 }
 
+/* put the video where the song is (the inverse of expected(), with the sound delay) */
+function videoToSong(){
+  const sd=S.sndDelay||0, base=S.offset+(S.variant&&S.variant.shift||0);
+  S.catchUp=performance.now();
+  if(S.study){const t=S.cIn+((a.currentTime-S.offset)/S.ar-(S.avComp||0)-sd)*S.vr;if(t>=S.study.a&&t<S.study.b)v.currentTime=t;return}
+  const T=(a.currentTime-base)/S.ar-(S.avComp||0)-sd, L=segs(), tot=segStart(L.length,L);
+  if(T<0||T>=tot-0.05)return;
+  seekT(T);
+}
 function syncSteady(force){
   const e=expected()+(S.rec?0:(S.sndDelay||0)*S.ar), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
   const setV=n=>{S.vNudge=n;const g=segs()[S.segIdx];if(!g||S.switchPending)return;const r=vNudged(rateAt(g,v.currentTime));if(Math.abs(v.playbackRate-r)>0.006)v.playbackRate=r};
@@ -277,7 +286,10 @@ function syncSteady(force){
   S.driftEma=0.8*(S.driftEma||0)+0.2*drift;
   snd.frames++;if(Math.abs(drift)<0.04)snd.within++;snd.maxLate=Math.max(snd.maxLate,Math.abs(drift));
   const limit=segMode()?0.5:0.35;
-  if(Math.abs(S.driftEma)>limit&&now-S.lastFix>2000){S.lastFix=now;S.driftEma=0;snd.jumps++;seekSong(e);setV(0);return}
+  /* far out: move the VIDEO to the song, never the song. On iPhone every song jump is ~0.4 s of silence, and if the
+     video keeps falling behind (a busy phone) the song would cut out over and over; a video catching up a few frames is
+     much less noticeable than the music stopping. */
+  if(Math.abs(S.driftEma)>limit&&now-S.lastFix>1200){S.lastFix=now;S.driftEma=0;snd.vjumps=(snd.vjumps||0)+1;videoToSong();S.vI=0;setV(0);return}
   /* steady: nudge the video, in 0.5% steps so its speed isn't changed every frame */
   /* proportional plus a slow learned part, so a video that runs steadily slow ends up exactly in time, not 40 ms off */
   S.vI=clamp((S.vI||0)+0.015*S.driftEma,-0.05,0.05);
@@ -357,11 +369,12 @@ function wire(el){
     if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
     if(me())$('#vidName').textContent="This video can't play here";
   });
-  el.addEventListener('seeked',()=>{if(me()){syncSong(!segMode());recSync(true)}});
+  el.addEventListener('seeked',()=>{if(me()){if(S.catchUp&&performance.now()-S.catchUp<1500){S.catchUp=0;syncSong(false)}else syncSong(!segMode());recSync(true)}});   /* our own catch-up seek doesn't move the song */
   /* a short video hiccup no longer stops the song (that was a cut-out); only a stall over 0.6 s pauses it */
   el.addEventListener('waiting',()=>{if(!me()||S.switchPending||segMode())return;
     if(S.rec){S.stalled=true;a.pause();recStopSong();return}
-    clearTimeout(S.stallTimer);S.stallTimer=setTimeout(()=>{if(me()&&el.readyState<3&&S.playing){S.stalled=true;a.pause();recStopSong();if(S.snd)S.snd.stalls=(S.snd.stalls||0)+1}},600)});  /* routine: the song keeps going */
+    /* the song keeps going through a video stall (stopping it is what you hear); the video catches up when it resumes */
+    clearTimeout(S.stallTimer);S.stallTimer=setTimeout(()=>{if(me()&&el.readyState<3&&S.playing){if(S.snd)S.snd.stalls=(S.snd.stalls||0)+1}},600)});
   el.addEventListener('playing',()=>{if(me()){clearTimeout(S.stallTimer);S.stalled=false;syncSong(false);recSync(true)}});
   el.addEventListener('pause',()=>{if(me()&&S.playing&&!el.ended&&!S.rec&&!S.switchPending)pause()});
   el.addEventListener('ended',()=>{if(!me()||!(S.playing||S.rec))return;atSegEnd();if((S.playing||S.rec)&&v.paused)v.play().catch(()=>{})});
@@ -1903,7 +1916,8 @@ function dockUpdate(){
   if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%'+(S.bodyLeft?' · '+S.bodyLeft.replace('about ','').replace(' left',''):'');bb.setAttribute('aria-pressed','false');bb.disabled=true}
   else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
   $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
-  const canCut=!!(B&&RB.hasCutout(B)); $('#dkCut').hidden=!canCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn));
+  const canCut=!!(B&&RB.hasCutout(B)), staleCut=!!(B&&B.mask&&B.mask.frames&&!canCut);
+  $('#dkCut').hidden=!canCut&&!staleCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn)); $('#dkCut').dataset.stale=staleCut?'1':'';
   $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
   $('#dkPart').hidden=!(canCut&&S.cutOn); $$('#dkPart button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===S.cutPart)));
   $('#cutBar').hidden=!(canCut&&S.cutOn);
@@ -1912,7 +1926,10 @@ $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
   if(!bodyOf(n)){$('#bodyTrack').click();return}
   $('#bodyShow').checked=!$('#bodyShow').checked;$('#bodyShow').dispatchEvent(new Event('change'));dockUpdate()});
 $('#dkHips').addEventListener('click',()=>{$('#hipShow').checked=!$('#hipShow').checked;$('#hipShow').dispatchEvent(new Event('change'));dockUpdate()});
-$('#dkCut').addEventListener('click',()=>{S.cutOn=!S.cutOn;dockUpdate()});
+$('#dkCut').addEventListener('click',()=>{
+  /* tracked before the fix on a phone: the outline was saved empty; tracking again makes it */
+  if($('#dkCut').dataset.stale){if(confirm('This clip was tracked before a fix: its outline came out empty on your phone, so Cut out can\'t show the dancer. Track it again now? (It plays through once, silently.)')){S.cutOn=true;$('#bodyTrack').click()}return}
+  S.cutOn=!S.cutOn;dockUpdate()});
 $$('#dkBg button').forEach(b=>b.addEventListener('click',()=>{S.cutBg=b.dataset.bg;try{localStorage.setItem('rs-cutbg',S.cutBg)}catch(e){}dockUpdate()}));
 /* the cut-out's options sit just under the video, so they never cover the dancer */
 {const bar=$('#cutBar');bar.append(el('span','label','Show'),$('#dkPart'),el('span','label','Behind'),$('#dkBg'))}
@@ -2762,7 +2779,7 @@ window.addEventListener('unhandledrejection',e=>noteErr('promise: '+((e.reason&&
 function soundReport(){const s=(S.snd&&S.snd.frames>10)?S.snd:S.sndLast;if(!s||!s.frames)return '';
   const secs=(performance.now()-s.started)/1000,pct=Math.round(100*s.within/s.frames);
   const span=((s.endAt||performance.now())-s.started)/1000, fps=span>0.5?Math.round(s.frames/span):0;
-  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).`}
+  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.vjumps?`, video caught up ${s.vjumps} time${s.vjumps>1?'s':''}`:''}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).`}
 $('#projBtn').addEventListener('click',()=>{$('#sndReport').textContent=soundReport()});
 async function phoneCheck(){
   const L=[],add=(k,v)=>{if(v!=null&&v!=='')L.push(k+': '+v)};
@@ -2775,7 +2792,7 @@ async function phoneCheck(){
   add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
   const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
   const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
-  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}

@@ -1,7 +1,7 @@
 /* Leg and upper-body isolation. Usage: node isolation_test.js <host index.html> <clip> <shot prefix> */
 const {launch}=require('./harness');
 const [,,HOST,CLIP,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
-(async()=>{const {b,ctx}=await launch();await ctx.addInitScript(()=>{window.RB_DELEGATE='CPU'});const p=await ctx.newPage();const errs=[];p.on('pageerror',e=>errs.push(p.url().split('/').slice(-2).join('/')+': '+e.message));
+(async()=>{const {b,ctx}=await launch();if(!process.env.GPU)await ctx.addInitScript(()=>{window.RB_DELEGATE='CPU'});   /* GPU=1: track on the graphics chip, as phones do */const p=await ctx.newPage();const errs=[];p.on('pageerror',e=>errs.push(p.url().split('/').slice(-2).join('/')+': '+e.message));
  await p.goto(HOST+'#debug');await p.evaluate(()=>{indexedDB.deleteDatabase('riddim-swap');indexedDB.deleteDatabase('riddim-bridge');indexedDB.deleteDatabase('mirrorview-session-v1');localStorage.clear()});await p.reload();
  await p.setInputFiles('#vidFile',CLIP);await p.waitForTimeout(2000);
  await p.click('#bodyTrack');for(let i=0;i<2400;i++){await p.waitForTimeout(500);if(await p.evaluate(()=>!window.__rs.S.bodyBusy&&!!window.__rs.srcById(window.__rs.S.cur).body))break}
