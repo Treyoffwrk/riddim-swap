@@ -383,6 +383,20 @@ html.rs-hosted p.mv-only#cmpOut{display:block!important}
 #patFilter button{font:600 13px var(--f-body);border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:999px;min-height:34px;padding:0 12px;cursor:pointer}
 #patFilter button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .patline{margin:0;font-size:13px;color:var(--muted)}
+.partvals{display:grid;grid-template-columns:1fr;gap:10px}
+@media (min-width:560px){.partvals{grid-template-columns:1fr 1fr}}
+.partvals:empty{display:none}
+.partvals.one{grid-template-columns:1fr!important}
+.pv{background:var(--card2,#1A1E26);border:1px solid #2C313C;border-radius:12px;padding:9px 11px;min-width:0}
+.pv h4{margin:0 0 6px;font:700 13px var(--f-body);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 8px}
+.pv .acc{font:700 11px JetBrains Mono,monospace;padding:2px 7px;border-radius:99px;background:#2C313C;color:var(--muted);white-space:nowrap}
+.pv .acc.high{background:rgba(88,200,140,.18);color:var(--ok)}
+.pv .acc.medium{background:rgba(240,190,80,.18);color:#F0BE50}
+.pv .acc.low,.pv .acc.none{background:rgba(255,120,110,.18);color:#FF786E}
+.pv dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:12px}
+.pv dt{color:var(--muted)}
+.pv dd{margin:0;text-align:right;white-space:nowrap;font:600 12px JetBrains Mono,monospace}
+.pv dd i{opacity:.5;font-style:normal}
 /* ===== Sound System: the look shared with MirrorView. Dark stage; blue = the dancer, amber = the music, magenta = the hips. ===== */
 :root{--bg:#0E1014!important;--surface:#171A21!important;--sunk:#20242D!important;--ink:#F3F1EC!important;--muted:#A3A9B6!important;--line:#2C313C!important;
   --dance:#6E8BFF!important;--song:#FFB547!important;--song-hot:#FFB547!important;--hips:#FF5FA2!important;

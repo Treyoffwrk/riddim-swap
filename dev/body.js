@@ -483,8 +483,145 @@
   }
   /* where a video frame sits inside a box with object-fit: contain */
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
+  /* ---------- isolated movement values: legs and upper body, with an accuracy score ----------
+     Every value is measured relative to the pelvis and in torso lengths (T = shoulder-mid to hip-mid), so the legs'
+     numbers do not include the dancer travelling or the chest moving, and the upper body's do not include the legs.
+     Legs:  thighL/R  hip→knee angle from straight down (°, + = knee toward the screen's right)
+            kneeL/R   knee bend (°, 0 = straight)
+            footDropL/R  ankle below the hip (T), stance = feet apart sideways (T), legSpeed = mean knee+ankle speed (T/s)
+     Upper: lean = hips→shoulders angle from vertical (°, + = leaning to the screen's right), shoulderTilt (°),
+            chestTurn (° from the tracker's 3D shoulders, NaN without it), armRaiseL/R = wrist above shoulder (T),
+            upperSpeed = mean shoulder+elbow+wrist speed (T/s)
+     Accuracy (0–100) = coverage × weighted mean of: visibility (the tracker's own confidence in the joints used, 0.40),
+     rigidity (bones keep their length, 0.25), steadiness (no impossible jumps frame to frame, 0.20), and, when the
+     person-mask was saved, whether the limb joints sit on the person (0.15). */
+  const PM_NAMES=['thighL','thighR','kneeL','kneeR','footDropL','footDropR','stance','legSpeed','lean','shoulderTilt','chestTurn','armRaiseL','armRaiseR','upperSpeed'];
+  const PM=PM_NAMES.length;
+  const PARTS={
+    legs:{m:[0,1,2,3,4,5,6,7],core:[23,24,25,26,27,28],move:[25,26,27,28],bones:[[23,25],[25,27],[24,26],[26,28]],mask:[25,26,27,28],speed:7},
+    upper:{m:[8,9,10,11,12,13],core:[11,12,23,24],move:[11,12,13,14,15,16],bones:[[11,13],[13,15],[12,14],[14,16]],mask:[11,12,13,14,15,16],speed:13}};
+  const PART_ID={legs:0,upper:1};
+  const MIR_SWAP=[1,0,3,2,5,4,6,7,8,9,10,12,11,13], MIR_NEG=[0,1,8,9,10];   /* a mirrored dance: left↔right swapped, sideways signs flipped */
+  const TOL=[15,15,20,20,.12,.12,.12,1.5,10,8,15,.15,.15,1.5];   /* how far apart two values may be and still count as close (1 σ of the match kernel) */
+  const VIS_MIN=0.5, ACC_CAP=150;   /* a joint counts when its visibility ≥ 0.5; accelerations above 150 T/s² are not plausible movement */
+  const clamp01=v=>v<0?0:v>1?1:v;
+  const median=a=>{if(!a.length)return NaN;const s=Float64Array.from(a).sort();const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+  function partSeries(B){
+    if(!B||!B.n)return null; if(B._ps&&B._ps.n===B.n)return B._ps;
+    const n=B.n,D=B.data,asp=(B.h&&B.w)?B.h/B.w:16/9;
+    const M=new Float32Array(n*PM).fill(NaN),V=new Float32Array(n*2).fill(NaN),OK=new Uint8Array(n*2),t=new Float32Array(n);
+    const R=new Float32Array(n*N*2).fill(NaN);   /* joint positions relative to the pelvis, in torso lengths */
+    const ang=(ax,ay,bx,by)=>{let L=[ax,ay],Rr=[bx,by];if(L[0]>Rr[0])[L,Rr]=[Rr,L];return Math.atan2(-(Rr[1]-L[1]),Rr[0]-L[0])*180/Math.PI};
+    for(let i=0;i<n;i++){const o=i*STRIDE;t[i]=D[o];if(isNaN(D[o+1]))continue;
+      const x=j=>D[o+1+j*3],y=j=>D[o+2+j*3]*asp,v=j=>D[o+3+j*3];
+      const sx=(x(11)+x(12))/2,sy=(y(11)+y(12))/2,hx=(x(23)+x(24))/2,hy=(y(23)+y(24))/2,T=Math.hypot(sx-hx,sy-hy);
+      if(!(T>0.02))continue;
+      for(let j=0;j<N;j++){R[(i*N+j)*2]=(x(j)-hx)/T;R[(i*N+j)*2+1]=(y(j)-hy)/T}
+      for(const p of ['legs','upper']){const P=PARTS[p],pi=PART_ID[p];let mn=1,sum=0;for(const j of P.core){const q=v(j);if(q<mn)mn=q;sum+=q}V[i*2+pi]=sum/P.core.length;OK[i*2+pi]=mn>=VIS_MIN?1:0}
+      const m=i*PM,r=(j,c)=>R[(i*N+j)*2+c];
+      if(OK[i*2]){
+        for(const [s,h,k,a] of [[0,23,25,27],[1,24,26,28]]){
+          M[m+s]=Math.atan2(r(k,0)-r(h,0),r(k,1)-r(h,1))*180/Math.PI;
+          const ux=r(h,0)-r(k,0),uy=r(h,1)-r(k,1),wx=r(a,0)-r(k,0),wy=r(a,1)-r(k,1),c=(ux*wx+uy*wy)/((Math.hypot(ux,uy)*Math.hypot(wx,wy))||1);
+          M[m+2+s]=180-Math.acos(Math.max(-1,Math.min(1,c)))*180/Math.PI;
+          M[m+4+s]=r(a,1)-r(h,1)}
+        M[m+6]=Math.abs(r(27,0)-r(28,0))}
+      if(OK[i*2+1]){
+        M[m+8]=Math.atan2(sx-hx,-(sy-hy))*180/Math.PI;
+        M[m+9]=ang(x(11),y(11),x(12),y(12));
+        for(const [s,sh,wr] of [[11,11,15],[12,12,16]]){if(v(sh)>=VIS_MIN&&v(wr)>=VIS_MIN)M[m+s]=(y(sh)-y(wr))/T}
+        if(B.world&&B.world.length===n*WS&&!isNaN(B.world[i*WS])){const w=u=>B.world[i*WS+u*3+2],wx=u=>B.world[i*WS+u*3];
+          M[m+10]=Math.atan2(w(0)-w(1),wx(0)-wx(1))*180/Math.PI}}
+    }
+    /* speeds: central difference of the pelvis-relative joints, only where the frames either side are close in time and usable */
+    for(const p of ['legs','upper']){const P=PARTS[p],pi=PART_ID[p];
+      for(let i=1;i<n-1;i++){if(!OK[i*2+pi]||!OK[(i-1)*2+pi]||!OK[(i+1)*2+pi])continue;const dt=t[i+1]-t[i-1];if(!(dt>0)||dt>0.2)continue;
+        let s=0;for(const j of P.move){s+=Math.hypot(R[((i+1)*N+j)*2]-R[((i-1)*N+j)*2],R[((i+1)*N+j)*2+1]-R[((i-1)*N+j)*2+1])/dt}
+        M[i*PM+P.speed]=s/P.move.length}}
+    return B._ps={n,t,M,V,OK,R,asp};
+  }
+  /* index range of frames inside [t0,t1] */
+  function winOf(S,t0,t1){let a=0,b=S.n-1;if(t0==null)t0=-Infinity;if(t1==null)t1=Infinity;while(a<S.n&&S.t[a]<t0)a++;while(b>=0&&S.t[b]>t1)b--;return [a,b]}
+  /* how far the values for one part can be trusted over [t0,t1] */
+  function partScore(B,part,t0,t1){
+    const S=partSeries(B);if(!S||!PARTS[part])return null;const P=PARTS[part],pi=PART_ID[part],[a,b]=winOf(S,t0,t1);
+    const out={part,score:0,grade:'none',coverage:0,vis:0,rigid:0,steady:0,mask:null,frames:Math.max(0,b-a+1),valid:0};
+    if(out.frames<1)return out;
+    const R=S.R,rr=(i,j,c)=>R[(i*N+j)*2+c];
+    let valid=0,vs=0;for(let i=a;i<=b;i++)if(S.OK[i*2+pi]){valid++;vs+=S.V[i*2+pi]}
+    out.valid=valid;out.coverage=valid/out.frames;if(!valid)return out;out.vis=vs/valid;
+    const e=[];for(const [p,q] of P.bones){const L=[];for(let i=a;i<=b;i++)if(S.OK[i*2+pi])L.push(Math.hypot(rr(i,p,0)-rr(i,q,0),rr(i,p,1)-rr(i,q,1)));const m=median(L);if(m>0)for(const l of L)e.push(Math.abs(l-m)/m)}
+    out.rigid=clamp01(1-median(e)/0.3);
+    let tot=0,bad=0;for(let i=Math.max(a,1);i<=Math.min(b,S.n-2);i++){if(!S.OK[i*2+pi]||!S.OK[(i-1)*2+pi]||!S.OK[(i+1)*2+pi])continue;const dt=(S.t[i+1]-S.t[i-1])/2;if(!(dt>0)||dt>0.1)continue;
+      for(const j of P.move){const ax=rr(i+1,j,0)-2*rr(i,j,0)+rr(i-1,j,0),ay=rr(i+1,j,1)-2*rr(i,j,1)+rr(i-1,j,1);tot++;if(Math.hypot(ax,ay)/(dt*dt)>ACC_CAP)bad++}}
+    out.steady=tot?clamp01(1-(bad/tot)/0.15):1;
+    const M=B.mask;
+    if(M&&M.frames&&M.data){const mw=M.w,mh=M.h;let hit=0,all=0;
+      for(let i=a;i<=b;i++){if(!S.OK[i*2+pi]||i>=M.frames)continue;const o=i*STRIDE,base=i*mw*mh;
+        for(const j of P.mask){const px=Math.round(B.data[o+1+j*3]*(mw-1)),py=Math.round(B.data[o+2+j*3]*(mh-1));let on=0;
+          for(let dy=-1;dy<=1&&!on;dy++)for(let dx=-1;dx<=1;dx++){const X=px+dx,Y=py+dy;if(X>=0&&X<mw&&Y>=0&&Y<mh&&M.data[base+Y*mw+X]>=0.35*255){on=1;break}}
+          all++;hit+=on}}
+      if(all)out.mask=hit/all}
+    const w=[[out.vis,.40],[out.rigid,.25],[out.steady,.20]];if(out.mask!=null)w.push([out.mask,.15]);
+    let ws=0,s=0;for(const [v,k] of w){s+=v*k;ws+=k}
+    out.score=Math.round(100*out.coverage*(s/ws)*10)/10;out.grade=out.score>=80?'high':out.score>=60?'medium':'low';
+    return out;
+  }
+  /* all isolated values at time t, by name (NaN where the part could not be measured at that moment) */
+  function partAt(B,t){const S=partSeries(B);if(!S)return null;const o={};PM_NAMES.forEach((nm,m)=>{o[nm]=metricAt(S,m,t)});return o}
+  /* the values of one move: for each part, min / max / range / mean / spread of every metric, peak and mean speed, and its accuracy */
+  function partSummary(B,t0,t1){
+    const S=partSeries(B);if(!S)return null;const [a,b]=winOf(S,t0,t1),res={t0,t1};
+    for(const part of ['legs','upper']){const P=PARTS[part],metrics={};
+      for(const m of P.m){let mn=Infinity,mx=-Infinity,s=0,s2=0,c=0;for(let i=a;i<=b;i++){const v=S.M[i*PM+m];if(isNaN(v))continue;if(v<mn)mn=v;if(v>mx)mx=v;s+=v;s2+=v*v;c++}
+        metrics[PM_NAMES[m]]=c?{min:mn,max:mx,range:mx-mn,mean:s/c,sd:Math.sqrt(Math.max(0,s2/c-(s/c)*(s/c))),n:c}:null}
+      const sp=metrics[PM_NAMES[P.speed]];
+      res[part]={metrics,peakSpeed:sp?sp.max:null,meanSpeed:sp?sp.mean:null,accuracy:partScore(B,part,t0,t1)}}
+    return res;
+  }
+  /* value of metric m at time t: the exact frame within 25 ms, else between two close usable frames, else NaN */
+  function metricAt(S,m,t){
+    let lo=0,hi=S.n-1;if(hi<0)return NaN;while(lo<hi){const k=(lo+hi)>>1;if(S.t[k]<t)lo=k+1;else hi=k}
+    const g=k=>k>=0&&k<S.n?S.M[k*PM+m]:NaN,i=lo;
+    if(Math.abs(S.t[i]-t)<=0.025&&!isNaN(g(i)))return g(i);
+    const a=i-1,b=i;if(a<0||b>=S.n)return NaN;const va=g(a),vb=g(b);if(isNaN(va)||isNaN(vb)||S.t[b]-S.t[a]>0.07||t<S.t[a]||t>S.t[b])return NaN;
+    return va+(vb-va)*(t-S.t[a])/(S.t[b]-S.t[a]);
+  }
+  /* how well a try (B) matches the original (A), legs and upper body separately.
+     shape  = mean Gaussian closeness of the values (TOL is one σ), on a 30 Hz grid after the best time shift;
+     timing = how well the speed of the movement rises and falls together (correlation, 0..1 → 0..100);
+     score  = 0.7 shape + 0.3 timing;  reliability = the lower of the two tracks' accuracy × the share of the grid both could be measured.
+     o: {t0,t1 (window in A), lag0 (s, where to start looking, default 0), maxLag (s either side of lag0, default 1.5), mirror: false | true | 'auto'} */
+  function partMatch(A,B,o){
+    o=o||{};const SA=partSeries(A),SB=partSeries(B);if(!SA||!SB)return null;
+    if(o.mirror==='auto'){const x=partMatch(A,B,Object.assign({},o,{mirror:false})),y=partMatch(A,B,Object.assign({},o,{mirror:true}));return (y&&y.overall>(x?x.overall:-1)+3)?y:x}
+    const mir=!!o.mirror,lag0=o.lag0||0,dt=1/30,t0=o.t0!=null?o.t0:SA.t[0],t1=o.t1!=null?o.t1:SA.t[SA.n-1],maxLag=o.maxLag!=null?o.maxLag:1.5;
+    const bm=m=>mir?MIR_SWAP[m]:m,sg=m=>(mir&&MIR_NEG.includes(m))?-1:1;
+    const K=Math.max(0,Math.floor((t1-t0)/dt));if(K<10)return null;
+    const spd=(S,t)=>{const l=metricAt(S,7,t),u=metricAt(S,13,t);return (isNaN(l)&&isNaN(u))?NaN:(isNaN(l)?0:l)+(isNaN(u)?0:u)};
+    const sa=new Float64Array(K+1);for(let k=0;k<=K;k++)sa[k]=spd(SA,t0+k*dt);
+    let best=-2,lag=null,nlag=Math.round(maxLag/dt);const cors=[];
+    for(let L=-nlag;L<=nlag;L++){let n=0,sx=0,sy=0,sxx=0,syy=0,sxy=0;
+      for(let k=0;k<=K;k++){const x=sa[k];if(isNaN(x))continue;const y=spd(SB,t0+k*dt+lag0+L*dt);if(isNaN(y))continue;n++;sx+=x;sy+=y;sxx+=x*x;syy+=y*y;sxy+=x*y}
+      if(n<20)continue;const vx=sxx-sx*sx/n,vy=syy-sy*sy/n;if(vx<=1e-9||vy<=1e-9)continue;const r=(sxy-sx*sy/n)/Math.sqrt(vx*vy);cors.push([L,r]);if(r>best)best=r}
+    /* repeating steps match at every whole cycle, so take the smallest shift that is nearly as good as the best */
+    for(const [L,r] of cors)if(r>=best-0.03&&(lag===null||Math.abs(L)<Math.abs(lag/dt)))lag=L*dt;
+    if(lag===null)lag=0;lag+=lag0;
+    const res={mirrored:mir,lag:Math.round(lag*1000)/1000,speedCorrelation:best>-2?Math.round(best*1000)/1000:null,legs:null,upper:null};
+    for(const part of ['legs','upper']){const P=PARTS[part];let tot=0,cnt=0,samples=0,both=0;
+      for(let k=0;k<=K;k++){const ta=t0+k*dt;let s=0,c=0;
+        for(const m of P.m){const va=metricAt(SA,m,ta);if(isNaN(va))continue;const vb=metricAt(SB,bm(m),ta+lag);if(isNaN(vb))continue;
+          const d=(va-sg(m)*vb)/TOL[m];s+=Math.exp(-0.5*d*d);c++}
+        samples++;if(c){both++;tot+=s/c;cnt++}}
+      const shape=cnt?100*tot/cnt:0,timing=best>-2?100*clamp01(best):0;
+      const aA=partScore(A,part,t0,t1),aB=partScore(B,part,t0+lag,t1+lag),ov=samples?both/samples:0;
+      res[part]={score:Math.round((0.7*shape+0.3*timing)*10)/10,shape:Math.round(shape*10)/10,timing:Math.round(timing*10)/10,
+        reliability:Math.round(Math.min(aA?aA.score:0,aB?aB.score:0)*ov*10)/10,overlap:Math.round(ov*1000)/1000,accuracyA:aA?aA.score:0,accuracyB:aB?aB.score:0}}
+    res.overall=Math.round((res.legs.score+res.upper.score)/2*10)/10;
+    return res;
+  }
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,load,track,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade,partSeries,partScore,partSummary,partMatch,partAt,PART_METRICS:PM_NAMES};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

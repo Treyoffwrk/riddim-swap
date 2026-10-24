@@ -2685,12 +2685,30 @@ function hipGraph(){
   const px=X(v.currentTime);x.strokeStyle=tok('--dance');x.lineWidth=2*dpr;x.beginPath();x.moveTo(px,0);x.lineTo(px,h);x.stroke();
   const H=RB.hipsAt(B,v.currentTime);
   $('#hipNow').textContent=H?('Tilt '+(H.tilt==null?'side-on':Math.abs(H.tilt)<3?'level':(H.tilt>0?'right ':'left ')+Math.round(Math.abs(H.tilt))+'° up')+(H.turn!=null?' · facing '+(Math.abs(H.turn)<15?'front':Math.abs(H.turn)>150?'away':(H.turn>0?'right':'left')):'')):'';
+  partVals(B);
 }
 $('#hipCanvas').addEventListener('click',e=>{const n=srcById(S.cur),B=n&&bodyOf(n);if(!B||routineOn())return;const r=e.currentTarget.getBoundingClientRect();const t=(e.clientX-r.left)/r.width*(v.duration||1);if(S.playing)pause();S.segIdx=0;v.currentTime=Math.max(0,Math.min(v.duration||t,t));hipGraph()});
+/* Leg and upper-body values: the isolated movement numbers at the playhead (measured against the pelvis, in torso lengths) and how far to trust them */
+const pvCache=new WeakMap();
+function partInfo(B){let c=pvCache.get(B);if(!c||c.n!==B.n){c={n:B.n,legs:RB.partScore(B,'legs'),upper:RB.partScore(B,'upper')};pvCache.set(B,c)}return c}
+const gradeWord=g=>({high:'Solid',medium:'Fair',low:'Shaky',none:'No data'}[g]||'');
+function accTitle(a){if(!a||!a.valid)return 'This part was not tracked well enough to measure.';
+  return `Measured in ${Math.round(a.coverage*100)}% of frames · tracker sees the joints ${Math.round(a.vis*100)}% · bones keep their length ${Math.round(a.rigid*100)}% · no jumps ${Math.round(a.steady*100)}%`+(a.mask!=null?` · joints on the person ${Math.round(a.mask*100)}%`:'')}
+function partVals(B){
+  const box=$('#partVals');if(!box)return;if(!B){box.innerHTML='';return}
+  const V=RB.partAt(B,v.currentTime)||{},I=partInfo(B),sel=S.cutPart;
+  const f=(x,d,u)=>(x==null||x!==x)?'<i>–</i>':(()=>{const r=+x.toFixed(d||0)||0;return (r>0&&u==='°'?'+':'')+r.toFixed(d||0)})()+(u||'');
+  const pair=(a,b,d,u)=>f(a,d,u)+' <i>/</i> '+f(b,d,u);
+  const card=(title,a,rows)=>`<div class="pv"><h4>${title}<span class="acc ${a.grade}" title="${accTitle(a)}">${a.valid?'Accuracy '+Math.round(a.score):gradeWord(a.grade)}</span></h4><dl>${rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('')}</dl></div>`;
+  const legs=card('Legs',I.legs,[['Thigh L / R',pair(V.thighL,V.thighR,0,'°')],['Knee bend L / R',pair(V.kneeL,V.kneeR,0,'°')],['Feet apart',f(V.stance*100,0,'%')],['Speed',f(V.legSpeed,1,' T/s')]]);
+  const upper=card('Upper body',I.upper,[['Lean',f(V.lean,0,'°')],['Shoulder tilt',f(V.shoulderTilt,0,'°')],['Arms up L / R',pair(V.armRaiseL*100,V.armRaiseR*100,0,'%')],['Chest turn',f(V.chestTurn,0,'°')],['Speed',f(V.upperSpeed,1,' T/s')]]);
+  const html=sel==='legs'?legs:sel==='upper'?upper:legs+upper;
+  if(box.innerHTML!==html)box.innerHTML=html;box.classList.toggle('one',sel==='legs'||sel==='upper');
+}
 /* redraw only when what it shows changed; at most 15 times a second while playing */
 let hipKey='';
 (function hipLoop(){try{const n=srcById(S.cur),B=n&&bodyOf(n),c=$('#hipCanvas'),r=c.getBoundingClientRect();
-  const k=[!!B,B&&B.n,B&&B.hips&&B.hips.length,S.cur,S.hasV,routineOn(),$('#p-clip').hidden,Math.round(r.width),Math.round(r.height),Math.round(v.currentTime*15),S.cIn,S.offset,S.ar,S.vr,n&&n.motion&&hitsOf(n).length,liveGrid()&&liveGrid().beats.length].join('|');
+  const k=[!!B,B&&B.n,B&&B.hips&&B.hips.length,S.cur,S.hasV,routineOn(),$('#p-clip').hidden,Math.round(r.width),Math.round(r.height),Math.round(v.currentTime*15),S.cutPart,S.cIn,S.offset,S.ar,S.vr,n&&n.motion&&hitsOf(n).length,liveGrid()&&liveGrid().beats.length].join('|');
   if(k!==hipKey){hipKey=k;hipGraph()}}catch(e){}requestAnimationFrame(hipLoop)})();
 
 /* ---------- sessions and updates ----------
@@ -2900,7 +2918,7 @@ function compareTry(refN,tryN){
   return {match:best.r,lag,mirrored:mir<0,similarity:sim,size,stretches,weakest,drift,overlap:[R.a+lo*step,R.a+hi*step],tryId:tryN.id,refId:refN.id,tt,off,step,ra:R.a};
 }
 const mmss=t=>{const m=Math.floor(t/60),s=Math.floor(t-m*60);return m+':'+(s<10?'0':'')+s};
-function compareText(c){
+function compareTextBase(c){
   if(!c)return '';if(c.err)return c.err;
   if(c.match<0.3)return `These don't look like the same moves (best match ${Math.round(Math.max(0,c.match)*100)}%). Check you picked the right video, and that it shows the same part.`;
   const parts=[`<b>${Math.round(Math.max(0,c.similarity)*100)}% alike</b> hip tilt`];
@@ -2909,6 +2927,13 @@ function compareText(c){
   else parts.push('timing steady through the part');
   if(c.weakest&&c.weakest.alike<0.6)parts.push(`work on <b>${mmss(c.weakest.t0)}–${mmss(c.weakest.t1)}</b> (least alike)`);
   return 'Your try vs the original: '+parts.join(' · ')+'.'+(c.mirrored?' You danced it mirrored, so it was compared as a mirror image.':'')+(Math.abs(c.lag)<0.05?' Both start at the same moment.':c.lag>0?` The part starts ${c.lag.toFixed(1)} s into your video.`:` Your video starts ${(-c.lag).toFixed(1)} s into the original\u2019s part.`);
+}
+/* legs and upper body scored separately, with how far to trust each score */
+function compareText(c){
+  const base=compareTextBase(c);if(!c||c.err||c.match<0.3||!c.parts)return base;
+  const P=c.parts,one=(name,r)=>`${name} <b>${Math.round(r.score)}%</b> <span title="shape ${Math.round(r.shape)}% · timing ${Math.round(r.timing)}% · tracking accuracy ${Math.round(r.accuracyA)} (original) / ${Math.round(r.accuracyB)} (your try)">(${r.reliability>=80?'solid':r.reliability>=60?'fair':'shaky'} reading)</span>`;
+  const weak=['legs','upper'].filter(k=>P[k].reliability<60);
+  return base+'<br>'+one('Legs',P.legs)+' · '+one('Upper body',P.upper)+(weak.length?`. The ${weak.map(k=>k==='legs'?'legs':'upper body').join(' and ')} score${weak.length>1?'s are':' is'} shaky: the tracker lost some of it, so film again with the whole body in view.`:'.');
 }
 function cmpOptions(){
   const sel=$('#cmpPick'),cur=sel.value,others=S.sources.filter(n=>n.id!==S.cur&&!n.missing);
@@ -2929,7 +2954,7 @@ $('#cmpGo').addEventListener('click',async()=>{
     if(!bodyOf(ref)){await trackSourceQuiet(ref,'Tracking the original…')}
     if(!bodyOf(tr)){if(!tr.url)throw new Error('That video isn’t loaded.');await trackSourceQuiet(tr,'Tracking your try…')}
     $('#cmpOut').textContent='Lining them up…';await new Promise(r=>setTimeout(r,30));
-    S.cmp=compareTry(ref,tr);$('#cmpOut').innerHTML=compareText(S.cmp);hipKey='';
+    S.cmp=compareTry(ref,tr);if(S.cmp&&!S.cmp.err&&S.cmp.match>=0.3){try{S.cmp.parts=RB.partMatch(bodyOf(ref),bodyOf(tr),{t0:S.cIn,t1:clipEnd(),lag0:S.cmp.lag,maxLag:0.5,mirror:S.cmp.mirrored})}catch(e){}}$('#cmpOut').innerHTML=compareText(S.cmp);hipKey='';
   }catch(e){$('#cmpOut').textContent='Couldn’t compare: '+((e&&e.message)||e)}
   finally{S.bodyBusy=false;b.disabled=false}
 });
@@ -2999,7 +3024,7 @@ function patFilterUI(){
 if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySelectorAll('details.more').forEach(d=>{d.open=true});
 /*@timeline*/
 /*@cues*/
-if(/debug/.test(location.hash))window.__rs={hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},hipGraph,partVals,bodyOf,S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
