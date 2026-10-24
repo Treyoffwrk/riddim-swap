@@ -14,7 +14,7 @@ function songNow(){
   return c.mt+(now-c.pt)/1000*r;
 }
 const heardNow=()=>{const r=a.playbackRate||1;return songNow()-CUE.delay*r+r/60};
-function cueCols(){const now=performance.now();if(!CUE.col||now-CUE.colAt>3000){CUE.col={song:tok('--song-hot'),dance:tok('--dance'),ink:'#F3F1EC'};CUE.colAt=now}return CUE.col}
+function cueCols(){const now=performance.now();if(!CUE.col||now-CUE.colAt>3000){const b=LOOK.ball();CUE.col={song:b.riddim,dance:b.dancer,ink:'#F3F1EC',ring:b.ring,glow:b.glow};CUE.colAt=now}return CUE.col}
 /* the riddim's hits (song seconds) — or the steady beat when the riddim can't be seen or the beat was tapped */
 function riddimEvents(){
   const so=S.liveSong, an=so&&so.an, G=liveGrid(); if(!G)return {ev:[],label:'Beat',sure:false,beat:0.6};
@@ -45,7 +45,7 @@ function lane(E,H,beat){
   const land=pv&&H-pv.t<0.22?{age:H-pv.t,kind:pv.kind,w:pv.w,t:pv.t}:null;
   return {y,land,nearNext,next:nx};
 }
-function cueBall(c,x,floor,R,hop,L,col,unsure){
+function cueBall(c,x,floor,R,hop,L,col,unsure,st){
   const lift=L.y*hop, ag=L.land?L.land.age:1, sq=ag<0.07?1-ag/0.07:0;
   /* shadow: sharpens as the ball comes down, so the landing can be read before it happens */
   c.fillStyle=`rgba(0,0,0,${0.18+0.32*(1-L.y)})`;c.beginPath();c.ellipse(x,floor+R*0.15,R*(1.25-0.5*L.y),R*0.32*(1-0.5*L.y),0,0,Math.PI*2);c.fill();
@@ -53,12 +53,16 @@ function cueBall(c,x,floor,R,hop,L,col,unsure){
   if(L.land&&ag<0.22){const k=L.land.kind,p=ag/0.22, big=k==='kick'||k==='both'||k==='one';
     const rr=R*(1.1+p*(big?2.6:1.9))*(k==='dance'?0.7+0.3*clamp(L.land.w,0.3,1.5):1);
     c.lineWidth=R*(big?0.42:0.26)*(1-p);c.strokeStyle=k==='snare'?`rgba(243,241,236,${1-p})`:col;c.globalAlpha=k==='snare'?1:(1-p);
-    c.beginPath();c.ellipse(x,floor,rr,rr*0.42,0,0,Math.PI*2);c.stroke();
+    c.beginPath();c.ellipse(x,floor,rr,rr*0.42,0,0,Math.PI*2);
+    if(st&&st.ring==='filled'&&k!=='snare'){c.save();c.globalAlpha=0.28*(1-p);c.fillStyle=col;c.fill();c.restore()}
+    c.stroke();
+    if(st&&st.ring==='double'&&k!=='snare'){c.beginPath();c.ellipse(x,floor,rr*0.68,rr*0.68*0.42,0,0,Math.PI*2);c.lineWidth*=0.6;c.globalAlpha=0.7*(1-p);c.stroke()}
     if(k==='both'){c.strokeStyle=`rgba(243,241,236,${1-p})`;c.globalAlpha=1;c.lineWidth=R*0.2*(1-p);c.beginPath();c.ellipse(x,floor,rr*0.7,rr*0.3,0,0,Math.PI*2);c.stroke()}
     c.globalAlpha=1}
   /* the ball: squashes for a moment when it lands */
   const sx=1+0.28*sq, sy=1-0.3*sq, cy=floor-R*sy-lift;
   c.save();c.translate(x,cy);c.scale(sx,sy);c.beginPath();c.arc(0,0,R,0,Math.PI*2);
+  if(st&&st.glow){c.shadowColor=col;c.shadowBlur=R*st.glow*1.6}
   if(unsure){c.lineWidth=R*0.22;c.strokeStyle=col;c.globalAlpha=0.55;c.stroke()}else{c.fillStyle=col;c.fill();c.fillStyle='rgba(255,255,255,.35)';c.beginPath();c.arc(-R*0.3,-R*0.32,R*0.32,0,Math.PI*2);c.fill()}
   c.restore();c.globalAlpha=1;
 }
@@ -85,9 +89,9 @@ function drawCues(){
   const xL=inBars?side/2:rect.x+pad, xR=inBars?w-side/2:rect.x+rect.w-pad;
   const rid=riddimEvents(), dEv=S.hasV?dancerEvents():[];
   const Lr=lane(rid.ev,H,rid.beat);
-  cueBall(c,xL,floor,R,hop,Lr,col.song,!rid.sure); cueLabel(c,xL,floor,R,rid.label+(rid.sure?'':' ?'),col.song);
+  cueBall(c,xL,floor,R,hop,Lr,col.song,!rid.sure,col); cueLabel(c,xL,floor,R,rid.label+(rid.sure?'':' ?'),col.song);
   if(dEv.length){const Ld=lane(dEv,H,rid.beat);
-    cueBall(c,xR,floor,R,hop,Ld,col.dance,!danceSure()); cueLabel(c,xR,floor,R,'Dancer'+(danceSure()?'':' ?'),col.dance);
+    cueBall(c,xR,floor,R,hop,Ld,col.dance,!danceSure(),col); cueLabel(c,xR,floor,R,'Dancer'+(danceSure()?'':' ?'),col.dance);
     /* both landed together (within 60 ms): join them */
     if(Lr.land&&Ld.land&&Math.abs(Lr.land.t-Ld.land.t)<0.06&&Ld.land.age<0.2){const p=Ld.land.age/0.2;c.strokeStyle=`rgba(243,241,236,${0.85*(1-p)})`;c.lineWidth=R*0.22*(1-p);
       c.beginPath();c.moveTo(xL+R*1.3,floor);c.lineTo(xR-R*1.3,floor);c.stroke()}}
@@ -117,10 +121,11 @@ function clickTick(){
   let lo=0,hi=ev.length;while(lo<hi){const m=(lo+hi)>>1;if(ev[m].t<now-0.005)lo=m+1;else hi=m}
   for(let i=lo;i<ev.length&&ev[i].t<now+ahead*r;i++){const e=ev[i],id=Math.round(e.t*1000);if(CLK.sched.has(id))continue;CLK.sched.add(id);
     const when=c.currentTime+Math.max(0,(e.t-now)/r);
+    const K=LOOK.snd(),kd=e.kind==='kick'||e.kind==='snare'||e.kind==='both'||e.kind==='one'?e.kind:'beat';
     const o=c.createOscillator(),g=c.createGain();
-    const f=e.kind==='kick'?520:e.kind==='snare'?2100:e.kind==='both'?900:e.kind==='one'?1600:1000;
-    o.frequency.value=f; g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime(e.kind==='kick'?0.5:0.32,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+(e.kind==='kick'?0.09:0.05));
-    o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.1);CLK.nodes.push({o,at:when})}
+    const f=K.freq[kd];
+    o.type=K.wave; o.frequency.value=f; g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime((e.kind==='kick'?0.5:0.32)*K.gain,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+(e.kind==='kick'?0.09:0.05)*K.decay);
+    o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.1*Math.max(1,K.decay));CLK.nodes.push({o,at:when})}
   if(CLK.nodes.length>64)CLK.nodes=CLK.nodes.filter(n=>n.at>c.currentTime-0.2);
   if(CLK.sched.size>400)CLK.sched=new Set([...CLK.sched].slice(-100));
 }

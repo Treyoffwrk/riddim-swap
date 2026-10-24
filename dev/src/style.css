@@ -470,3 +470,18 @@ details.more .field{margin-top:8px}
 .cutbar .bgpick button{min-height:30px;width:30px;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.22);cursor:pointer}
 .cutbar .bgpick button[aria-pressed="true"]{outline:2px solid #F3F1EC;outline-offset:2px}
 .cutbar .partpick{background:var(--surface)!important;border-color:var(--line)!important}
+
+/* ---------- Look & sound sheet ---------- */
+.picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.pick{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink)}
+.pick input[type=color]{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:50%;background:none;cursor:pointer;flex:none}
+#lookPacks h4{margin:14px 0 6px;font-family:var(--f-display);font-size:15px}
+.look-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.pack{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:6px;background:var(--sunk);align-content:start}
+.pack[aria-current="true"]{border-color:var(--song-hot);box-shadow:0 0 0 1px var(--song-hot)}
+.pack-top{display:grid;gap:6px}
+.dots{display:flex;align-items:center;gap:5px}
+.dots i{display:inline-block;width:16px;height:16px;border-radius:50%;border:1px solid rgba(255,255,255,.25)}
+.dots small{font-size:11px;color:var(--muted);margin-left:2px}
+.lookbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);z-index:70;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px;max-width:calc(100% - 16px)}
+.lookbar[hidden]{display:none}
