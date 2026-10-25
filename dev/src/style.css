@@ -485,3 +485,27 @@ details.more .field{margin-top:8px}
 .dots small{font-size:11px;color:var(--muted);margin-left:2px}
 .lookbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);z-index:70;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px;max-width:calc(100% - 16px)}
 .lookbar[hidden]{display:none}
+/* Learn mode */
+.learntag{background:rgba(110,139,255,.94)}
+.learnbar{margin:10px 0 2px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);display:grid;gap:10px}
+.learnbar[hidden]{display:none}
+.lnhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.lnhead b{font:800 16px var(--f-body);color:var(--ink)}
+.lnspeed{font:800 13px var(--f-body);padding:2px 9px;border-radius:999px;background:var(--dance);color:#0E1014}
+.lnloop{font-size:13px;color:var(--muted);margin-left:auto}
+.lncount{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
+.lncount i{font:800 15px var(--f-body);font-style:normal;text-align:center;padding:7px 0;border-radius:9px;background:var(--sunk);color:var(--muted);transition:background .08s,color .08s}
+.lncount i.past{color:var(--ink)}
+.lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
+.lnchips{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.lnchips::-webkit-scrollbar{display:none}
+.lnchips button{flex:0 0 auto;min-width:40px;min-height:36px;border-radius:999px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:700 14px var(--f-body);cursor:pointer;position:relative}
+.lnchips button.done{border-color:var(--dance)}
+.lnchips button.done::after{content:"";position:absolute;right:4px;top:4px;width:6px;height:6px;border-radius:50%;background:var(--dance)}
+.lnchips button.in{background:color-mix(in srgb,var(--dance) 28%,var(--sunk))}
+.lnchips button[aria-current="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.lnbtns{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.lnbtns .btn{min-width:0;padding-left:4px;padding-right:4px}
+.lnopts{margin-top:0}.lnoptbody{display:grid;gap:10px;padding:0 12px 12px}
+.recrow .btn{padding-left:12px;padding-right:12px}
+.lnchiprow{display:flex;align-items:center;gap:10px;min-width:0}.lnchiprow .label{flex:0 0 auto;font-size:11px}

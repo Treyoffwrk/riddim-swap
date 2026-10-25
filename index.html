@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-2acc5fd05a'</script>
+<script>window.RS_BUILD='rs-aaad150286'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -507,6 +507,30 @@ details.more .field{margin-top:8px}
 .dots small{font-size:11px;color:var(--muted);margin-left:2px}
 .lookbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);z-index:70;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px;max-width:calc(100% - 16px)}
 .lookbar[hidden]{display:none}
+/* Learn mode */
+.learntag{background:rgba(110,139,255,.94)}
+.learnbar{margin:10px 0 2px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);display:grid;gap:10px}
+.learnbar[hidden]{display:none}
+.lnhead{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.lnhead b{font:800 16px var(--f-body);color:var(--ink)}
+.lnspeed{font:800 13px var(--f-body);padding:2px 9px;border-radius:999px;background:var(--dance);color:#0E1014}
+.lnloop{font-size:13px;color:var(--muted);margin-left:auto}
+.lncount{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
+.lncount i{font:800 15px var(--f-body);font-style:normal;text-align:center;padding:7px 0;border-radius:9px;background:var(--sunk);color:var(--muted);transition:background .08s,color .08s}
+.lncount i.past{color:var(--ink)}
+.lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
+.lnchips{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.lnchips::-webkit-scrollbar{display:none}
+.lnchips button{flex:0 0 auto;min-width:40px;min-height:36px;border-radius:999px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:700 14px var(--f-body);cursor:pointer;position:relative}
+.lnchips button.done{border-color:var(--dance)}
+.lnchips button.done::after{content:"";position:absolute;right:4px;top:4px;width:6px;height:6px;border-radius:50%;background:var(--dance)}
+.lnchips button.in{background:color-mix(in srgb,var(--dance) 28%,var(--sunk))}
+.lnchips button[aria-current="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.lnbtns{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.lnbtns .btn{min-width:0;padding-left:4px;padding-right:4px}
+.lnopts{margin-top:0}.lnoptbody{display:grid;gap:10px;padding:0 12px 12px}
+.recrow .btn{padding-left:12px;padding-right:12px}
+.lnchiprow{display:flex;align-items:center;gap:10px;min-width:0}.lnchiprow .label{flex:0 0 auto;font-size:11px}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -645,6 +669,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           </div>
           <div class="recdot" id="recDot" hidden>Recording</div>
           <div class="studytag" id="studyTag" hidden>Study · ½ speed · looping</div>
+          <div class="studytag learntag" id="learnTag" hidden>Learn</div>
         </div>
         <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
         <div class="transport">
@@ -667,11 +692,33 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="recrow">
             <button class="btn" id="repeat" aria-pressed="false" disabled>Repeat</button>
             <button class="btn" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed">Study ½×</button>
+            <button class="btn" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed">Learn</button>
             <button class="btn rec" id="recBtn" disabled>Record</button>
             <div class="seg mode" id="modeSeg" role="group" aria-label="What plays" hidden>
               <button id="modeClip" aria-pressed="true">Clip</button>
               <button id="modeSeq" aria-pressed="false">Routine</button>
             </div>
+          </div>
+          <div class="learnbar" id="learnBar" hidden aria-label="Learn mode">
+            <div class="lnhead"><b id="learnWhat"></b><span class="lnspeed" id="learnSpeed"></span><span class="lnloop" id="learnLoop"></span></div>
+            <div class="lncount" id="learnCount" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i></div>
+            <div class="lnchiprow"><span class="label" id="learnChipLbl">8-counts</span><div class="lnchips" id="learnChips" role="group" aria-label="Choose an 8-count"></div></div>
+            <div class="lnbtns">
+              <button class="btn" id="lnPrev" type="button">◀ Back</button>
+              <button class="btn" id="lnSlow" type="button">Slower</button>
+              <button class="btn" id="lnAgain" type="button">Again</button>
+              <button class="btn primary" id="lnNext" type="button">Next ▶</button>
+            </div>
+            <details class="more lnopts">
+              <summary>Learn options</summary>
+              <div class="lnoptbody">
+                <label class="check"><input type="checkbox" id="lnBuild" checked> Slow first (50% → 75% → full speed)</label>
+                <label class="check"><input type="checkbox" id="lnTogether" checked> Put it together from the top after each one</label>
+                <label class="check"><input type="checkbox" id="lnAuto" checked> Move on by itself</label>
+                <div class="row"><span class="label">Loops at each speed</span><div class="seg" id="lnPer" role="group" aria-label="Loops at each speed" style="grid-template-columns:repeat(3,auto)"><button type="button" data-per="1">1</button><button type="button" data-per="2" aria-pressed="true">2</button><button type="button" data-per="3">3</button></div></div>
+              </div>
+            </details>
+            <p class="hint" id="learnHow" hidden></p>
           </div>
           <p class="hint" id="recMsg" hidden></p>
         </div>
@@ -2318,7 +2365,7 @@ function atSegEnd(){
   if(S.segIdx<L.length-1){gotoSeg(S.segIdx+1);return}
   if(S.rec){stopRecording();return}
   if(S.preview){S.preview=null;pause();toStart();renderMoves();return}
-  if(S.loop){toStart();if(v.paused)v.play().catch(()=>{});syncSong(true)}
+  if(S.loop){if(S.learn)learnLoopDone();toStart();if(v.paused)v.play().catch(()=>{});syncSong(true)}
   else{pause();toStart()}
 }
 
@@ -2709,7 +2756,7 @@ function updateTrim(){
   if(sm||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
   $('#scrub').max=sm?Math.max(0.01,segStart(segs().length,segs())):(d||1);
   try{cutUI()}catch(err){}
-  const r=$('#repeat'); r.classList.toggle('on',S.loop); r.setAttribute('aria-pressed',S.loop);
+  const r=$('#repeat'), rOn=S.study?!!S.study.loop:S.loop; r.classList.toggle('on',rOn); r.setAttribute('aria-pressed',rOn);   /* Study/Learn loop by themselves: show your own Repeat */
   $('#modeSeg').hidden=!S.seq.length;
   $('#modeClip').setAttribute('aria-pressed',!ro); $('#modeSeq').setAttribute('aria-pressed',ro);
   syncSlot(); scheduleFit();
@@ -2727,7 +2774,7 @@ $('#inRange').addEventListener('input',e=>{if(S.playing)pause();setIn(+e.target.
 $('#setOut').addEventListener('click',()=>setOut(v.currentTime));
 $('#clearOut').addEventListener('click',()=>{S.cOut=null;updateTrim()});
 $$('[data-in]').forEach(b=>b.addEventListener('click',()=>{if(S.playing)pause();setIn(S.cIn+ +b.dataset.in)}));
-$('#repeat').addEventListener('click',()=>{S.loop=!S.loop;updateTrim()});
+$('#repeat').addEventListener('click',()=>{if(S.study)S.study.loop=!S.study.loop;else S.loop=!S.loop;updateTrim()});   /* during Study/Learn it sets what Repeat goes back to, and they keep looping */
 
 /* ---------- moves ---------- */
 function grabThumb(){
@@ -3521,7 +3568,7 @@ function snapshot(){
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
       cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
     beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
-    cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.loop, useSeq:S.useSeq,
+    cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.study?!!S.study.loop:S.loop,   /* Study and Learn turn Repeat on for themselves: save yours */ useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
     mainSong:songMeta(S.mainSong), rtSong:songMeta(S.rtSong),
     counts:{src:srcCount,move:moveCount,uid:uidCount}};
@@ -4020,7 +4067,7 @@ $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.
 const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 let bodyKey='';
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
@@ -5018,7 +5065,7 @@ function hipBeatText(n,B){
    its pitch kept, so it sounds slow rather than deep. Everything else (body, hip meter, beat lights) works as usual.
    Nothing is saved: tap again and the clip, speed and repeat are as they were. */
 function songRate(){return S.ar*(S.study?S.study.rate:1)}
-function studyUI(){const on=!!S.study;$('#studyBtn').setAttribute('aria-pressed',String(on));$('#studyTag').hidden=!on;$('#studyBtn').disabled=!S.hasV||routineOn()||!!S.rec}
+function studyUI(){const on=!!S.study&&!S.learn;$('#studyBtn').setAttribute('aria-pressed',String(on));$('#studyTag').hidden=!on;$('#studyBtn').disabled=!S.hasV||routineOn()||!!S.rec}
 function studyOn(){
   if(!S.hasV||routineOn()||S.rec)return;
   const t=clamp(v.currentTime,S.cIn,clipEnd()),a0=Math.max(S.cIn,t-1),b0=Math.min(clipEnd(),a0+2),a1=Math.max(S.cIn,b0-2);
@@ -5029,10 +5076,11 @@ function studyOn(){
 }
 function studyOff(){
   if(!S.study)return; const st=S.study; S.study=null; S.loop=st.loop;
+  if(S.learn){S.learn=null;try{learnUI()}catch(e){}}
   a.preservesPitch=false; a.webkitPreservesPitch=false;
   if(S.playing)pause(); S.segIdx=0; studyUI(); updateTrim(); syncSong(true);
 }
-$('#studyBtn').addEventListener('click',()=>{S.study?studyOff():studyOn()});
+$('#studyBtn').addEventListener('click',()=>{if(S.learn){learnOff();studyOn()}else S.study?studyOff():studyOn()});
 setInterval(()=>{try{studyUI()}catch(e){}},500);
 
 /* ---------- compare your try with the original ----------
@@ -5748,7 +5796,138 @@ $('#lookBarUse').addEventListener('click',async e=>{const id=e.currentTarget.dat
   if(!packOwned(p)){const r=await STORE.buy(id);if(!r.ok){$('#lookBarName').textContent=r.why;return}}
   LOOK.use(id);lookPreviewBar()});
 LOOK.apply();
-if(/debug/.test(location.hash))window.__rs={LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+/* ---------- Learn mode ----------
+   Like a teacher drilling a routine: the clip is split into 8-counts (8 beats of the song, starting on the 1), and each
+   one loops slow first, then faster, then at full speed. After an 8-count is learnt it's put together with the ones
+   before it ("from the top"), then the next one starts.
+   It runs on the Study loop engine (S.study = one looped stretch at a rate, song pitch kept), so sync, body, cues and
+   the hip meter all work as usual. Progress (which 8-count you're on, which are done) is kept per clip on this phone.
+   Without a song beat, the clip's own tempo (Tempo → Dance) is used; failing that, about 4 s pieces cut at the dancer's
+   hits. */
+function learnSay(t){const m=$('#recMsg');m.textContent=t;m.hidden=false;setTimeout(()=>{if(m.textContent===t)m.hidden=true},4000)}
+const LEARN={ladder:[0.5,0.75,1], perStep:2};
+function learnKey(n){return 'rs-learn-'+(n&&n.id||'')}
+function learnSaved(n){try{return JSON.parse(localStorage.getItem(learnKey(n))||'null')}catch(e){return null}}
+function learnSave(){const L=S.learn;if(!L)return;try{localStorage.setItem(learnKey(srcById(S.cur)),JSON.stringify({i:L.i,done:[...L.done],n:L.chunks.length}))}catch(e){}}
+function learnOpts(){let o={};try{o=JSON.parse(localStorage.getItem('rs-learn-opts')||'{}')}catch(e){}return {build:o.build!==false,together:o.together!==false,auto:o.auto!==false,per:[1,2,3].includes(o.per)?o.per:2}}
+function learnSetOpt(k,v){const o=learnOpts();o[k]=v;try{localStorage.setItem('rs-learn-opts',JSON.stringify(o))}catch(e){}}
+/* song time <-> clip time, the way the Study engine plays them */
+function learnClipT(s){return S.cIn+((s-S.offset)/S.ar-(S.avComp||0))*S.vr}
+function learnSongT(t){return S.offset+((t-S.cIn)/S.vr+(S.avComp||0))*S.ar}
+/* the 8-counts, in clip time: [{a,b,beats:[song times]|null}] */
+function learnChunks(){
+  const n=srcById(S.cur), A=S.cIn, B=clipEnd(); if(!n||!(B-A>1))return {chunks:[],how:'none'};
+  let bt=null, d0=null, how='song';
+  const G=S.hasA?liveGrid():null;
+  if(G&&G.beats&&G.beats.length>8){const so=S.liveSong;bt=G.tapped?G.beats:(so&&so.an&&so.an.grid)||G.beats;d0=(G.down||[])[0];
+    /* extend the grid past its ends at the local beat length, so the whole clip is covered */
+    bt=bt.slice();const p0=bt[1]-bt[0],p1=bt[bt.length-1]-bt[bt.length-2];while(bt[0]>learnSongT(A)-p0)bt.unshift(bt[0]-p0);while(bt[bt.length-1]<learnSongT(B)+p1)bt.push(bt[bt.length-1]+p1);
+    bt=bt.map(learnClipT)}
+  else if(S.dBase>0){how='dance';const p=60/(S.dBase*S.vr),a0=S.dAnchor!=null?S.dAnchor:A;bt=[];for(let t=a0-Math.ceil((a0-A)/p+1)*p;t<B+p;t+=p)bt.push(t);d0=null}
+  let cuts=[];
+  if(bt){
+    /* start counting on the 1 (the first downbeat), in steps of 8 */
+    let i0=0;if(d0!=null){const dc=learnClipT(d0);let bd=1e9;bt.forEach((t,k)=>{if(Math.abs(t-dc)<bd){bd=Math.abs(t-dc);i0=k}})}
+    i0=((i0%8)+8)%8; for(let k=i0;k<bt.length;k+=8)cuts.push(bt[k]);
+  } else {
+    /* no beat at all: about every 4 s, at the nearest dancer hit */
+    how='hits';const H=hitsOf(n).map(h=>h.t);for(let t=A+4;t<B-1;t+=4){let c=t,bd=1.2;for(const h of H)if(Math.abs(h-t)<bd){bd=Math.abs(h-t);c=h}cuts.push(c)}
+  }
+  cuts=[A,...cuts.filter(t=>t>A+0.05&&t<B-0.05),B];
+  let ch=[];for(let k=0;k+1<cuts.length;k++)ch.push({a:cuts[k],b:cuts[k+1]});
+  /* a short piece at either end joins its neighbour (under half an 8-count, or under 1.5 s) */
+  const typ=ch.length>2?ch.map(c=>c.b-c.a).sort((x,y)=>x-y)[ch.length>>1]:4;
+  if(ch.length>1&&ch[0].b-ch[0].a<Math.max(1.5,typ*0.5)){ch[1].a=ch[0].a;ch.shift()}
+  if(ch.length>1&&ch[ch.length-1].b-ch[ch.length-1].a<Math.max(1.5,typ*0.5)){ch[ch.length-2].b=ch[ch.length-1].b;ch.pop()}
+  /* parts cut out in Clip → Cut the clip are skipped */
+  if(n.pieces&&n.pieces.some(p=>!p.on)){const K=keptRanges(n);ch=ch.filter(c=>K.some(([s,e])=>Math.min(e,c.b)-Math.max(s,c.a)>0.5*(c.b-c.a)))}
+  if(bt)ch.forEach(c=>{c.beats=bt.filter(t=>t>=c.a-0.02&&t<c.b-0.02)});
+  return {chunks:ch,how};
+}
+function learnOn(){
+  if(!S.hasV||routineOn()||S.rec)return;
+  const {chunks,how}=learnChunks(); if(!chunks.length){learnSay('This clip is too short to split into 8-counts.');return}
+  const n=srcById(S.cur), sv=learnSaved(n), ok=sv&&sv.n===chunks.length;
+  /* start where you left off, or at the 8-count under the playhead */
+  let i=ok?clamp(sv.i,0,chunks.length-1):Math.max(0,chunks.findIndex(c=>v.currentTime<c.b));
+  if(S.study)studyOff();
+  S.learn={chunks,how,i,step:0,loopN:0,phase:'learn',done:new Set(ok?sv.done:[]),loop0:S.loop};
+  learnStart(i,true);
+}
+function learnOff(){
+  const L=S.learn; if(!L)return; S.learn=null;
+  if(S.study){S.study.loop=L.loop0;studyOff()}
+  learnUI();
+}
+/* play 8-count i (or the stretch from the top to it, when putting together), from its start */
+function learnStart(i,first){
+  const L=S.learn,o=learnOpts(); L.i=clamp(i,0,L.chunks.length-1); L.loopN=0; if(first||L.phase!=='together'){L.phase='learn';L.step=o.build?0:LEARN.ladder.length-1}
+  learnApply(true); learnSave();
+}
+function learnApply(restart){
+  const L=S.learn, c=L.chunks[L.i], rate=L.phase==='together'?1:LEARN.ladder[L.step], a0=L.phase==='together'?L.chunks[learnTopOf(L.i)].a:c.a;
+  const loop=S.study?S.study.loop:L.loop0;
+  S.study={a:a0,b:c.b,rate,loop}; S.loop=true; a.preservesPitch=true; a.webkitPreservesPitch=true;
+  if(restart){const was=S.playing;if(was)pause();S.segIdx=0;v.currentTime=a0;studyUI();updateTrim();learnUI();setTimeout(()=>{if(S.learn&&!S.playing)$('#play').click()},120)}
+  else learnUI();
+}
+/* "from the top": up to 4 8-counts back (a whole routine of 30 would be too long to drill) */
+function learnTopOf(i){return Math.max(0,i-3)}
+/* called each time the loop comes round: count it, and move up the speed ladder / on to the next 8-count */
+function learnLoopDone(){
+  const L=S.learn; if(!L)return; const o=learnOpts(); L.loopN++;
+  if(L.loopN<o.per)return learnUI();
+  L.loopN=0;
+  if(L.phase==='learn'&&L.step<LEARN.ladder.length-1){L.step++;learnApply(false);return}
+  if(L.phase==='learn'){L.done.add(L.i);learnSave();
+    if(o.together&&L.i>0){L.phase='together';learnApply(false);return}}
+  if(!o.auto){L.hold=true;return learnUI()}   /* stay on it at full speed until you tap Next */
+  if(L.i<L.chunks.length-1){L.phase='learn';L.i++;L.step=o.build?0:LEARN.ladder.length-1;learnApply(false);learnSave()}
+  else{L.finished=true;learnUI()}
+}
+/* which of the 8 counts is playing now (1-8), from the song's beats */
+function learnCount(){
+  const L=S.learn; if(!L)return 0; const c=L.chunks[L.i]; if(!c.beats||!c.beats.length)return 0;
+  const t=v.currentTime; if(L.phase==='together'){/* count within whichever 8-count is playing */const k=L.chunks.findIndex(q=>t>=q.a-0.02&&t<q.b);const q=L.chunks[k];if(!q||!q.beats)return 0;let m=0;for(const b of q.beats)if(b<=t+0.03)m++;return Math.max(1,m)}
+  let m=0;for(const b of c.beats)if(b<=t+0.03)m++;return Math.max(1,Math.min(8,m));
+}
+function learnUI(){
+  const L=S.learn, bar=$('#learnBar'), btn=$('#learnBtn'); btn.setAttribute('aria-pressed',String(!!L)); bar.hidden=!L; $('#learnTag').hidden=!L;
+  btn.disabled=!S.hasV||routineOn()||!!S.rec;
+  if(!L)return;
+  const o=learnOpts(), c=L.chunks[L.i], N=L.chunks.length, rate=S.study?S.study.rate:1;
+  const chips=$('#learnChips');
+  if(chips.childElementCount!==N){chips.innerHTML='';L.chunks.forEach((_,k)=>{const b=document.createElement('button');b.type='button';b.textContent=String(k+1);b.addEventListener('click',()=>{L.hold=false;L.finished=false;learnStart(k,true)});chips.append(b)})}
+  [...chips.children].forEach((b,k)=>{b.setAttribute('aria-current',String(k===L.i));b.classList.toggle('done',L.done.has(k));b.classList.toggle('in',L.phase==='together'&&k>=learnTopOf(L.i)&&k<L.i)});
+  const cur=chips.children[L.i]; if(cur&&L.lastScroll!==L.i){L.lastScroll=L.i;cur.scrollIntoView({block:'nearest',inline:'center'})}
+  const what=L.phase==='together'?`Put together: ${learnTopOf(L.i)+1}–${L.i+1}`:`8-count ${L.i+1} of ${N}`;
+  const unit=L.how==='hits'?'Part':'8-count';
+  $('#learnWhat').textContent=L.how==='hits'?what.replace('8-count',unit):what;
+  $('#learnChipLbl').textContent=L.how==='hits'?'Parts':'8-counts';
+  $('#learnSpeed').textContent=Math.round(rate*100)+'%';
+  $('#learnLoop').textContent=L.finished?'All done: tap a number to practise it again':L.hold?'Full speed. Tap Next when you have it':`loop ${L.loopN+1} of ${o.per}`;
+  $('#learnTag').textContent=`Learn · ${unit} ${L.i+1} · ${Math.round(rate*100)}%`;
+  $('#learnHow').hidden=L.how==='song'; $('#learnHow').textContent=L.how==='dance'?'Counting from the clip\'s own tempo (no song beat).':L.how==='hits'?'No beat found: split about every 4 s at the dancer\'s hits. Add a song or tap the tempo for real 8-counts.':'';
+  $('#lnBuild').checked=o.build; $('#lnTogether').checked=o.together; $('#lnAuto').checked=o.auto;
+  $$('#lnPer button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.per===o.per)));
+  $('#lnPrev').disabled=L.i===0; $('#lnNext').disabled=L.i>=N-1;
+}
+/* the 1-8 count: lit as it plays */
+function learnTick(){
+  const L=S.learn; if(!L)return; const k=learnCount(); if(k===L.shown)return; L.shown=k;
+  $$('#learnCount i').forEach((e,j)=>{e.classList.toggle('on',j+1===k);e.classList.toggle('past',j+1<k)});
+}
+$('#learnBtn').addEventListener('click',()=>{S.learn?learnOff():learnOn()});
+$('#lnPrev').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;learnStart(L.i-1,true)});
+$('#lnNext').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;L.done.add(L.i);learnStart(L.i+1,true)});
+$('#lnAgain').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;learnStart(L.i,true)});
+$('#lnSlow').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.phase='learn';L.step=Math.max(0,L.step-1);L.loopN=0;learnApply(true)});
+$('#lnBuild').addEventListener('change',e=>{learnSetOpt('build',e.target.checked);learnUI()});
+$('#lnTogether').addEventListener('change',e=>{learnSetOpt('together',e.target.checked);learnUI()});
+$('#lnAuto').addEventListener('change',e=>{learnSetOpt('auto',e.target.checked);learnUI()});
+$$('#lnPer button').forEach(b=>b.addEventListener('click',()=>{learnSetOpt('per',+b.dataset.per);learnUI()}));
+setInterval(()=>{try{if(!S.learn)learnUI()}catch(e){}},700);
+if(/debug/.test(location.hash))window.__rs={liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
@@ -5788,7 +5967,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody(); drawCues(); try{tlTick()}catch(err){} if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
+  clickTick(); drawBody(); drawCues(); try{learnTick()}catch(err){} try{tlTick()}catch(err){} if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.hasA&&!a.paused)s=countAt(heardNow());

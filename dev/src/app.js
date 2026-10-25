@@ -166,7 +166,7 @@ function atSegEnd(){
   if(S.segIdx<L.length-1){gotoSeg(S.segIdx+1);return}
   if(S.rec){stopRecording();return}
   if(S.preview){S.preview=null;pause();toStart();renderMoves();return}
-  if(S.loop){toStart();if(v.paused)v.play().catch(()=>{});syncSong(true)}
+  if(S.loop){if(S.learn)learnLoopDone();toStart();if(v.paused)v.play().catch(()=>{});syncSong(true)}
   else{pause();toStart()}
 }
 
@@ -557,7 +557,7 @@ function updateTrim(){
   if(sm||!d){f.style.left='0';f.style.right='0'} else {f.style.left=(S.cIn/d*100)+'%';f.style.right=(100-e/d*100)+'%'}
   $('#scrub').max=sm?Math.max(0.01,segStart(segs().length,segs())):(d||1);
   try{cutUI()}catch(err){}
-  const r=$('#repeat'); r.classList.toggle('on',S.loop); r.setAttribute('aria-pressed',S.loop);
+  const r=$('#repeat'), rOn=S.study?!!S.study.loop:S.loop; r.classList.toggle('on',rOn); r.setAttribute('aria-pressed',rOn);   /* Study/Learn loop by themselves: show your own Repeat */
   $('#modeSeg').hidden=!S.seq.length;
   $('#modeClip').setAttribute('aria-pressed',!ro); $('#modeSeq').setAttribute('aria-pressed',ro);
   syncSlot(); scheduleFit();
@@ -575,7 +575,7 @@ $('#inRange').addEventListener('input',e=>{if(S.playing)pause();setIn(+e.target.
 $('#setOut').addEventListener('click',()=>setOut(v.currentTime));
 $('#clearOut').addEventListener('click',()=>{S.cOut=null;updateTrim()});
 $$('[data-in]').forEach(b=>b.addEventListener('click',()=>{if(S.playing)pause();setIn(S.cIn+ +b.dataset.in)}));
-$('#repeat').addEventListener('click',()=>{S.loop=!S.loop;updateTrim()});
+$('#repeat').addEventListener('click',()=>{if(S.study)S.study.loop=!S.study.loop;else S.loop=!S.loop;updateTrim()});   /* during Study/Learn it sets what Repeat goes back to, and they keep looping */
 
 /* ---------- moves ---------- */
 function grabThumb(){
@@ -1369,7 +1369,7 @@ function snapshot(){
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
       cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
     beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
-    cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.loop, useSeq:S.useSeq,
+    cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.study?!!S.study.loop:S.loop,   /* Study and Learn turn Repeat on for themselves: save yours */ useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
     mainSong:songMeta(S.mainSong), rtSong:songMeta(S.rtSong),
     counts:{src:srcCount,move:moveCount,uid:uidCount}};
@@ -1868,7 +1868,7 @@ $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.
 const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 let bodyKey='';
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
@@ -2866,7 +2866,7 @@ function hipBeatText(n,B){
    its pitch kept, so it sounds slow rather than deep. Everything else (body, hip meter, beat lights) works as usual.
    Nothing is saved: tap again and the clip, speed and repeat are as they were. */
 function songRate(){return S.ar*(S.study?S.study.rate:1)}
-function studyUI(){const on=!!S.study;$('#studyBtn').setAttribute('aria-pressed',String(on));$('#studyTag').hidden=!on;$('#studyBtn').disabled=!S.hasV||routineOn()||!!S.rec}
+function studyUI(){const on=!!S.study&&!S.learn;$('#studyBtn').setAttribute('aria-pressed',String(on));$('#studyTag').hidden=!on;$('#studyBtn').disabled=!S.hasV||routineOn()||!!S.rec}
 function studyOn(){
   if(!S.hasV||routineOn()||S.rec)return;
   const t=clamp(v.currentTime,S.cIn,clipEnd()),a0=Math.max(S.cIn,t-1),b0=Math.min(clipEnd(),a0+2),a1=Math.max(S.cIn,b0-2);
@@ -2877,10 +2877,11 @@ function studyOn(){
 }
 function studyOff(){
   if(!S.study)return; const st=S.study; S.study=null; S.loop=st.loop;
+  if(S.learn){S.learn=null;try{learnUI()}catch(e){}}
   a.preservesPitch=false; a.webkitPreservesPitch=false;
   if(S.playing)pause(); S.segIdx=0; studyUI(); updateTrim(); syncSong(true);
 }
-$('#studyBtn').addEventListener('click',()=>{S.study?studyOff():studyOn()});
+$('#studyBtn').addEventListener('click',()=>{if(S.learn){learnOff();studyOn()}else S.study?studyOff():studyOn()});
 setInterval(()=>{try{studyUI()}catch(e){}},500);
 
 /* ---------- compare your try with the original ----------
@@ -3027,7 +3028,8 @@ if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySele
 /*@timeline*/
 /*@cues*/
 /*@look*/
-if(/debug/.test(location.hash))window.__rs={LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+/*@learn*/
+if(/debug/.test(location.hash))window.__rs={liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
@@ -3067,7 +3069,7 @@ function tick(){
       if(k!==lastSeg){lastSeg=k;$$('#seqList .item').forEach(li=>li.classList.toggle('now',+li.dataset.i===k))}
     }
   } else if(S.hasA)$('#time').textContent=fmt(a.currentTime);
-  clickTick(); drawBody(); drawCues(); try{tlTick()}catch(err){} if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
+  clickTick(); drawBody(); drawCues(); try{learnTick()}catch(err){} try{tlTick()}catch(err){} if(S.playing&&!S.everPlayed){S.everPlayed=true;try{localStorage.setItem('rs-played','1')}catch(e){}} if(++dockTick%15===0){dockUpdate();startUpdate()}
   let d={idx:-1,pulse:false}, s={idx:-1,pulse:false};
   if(S.dBase&&S.hasV&&!v.paused)d=beat(v.currentTime,S.dAnchor,S.dBase);
   if(S.hasA&&!a.paused)s=countAt(heardNow());

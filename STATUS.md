@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 24 Oct 2026 · version rs-2acc5fd05a · repo Treyoffwrk/riddim-swap_
+_Last updated 25 Oct 2026 · version rs-aaad150286 · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -37,6 +37,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
   - **Sound** in every view: Song (Riddim Swap's song, in time with the clip, at its own speed: song = offset + (clip time − clip start) × song speed ÷ clip speed; the song leads and the clip is nudged up to ±6%), Clip (the video's own sound) or Off. It doesn't depend on Pulse, so sound still plays when Pulse can't read a clip's audio.
   - It uses Riddim Swap's header, with Projects, and its section bar. MirrorView's own Load video, Start here and Diagnostics sit in the ⋯ menu.
 - **Keeps your work.** Projects save on the phone. Backups and `.riddim` share bundles carry videos, songs and tracking.
+- **Learn mode** (the Learn button beside Study). Splits the clip into 8-counts (8 beats of the song, each starting on a 1; without a song, the clip's own tempo, or about 4 s pieces cut at the dancer's hits). Each 8-count loops at 50%, then 75%, then full speed (song pitch kept), then it's put together with up to 3 before it from the top, then the next one starts. A 1–8 count lights up as it plays; numbered buttons jump to any 8-count; Back / Slower / Again / Next. Options: slow first, put together, move on by itself, loops per speed (1–3). Progress (where you are, which are learnt) is kept per clip on the phone. Parts cut out of the clip are skipped. It runs on the Study engine, so sync, body, cues and cut-out work as usual. Source: `src/learn.js`.
 - **Look & sound** (the Look button in the header). A sheet with free colour pickers for the balls and skeleton, and 16 cosmetic packs: balls, skeleton (some with a glow), click sounds and app themes, a free Classic plus three extras of each. Nothing is locked on the web. Paid packs are only gated when the store is on (`?store=1`, or inside the App Store app): then they show a price, Buy and Try it (a preview with a bar to buy or stop), with a note that every feature stays free. Purchases are test purchases for now (no money taken). Source: `src/look.js`, packs in `src/packs.json`.
 - **Works offline after the first visit.** This includes the body tracker.
 
@@ -68,7 +69,11 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 47 suites at rs-2acc5fd05a (24 Oct 2026, Look & sound merged): all passed, including Look (24/24), isolation with tracking on the GPU, slow video, skeleton drawing and tracking with a silent frame clock. Three checks failed in the full run: the hip meter check (it expected gauges while ball cues are on; updated for the new behaviour), and Body camera start and the quick-flick swipe, which passed when re-run alone (timing under load).
+**Last full regression:** 48 suites at rs-aaad150286 (25 Oct 2026, Learn mode): all passed, including Learn (14/14) and the updated hip meter check. In the full run, one cue check (dancer ball landing, worst 151 ms) failed under load and passed alone (worst 77 ms); the Look suite couldn't start because a debug hook had lost `LOOK`, fixed and re-run 24/24 (the app itself was unaffected).
+
+Also fixed with Learn: Repeat during Study or Learn now shows and sets your own Repeat (it used to switch their looping off), the project no longer saves Repeat as on because Study/Learn was running, and switching ball cues while paused redraws the skeleton (hip gauges come back).
+
+**Previous:** 47 suites at rs-2acc5fd05a (24 Oct 2026, Look & sound merged): all passed, including Look (24/24), isolation with tracking on the GPU, slow video, skeleton drawing and tracking with a silent frame clock. Three checks failed in the full run: the hip meter check (it expected gauges while ball cues are on; updated for the new behaviour), and Body camera start and the quick-flick swipe, which passed when re-run alone (timing under load).
 
 **Earlier:** 43 suites at rs-e0adbf4354, including a slow-video test (video plays 15% slower than asked: 0 song jumps in 10 s).
 

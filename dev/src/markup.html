@@ -122,6 +122,7 @@
           </div>
           <div class="recdot" id="recDot" hidden>Recording</div>
           <div class="studytag" id="studyTag" hidden>Study · ½ speed · looping</div>
+          <div class="studytag learntag" id="learnTag" hidden>Learn</div>
         </div>
         <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
         <div class="transport">
@@ -144,11 +145,33 @@
           <div class="recrow">
             <button class="btn" id="repeat" aria-pressed="false" disabled>Repeat</button>
             <button class="btn" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed">Study ½×</button>
+            <button class="btn" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed">Learn</button>
             <button class="btn rec" id="recBtn" disabled>Record</button>
             <div class="seg mode" id="modeSeg" role="group" aria-label="What plays" hidden>
               <button id="modeClip" aria-pressed="true">Clip</button>
               <button id="modeSeq" aria-pressed="false">Routine</button>
             </div>
+          </div>
+          <div class="learnbar" id="learnBar" hidden aria-label="Learn mode">
+            <div class="lnhead"><b id="learnWhat"></b><span class="lnspeed" id="learnSpeed"></span><span class="lnloop" id="learnLoop"></span></div>
+            <div class="lncount" id="learnCount" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i></div>
+            <div class="lnchiprow"><span class="label" id="learnChipLbl">8-counts</span><div class="lnchips" id="learnChips" role="group" aria-label="Choose an 8-count"></div></div>
+            <div class="lnbtns">
+              <button class="btn" id="lnPrev" type="button">◀ Back</button>
+              <button class="btn" id="lnSlow" type="button">Slower</button>
+              <button class="btn" id="lnAgain" type="button">Again</button>
+              <button class="btn primary" id="lnNext" type="button">Next ▶</button>
+            </div>
+            <details class="more lnopts">
+              <summary>Learn options</summary>
+              <div class="lnoptbody">
+                <label class="check"><input type="checkbox" id="lnBuild" checked> Slow first (50% → 75% → full speed)</label>
+                <label class="check"><input type="checkbox" id="lnTogether" checked> Put it together from the top after each one</label>
+                <label class="check"><input type="checkbox" id="lnAuto" checked> Move on by itself</label>
+                <div class="row"><span class="label">Loops at each speed</span><div class="seg" id="lnPer" role="group" aria-label="Loops at each speed" style="grid-template-columns:repeat(3,auto)"><button type="button" data-per="1">1</button><button type="button" data-per="2" aria-pressed="true">2</button><button type="button" data-per="3">3</button></div></div>
+              </div>
+            </details>
+            <p class="hint" id="learnHow" hidden></p>
           </div>
           <p class="hint" id="recMsg" hidden></p>
         </div>

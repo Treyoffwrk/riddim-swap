@@ -11,6 +11,7 @@ Edit these files, then run `python3 build_src.py` from the folder above.
 | `../body.js` | body tracking, cleaning and drawing, shared with MirrorView and the pose labs |
 | `app.js` | the app itself |
 | `cues.js` | beat cues: the riddim and dancer balls, the count, the click, sound delay (placed into `app.js` at `/*@cues*/`) |
+| `learn.js` | Learn mode: 8-counts, the speed ladder, put together, progress (placed into `app.js` at `/*@learn*/`) |
 | `look.js` | the look: balls, skeleton, click sounds and app themes read from packs; the Look sheet; the store rules (placed into `app.js` at `/*@look*/`) |
 | `packs.json` | the packs themselves: one record each, free Classic plus paid extras (put into `look.js` at build time) |
 | `tail.html` | closing tags |
