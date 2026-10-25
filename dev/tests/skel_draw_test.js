@@ -23,4 +23,9 @@ const [,,HOST,CLIP,SONG,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUp
  /* a run that stopped part-way says so */
  const cov=await p.evaluate(()=>{const B=window.__rs.srcById(window.__rs.S.cur).body,st=B.data.length/B.n,k=Math.floor(B.n/5);return {full:RB.coverage(B),cut:RB.coverage({...B,n:k,data:B.data.slice(0,k*st)})}});
  rec('Coverage: a full run reads ~100%, a run that stopped at a fifth reads short',cov.full.pct>=95&&!cov.full.short&&cov.cut.short&&cov.cut.pct<30?'passed':'failed',JSON.stringify(cov));
+ /* tracking quality: Accurate (heavy model) by default with the new smoothing; Faster switches the model */
+ const tq=await p.evaluate(()=>{const B=window.__rs.srcById(window.__rs.S.cur).body,ui=[...document.querySelectorAll('#trackQ button')].map(b=>b.dataset.q+':'+b.getAttribute('aria-pressed'));
+   document.querySelector('#trackQ [data-q="fast"]').click();const fast=RB.modelName();document.querySelector('#trackQ [data-q="accurate"]').click();
+   return {model:B.model,cleanV:B.cleanV,ui,fast,back:RB.modelName(),info:document.getElementById('bodyInfo').textContent.slice(0,60)}});
+ rec('Tracking: Accurate (the bigger tracker) by default with the new smoothing; Faster switches it',/heavy/.test(tq.model)&&tq.cleanV===2&&tq.ui.join()==='accurate:true,fast:false'&&tq.fast==='full'&&tq.back==='heavy'?'passed':'failed',JSON.stringify(tq));
  rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));await b.close()})();

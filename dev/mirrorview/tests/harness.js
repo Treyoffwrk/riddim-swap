@@ -11,6 +11,9 @@ async function launch(opts={}){
     r.fulfill({status:200,headers:{'content-type':ct,'access-control-allow-origin':'*'},body:fs.readFileSync(f)})});
   await ctx.route(/storage\.googleapis\.com\/mediapipe-models\/pose_landmarker\/pose_landmarker_full\//,r=>r.fulfill({status:200,headers:{'content-type':'application/octet-stream','access-control-allow-origin':'*'},body:fs.readFileSync(path.join(TA,'pose_landmarker_full.task'))}));
   await ctx.route(/storage\.googleapis\.com\/mediapipe-models\/pose_landmarker\/pose_landmarker_lite\//,r=>r.fulfill({status:200,headers:{'content-type':'application/octet-stream','access-control-allow-origin':'*'},body:fs.readFileSync(path.join(TA,'pose_landmarker_lite.task'))}));
+  await ctx.route(/storage\.googleapis\.com\/mediapipe-models\/pose_landmarker\/pose_landmarker_heavy\//,r=>r.fulfill({status:200,headers:{'content-type':'application/octet-stream','access-control-allow-origin':'*'},body:fs.readFileSync(path.join(TA,'pose_landmarker_heavy.task'))}));
+  /* tests track with the regular model for speed, unless RB_HEAVY=1 (the app's default, Accurate, is the heavy one) */
+  if(!process.env.RB_HEAVY)await ctx.addInitScript(()=>{if(!window.RB_MODEL)window.RB_MODEL='full'});
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/,r=>r.fulfill({status:200,body:''}));
   return {b,ctx};
 }

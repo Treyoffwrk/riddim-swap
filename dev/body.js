@@ -23,22 +23,26 @@
   const HS=6;   /* hip measures per frame: tilt°, tiltVsShoulders°, sway, turn°, twist°, thrust (NaN when unknown) */
   const PAIRS=[[1,4],[2,5],[3,6],[7,8],[9,10],[11,12],[13,14],[15,16],[17,18],[19,20],[21,22],[23,24],[25,26],[27,28],[29,30],[31,32]];
   const SWAP=Array.from({length:N},(_,i)=>i); PAIRS.forEach(([a,b])=>{SWAP[a]=b;SWAP[b]=a});
-  let runtime=null, loading=null;
-
+  let runtime=null, loading=null, loadedModel='';
+  /* which tracker: 'heavy' (Accurate, the default: keeps up with fast hands and feet better, about twice as slow, a 30 MB
+     download kept for offline use) or 'full' (Faster). Set from Riddim Swap's Track body card; Body uses the same. */
+  function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':'heavy'}
   async function load(){
-    if(runtime)return runtime; if(loading)return loading;
+    const want=modelName();
+    if(runtime&&loadedModel===want)return runtime; if(loading&&loading.want===want)return loading;
+    if(runtime&&loadedModel!==want){try{runtime.task.close()}catch(e){}runtime=null}
     loading=(async()=>{
       const sdk=await import(CFG.sdkURL);
       const files=await sdk.FilesetResolver.forVisionTasks(CFG.wasmURL);
-      const r=await fetch(CFG.modelURL); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
+      const r=await fetch(CFG.modelURL.replace(/pose_landmarker_full/g,'pose_landmarker_'+want)); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
       const model=new Uint8Array(await r.arrayBuffer());
       /* person masks (segmentation) come from the same pass, for the cut-out */
       const gcv=document.createElement('canvas');
       const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:gcv,runningMode:'IMAGE',numPoses:CFG.numPoses,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
       let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
       try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
-      runtime={task,delegate,sdk,gcv}; return runtime;
-    })();
+      runtime={task,delegate,sdk,gcv,model:want}; loadedModel=want; return runtime;
+    })(); loading.want=want;
     try{return await loading}catch(e){loading=null;throw e}
   }
 
@@ -74,7 +78,10 @@
   async function track(url,opt){
     opt=opt||{}; const rt=await load();
     const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='auto';
-    v.style.cssText='position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none'; document.body.append(v); v.src=url;
+    /* shown as a small preview in the corner while it tracks: iPhone stops giving new frames to a video it can't see
+       (an invisible one froze part-way, so the same picture was tracked again and again and the skeleton stood still) */
+    v.className='rb-trackvid';v.setAttribute('aria-hidden','true');
+    v.style.cssText='position:fixed;right:10px;bottom:calc(84px + env(safe-area-inset-bottom,0px));height:88px;width:auto;max-width:30vw;border-radius:10px;opacity:1;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.5);background:#000'; document.body.append(v); v.src=url;
     const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove()};
     try{
       await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('This video could not be read for body tracking.'))});
@@ -107,6 +114,18 @@
         order=[];for(let k=anchor;k<want.length;k++)order.push(k);for(let k=anchor-1;k>=0;k--)order.push(k)}
       const slot=new Array(want.length).fill(null); let ms=0, n=0, done=0, multi=0;
       let prev=null, lost=0, pickPose=null, clockMiss=0, clockHits=0;
+      /* stuck-picture guard: a tiny copy of each frame; if the picture hasn't changed although we moved to a new frame, the
+         video is stuck: wait and ask again, then wake it with a short play; if it still won't move, leave a gap (no pose)
+         rather than tracking the old picture again */
+      const sigC=document.createElement('canvas');sigC.width=24;sigC.height=24;const scx=sigC.getContext('2d',{willReadFrequently:true});
+      let lastSig=null, stale=0, kicks=0, stuckRun=0;
+      const sigOf=()=>{scx.drawImage(cv,0,0,24,24);return scx.getImageData(0,0,24,24).data};
+      const same=(a,b)=>{if(!a||!b)return false;let d=0;for(let i=0;i<a.length;i+=4)d+=Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]);return d/(a.length/4*3)<0.15};
+      let reloads=0;
+      const wake=async t=>{kicks++;
+        /* still stuck after a few tries: load the video afresh once in a while (a new start often unsticks it) */
+        if(stuckRun>=4&&stuckRun%25===4&&reloads<4){reloads++;try{v.removeAttribute('src');v.load();v.src=url;await new Promise(r=>{const f=()=>r();v.addEventListener('loadeddata',f,{once:true});setTimeout(f,3000)})}catch(e){}}
+        try{await v.play()}catch(e){}await new Promise(r=>setTimeout(r,90));try{v.pause()}catch(e){}return seekTo(t)};
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(opt.signal&&opt.signal.aborted)break;
@@ -122,8 +141,18 @@
            clock is clearly working and says this step showed no new frame.) */
         if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
         else if(mt!=null){clockMiss=0;clockHits++}
+        let P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
+        let sig=sigOf();
+        if(same(sig,lastSig)&&!(mt!=null&&hasRVFC)){
+          /* the frame clock didn't confirm a new frame and the picture is unchanged: probably stuck */
+          for(let a=0;a<(stuckRun>12&&stuckRun%25!==4?1:3)&&same(sig,lastSig);a++){   /* fewer tries once it's clearly not moving */
+           if(pending){try{await pending.p}catch(e){}pending=null}
+            const m2=a<1?(await new Promise(r=>setTimeout(r,80)),await seekTo(want[k]+0.002)):await wake(want[k]+0.001*(a+1));
+            cx.drawImage(v,0,0,cv.width,cv.height);sig=sigOf();if(m2!=null&&Math.abs(m2-want[k])<=tol)mt=m2}
+          if(same(sig,lastSig)){stale++;stuckRun++;if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
+          P1=performance.now()}
+        stuckRun=0;lastSig=sig;
         const t=mt!=null?mt:want[k]-0.5/fps;
-        const P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
         if(oi+1<order.length&&!(opt.signal&&opt.signal.aborted)){const nk=order[oi+1];pending={k:nk,p:seekTo(want[nk])}}
         const s=performance.now(); let cands=[], mk=null;
@@ -163,12 +192,13 @@
       const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
       const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
       const seen=rows.filter(r=>!isNaN(r[1])).length;
+      if(root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
       const C=clean(data,world,rows.length,asp);
       /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
       let mask=null; const withMask=masks.filter(Boolean).length;
       if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
-      return {v:2,model:'pose_landmarker_full 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
+      return {v:2,cleanV:2,model:'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
+        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
     }finally{cleanup()}
   }
 
@@ -221,7 +251,14 @@
   const EXT=new Set([13,14,15,16,17,18,19,20,21,22,27,28,29,30,31,32]);   /* hands and feet move fastest: outliers must be bigger to count */
   function sgW(m){const w=[],den=(2*m+1)*(4*m*m+4*m-3);for(let i=-m;i<=m;i++)w.push((3*(3*m*m+3*m-1)-15*i*i)/den);return w}
   const SG2=sgW(2),SG3=sgW(3),SG5=sgW(5);
-  function clean(D,Wd,n,asp){
+  /* cleaning settings. out: 'median7' (old: a point far from the median of the 7 frames around it is replaced, which also
+     erased real hits shorter than ~0.1 s) or 'spike' (only a one-frame jump that the frames either side agree against);
+     outT/outTx: how far (torso lengths) for body / hands-feet; fillVis, fillGap: low-confidence points (below fillVis)
+     are filled in from good frames up to fillGap away; sgX: smoothing half-window for hands and feet (0 = none). */
+  const CLEAN0={out:'spike',outT:0.15,outTx:0.25,fillVis:0.2,fillGap:3,sgX:4,sgCore:3,adapt:[0.03,0.10],adaptW:3,adaptHand:[0.05,0.13]};   /* measured 25 Oct on a dancehall clip against the bigger tracker: fast-move error for elbows/ankles -13 to -14% with no extra wobble; hands sit on a wobble/lag trade-off, so a middle setting (-14% error, a little more wobble) */
+  const CLEAN_OLD={out:'median7',outT:0.08,outTx:0.16,fillVis:0.3,fillGap:6,sgX:2,sgCore:3,adapt:null};   /* before 25 Oct 2026, for comparisons */   /* adapt: [still, fast] speeds in torso lengths a frame: hands and feet are smoothed fully below 'still', not at all above 'fast' */
+  function clean(D,Wd,n,asp,opt){
+    const O={...CLEAN0,...(root.RB_CLEAN||{}),...(opt||{})};
     const rep={flips:0,outliers:0,filled:0,runs:0};
     const has=i=>!isNaN(D[i*STRIDE+1]);
     const X=(i,j)=>D[i*STRIDE+1+j*3], Y=(i,j)=>D[i*STRIDE+2+j*3]*asp, V=(i,j)=>D[i*STRIDE+3+j*3];
@@ -252,19 +289,37 @@
           if(!k||!st[k-1])rep.flips++}}
       const T=(()=>{const a=[];for(let i=r0;i<=r1;i++)a.push(torsoAt(i));a.sort((x,y)=>x-y);return a[a.length>>1]})();
       /* 3 outliers and 4b low-confidence points, per landmark */
+      if(O.out==='spike'){
+        /* a one-frame jump: far from where the frames either side say it should be, while those two agree with each other */
+        for(let j=0;j<N;j++){const th=(EXT.has(j)?O.outTx:O.outT)*T,ox=[],oy=[],ov=[];for(let i=r0;i<=r1;i++){ox.push(X(i,j));oy.push(Y(i,j));ov.push(V(i,j))}
+          for(let i=r0+1;i<r1;i++){const k=i-r0,mx=(ox[k-1]+ox[k+1])/2,my=(oy[k-1]+oy[k+1])/2,off=Math.hypot(ox[k]-mx,oy[k]-my),agree=Math.hypot(ox[k+1]-ox[k-1],oy[k+1]-oy[k-1]);
+            const t2=th*(ov[k]>=0.8?1.5:1);if(off>t2&&agree<off*0.5){D[i*STRIDE+1+j*3]=mx;D[i*STRIDE+2+j*3]=my/asp;rep.outliers++}}}
+      } else
       for(let j=0;j<N;j++)for(const c of [1,2]){const sc=c===2?asp:1;
         const get=i=>D[i*STRIDE+c+j*3]*sc, orig=[];for(let i=r0;i<=r1;i++)orig.push(get(i));
         for(let i=r0;i<=r1;i++){const w=[];for(let k=Math.max(r0,i-3);k<=Math.min(r1,i+3);k++)w.push(orig[k-r0]);if(w.length<5)continue;
           const s2=[...w].sort((x,y)=>x-y),med=s2[s2.length>>1],mad=[...w].map(x=>Math.abs(x-med)).sort((x,y)=>x-y)[w.length>>1]*1.4826;
-          if(Math.abs(orig[i-r0]-med)>Math.max(3*mad,(EXT.has(j)?0.16:0.08)*T)){D[i*STRIDE+c+j*3]=med/sc;if(c===1)rep.outliers++}}}
+          if(Math.abs(orig[i-r0]-med)>Math.max(3*mad,(EXT.has(j)?O.outTx:O.outT)*T)){D[i*STRIDE+c+j*3]=med/sc;if(c===1)rep.outliers++}}}
       for(let j=0;j<N;j++){const vi=i=>D[i*STRIDE+3+j*3];
-        for(let i=r0;i<=r1;i++){if(vi(i)>=0.3)continue;let p=-1,q=-1;for(let k=i-1;k>=Math.max(r0,i-6);k--)if(vi(k)>=0.5){p=k;break}for(let k=i+1;k<=Math.min(r1,i+6);k++)if(vi(k)>=0.5){q=k;break}
+        for(let i=r0;i<=r1;i++){if(vi(i)>=O.fillVis)continue;let p=-1,q=-1;for(let k=i-1;k>=Math.max(r0,i-O.fillGap);k--)if(vi(k)>=0.5){p=k;break}for(let k=i+1;k<=Math.min(r1,i+O.fillGap);k++)if(vi(k)>=0.5){q=k;break}
           if(p>=0&&q>=0){const u=(i-p)/(q-p);for(const c of [1,2])D[i*STRIDE+c+j*3]=D[p*STRIDE+c+j*3]+(D[q*STRIDE+c+j*3]-D[p*STRIDE+c+j*3])*u}}}
       /* 5 smoothing */
       const smooth1=(arr,stride,off,w)=>{const m=(w.length-1)/2;if(r1-r0<2*m)return;const src=[];for(let i=r0;i<=r1;i++)src.push(arr[i*stride+off]);
         for(let i=r0+m;i<=r1-m;i++){let acc=0,bad=false;for(let k=-m;k<=m;k++){const v=src[i-r0+k];if(isNaN(v)){bad=true;break}acc+=w[k+m]*v}if(!bad)arr[i*stride+off]=acc}};
       const core=new Set([11,12,23,24]);
-      for(let j=0;j<N;j++)for(const c of [1,2])smooth1(D,STRIDE,c+j*3,core.has(j)?SG3:SG2);
+      const sgx=O.sgX>0?sgW(O.sgX):null,sgc=sgW(O.sgCore);
+      if(O.adapt&&sgx){
+        /* hands and feet: smoothed where they're nearly still (that's where jitter shows), left as tracked where they move
+           fast (smoothing there cuts the corners off quick moves). Speed comes from the smoothed path, over ±adaptW frames (wide enough that jitter averages out). */
+        const [s0,s1]=O.adapt,L=r1-r0+1;
+        const HAND=new Set([15,16,17,18,19,20,21,22]);
+        for(const j of EXT){const [a0,a1]=HAND.has(j)&&O.adaptHand?O.adaptHand:[s0,s1];const rx=[],ry=[];for(let i=r0;i<=r1;i++){rx.push(D[i*STRIDE+1+j*3]);ry.push(D[i*STRIDE+2+j*3])}
+          smooth1(D,STRIDE,1+j*3,sgx);smooth1(D,STRIDE,2+j*3,sgx);
+          for(let i=r0;i<=r1;i++){const k=i-r0,a=Math.max(r0,i-(O.adaptW||1)),b=Math.min(r1,i+(O.adaptW||1));const sp=Math.hypot(D[b*STRIDE+1+j*3]-D[a*STRIDE+1+j*3],(D[b*STRIDE+2+j*3]-D[a*STRIDE+2+j*3])*asp)/((b-a)||1)/T;
+            const u=Math.max(0,Math.min(1,(a1-sp)/(a1-a0)));if(!isNaN(rx[k])&&!isNaN(D[i*STRIDE+1+j*3])){D[i*STRIDE+1+j*3]=rx[k]+(D[i*STRIDE+1+j*3]-rx[k])*u;D[i*STRIDE+2+j*3]=ry[k]+(D[i*STRIDE+2+j*3]-ry[k])*u}}}
+        for(let j=0;j<N;j++)if(!EXT.has(j))for(const c of [1,2])smooth1(D,STRIDE,c+j*3,core.has(j)?sgc:SG2);
+      } else
+      for(let j=0;j<N;j++)for(const c of [1,2]){const w=core.has(j)?sgc:(EXT.has(j)?sgx:SG2);if(w)smooth1(D,STRIDE,c+j*3,w)}
       for(let u=0;u<WJ.length;u++){smooth1(Wd,WS,u*3,SG3);smooth1(Wd,WS,u*3+1,SG3);smooth1(Wd,WS,u*3+2,SG5)}
     }
     return {data:D,world:Wd,report:rep};
@@ -525,6 +580,6 @@
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,CLEAN0,CLEAN_OLD,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

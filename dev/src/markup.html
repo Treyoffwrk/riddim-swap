@@ -227,6 +227,7 @@
             <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
           </div>
+          <div class="row mv-only" id="trackQRow"><span class="label">Tracking</span><div class="seg" id="trackQ" role="group" aria-label="Tracking quality" style="grid-template-columns:auto auto"><button type="button" data-q="accurate" aria-pressed="true">Accurate</button><button type="button" data-q="fast" aria-pressed="false">Faster</button></div><span class="hint" id="trackQNote"></span></div>
           <div class="prog" id="bodyProg" hidden><i></i></div>
           <div class="row mv-only" id="pickRow"><button class="btn sm" id="bodyPick">Choose the dancer</button><span class="hint" id="pickMsg"></span></div>
           <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>

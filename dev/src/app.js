@@ -1125,7 +1125,7 @@ const b64ToF32=s=>{if(!s)return null;const b=atob(s),u=new Uint8Array(b.length);
 async function bodiesForBackup(){
   const out={};
   for(const n of S.sources){if(!n.key)continue;const B=n.body||await mediaGet('body:'+n.key);if(!B||!B.data||!B.n)continue;
-    out[n.key]={v:B.v||1,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,seen:B.seen,multi:B.multi||0,clean:B.clean||null,pick:B.pick||null,start:B.start,end:B.end,
+    out[n.key]={v:B.v||1,cleanV:B.cleanV||0,stale:B.stale,kicks:B.kicks,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,seen:B.seen,multi:B.multi||0,clean:B.clean||null,pick:B.pick||null,start:B.start,end:B.end,
       data:f32ToB64(B.data),world:f32ToB64(B.world),hips:f32ToB64(B.hips)}}
   return out;
 }
@@ -1867,6 +1867,11 @@ $('#bodyShow').addEventListener('change',e=>{try{localStorage.setItem('rs-body',
 $('#hipShow').addEventListener('change',e=>{try{localStorage.setItem('rs-hip',e.target.checked?'1':'0')}catch(err){}});
 const bodyCv=$('#bodyCanvas'); let bodyDrawn=false, dockTick=0;
 let bodyKey='';
+/* the time of the frame actually on screen: while playing, the player's clock can run up to a frame ahead of the picture,
+   so the skeleton would lead the dancer. requestVideoFrameCallback tells us the shown frame's own time. */
+function shownT(el){if(!el)return 0;
+  if(!el.__rvfc&&typeof el.requestVideoFrameCallback==='function'){el.__rvfc=true;const cb=(now,m)=>{el.__mt=m.mediaTime;el.__mtAt=performance.now();el.requestVideoFrameCallback(cb)};el.requestVideoFrameCallback(cb)}
+  return S.playing&&!el.paused&&!el.seeking&&el.__mt!=null&&performance.now()-el.__mtAt<120&&Math.abs(el.__mt-el.currentTime)<0.25?el.__mt:el.currentTime}
 function drawBody(){
   {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
@@ -1879,8 +1884,9 @@ function drawBody(){
   if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
-  if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,el.currentTime,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
-  if($('#bodyShow').checked)LOOK.drawBody(c,B,el.currentTime,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  const ft=shownT(el);
+  if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,ft,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
+  if($('#bodyShow').checked)LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
 }
@@ -2660,6 +2666,8 @@ function etaText(t0,p){if(!t0||p-t0.p<0.03)return '';const el=(performance.now()
   return left<45?'about '+Math.max(5,Math.round(left/5)*5)+' s left':'about '+Math.round(left/60)+' min left'}
 function bodyInfoText(n,B){
   let t=`Body tracked on ${B.seen} of ${B.n} frames.`;
+  /* tracked before the 25 Oct update (older smoothing, which rounded off fast moves) */
+  if(B.v>=2&&!B.cleanV)t+=' Tracked before the fast-moves update: Track again so the skeleton keeps up with quick hands and feet.';
   /* how much of the clip the tracking covers: a run that stopped part-way used to look complete ("197 of 197") */
   const cov=RB.coverage?RB.coverage(B):null;
   if(cov&&cov.short)t=`Body tracked from ${fmt(cov.from)} to ${fmt(cov.to)} only (${cov.pct}% of the clip): the skeleton is missing outside that. Track again to cover the whole clip.`;
@@ -2668,6 +2676,12 @@ function bodyInfoText(n,B){
   if(B.clean&&B.clean.flips)t+=` Fixed ${B.clean.flips} left/right mix-up${B.clean.flips>1?'s':''}.`;
   return t;
 }
+/* tracking quality: Accurate (the bigger tracker, keeps up with fast hands and feet) or Faster; Body uses the same */
+function trackQUI(){let q='accurate';try{q=localStorage.getItem('rs-track-q')==='fast'?'fast':'accurate'}catch(e){}
+  $$('#trackQ button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===q)));
+  $('#trackQNote').textContent=q==='accurate'?'Best for fast moves; about twice as slow.':'Quicker; less exact on fast hands and feet.'}
+$$('#trackQ button').forEach(b=>b.addEventListener('click',()=>{try{localStorage.setItem('rs-track-q',b.dataset.q)}catch(e){}trackQUI()}));
+trackQUI();
 /* choose the dancer: the next tap on the video picks who to follow, then tracking runs */
 $('#bodyPick').addEventListener('click',()=>{
   if(S.bodyBusy)return; S.bodyPicking=!S.bodyPicking; $('#bodyPick').setAttribute('aria-pressed',S.bodyPicking);
@@ -2806,7 +2820,7 @@ async function phoneCheck(){
   add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
   const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
   const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
-  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}${(()=>{const c=RB.coverage&&RB.coverage(B);return c?' · covers '+c.pct+'% of the clip':''})()}`)}
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}${B.model?' · '+(/heavy/.test(B.model)?'Accurate':/full/.test(B.model)?'Faster':B.model.split(' ')[0])+(B.cleanV?'':' (old smoothing)'):''}${(()=>{const c=RB.coverage&&RB.coverage(B);return c?' · covers '+c.pct+'% of the clip':''})()}${B.stale!=null?' · stuck frames '+B.stale+(B.kicks?' (woken '+B.kicks+'×)':''):''}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
