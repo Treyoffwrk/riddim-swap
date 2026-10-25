@@ -94,7 +94,7 @@ function learnCount(){
   let m=0;for(const b of c.beats)if(b<=t+0.03)m++;return Math.max(1,Math.min(8,m));
 }
 function learnUI(){
-  const L=S.learn, bar=$('#learnBar'), btn=$('#learnBtn'); btn.setAttribute('aria-pressed',String(!!L)); bar.hidden=!L; $('#learnTag').hidden=!L;
+  const L=S.learn, bar=$('#learnBar'), btn=$('#learnBtn'); btn.setAttribute('aria-pressed',String(!!L)); bar.hidden=!L; $('#learnStrip').hidden=!L; document.querySelector('.pin').classList.toggle('learning',!!L); $('#learnTag').hidden=!L;
   btn.disabled=!S.hasV||routineOn()||!!S.rec;
   if(!L)return;
   const o=learnOpts(), c=L.chunks[L.i], N=L.chunks.length, rate=S.study?S.study.rate:1;
@@ -112,7 +112,9 @@ function learnUI(){
   $('#learnHow').hidden=L.how==='song'; $('#learnHow').textContent=L.how==='dance'?'Counting from the clip\'s own tempo (no song beat).':L.how==='hits'?'No beat found: split about every 4 s at the dancer\'s hits. Add a song or tap the tempo for real 8-counts.':'';
   $('#lnBuild').checked=o.build; $('#lnTogether').checked=o.together; $('#lnAuto').checked=o.auto;
   $$('#lnPer button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.per===o.per)));
-  $('#lnPrev').disabled=L.i===0; $('#lnNext').disabled=L.i>=N-1;
+  $('#lnPrev').disabled=$('#lsPrev').disabled=L.i===0; $('#lnNext').disabled=$('#lsNext').disabled=L.i>=N-1;
+  /* the slim strip in the player (and in full screen): where you are, the speed, the 1-8 count */
+  $('#lsWhat').textContent=(L.phase==='together'?`${learnTopOf(L.i)+1}–${L.i+1}`:`${L.i+1}/${N}`)+' · '+Math.round(rate*100)+'%';
 }
 /* the 1-8 count: lit as it plays */
 function learnTick(){
@@ -120,6 +122,8 @@ function learnTick(){
   $$('#learnCount i').forEach((e,j)=>{e.classList.toggle('on',j+1===k);e.classList.toggle('past',j+1<k)});
 }
 $('#learnBtn').addEventListener('click',()=>{S.learn?learnOff():learnOn()});
+$('#lsPrev').addEventListener('click',()=>$('#lnPrev').click());
+$('#lsNext').addEventListener('click',()=>$('#lnNext').click());
 $('#lnPrev').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;learnStart(L.i-1,true)});
 $('#lnNext').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;L.done.add(L.i);learnStart(L.i+1,true)});
 $('#lnAgain').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;learnStart(L.i,true)});

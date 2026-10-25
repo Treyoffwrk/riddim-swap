@@ -493,8 +493,8 @@ details.more .field{margin-top:8px}
 .lnhead b{font:800 16px var(--f-body);color:var(--ink)}
 .lnspeed{font:800 13px var(--f-body);padding:2px 9px;border-radius:999px;background:var(--dance);color:#0E1014}
 .lnloop{font-size:13px;color:var(--muted);margin-left:auto}
-.lncount{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
-.lncount i{font:800 15px var(--f-body);font-style:normal;text-align:center;padding:7px 0;border-radius:9px;background:var(--sunk);color:var(--muted);transition:background .08s,color .08s}
+.lncount{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;flex:1 1 auto;min-width:0}
+.lncount i{font:800 13px var(--f-body);font-style:normal;text-align:center;padding:5px 0;border-radius:9px;background:var(--sunk);color:var(--muted);transition:background .08s,color .08s}
 .lncount i.past{color:var(--ink)}
 .lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
 .lnchips{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -509,3 +509,13 @@ details.more .field{margin-top:8px}
 .lnopts{margin-top:0}.lnoptbody{display:grid;gap:10px;padding:0 12px 12px}
 .recrow .btn{padding-left:12px;padding-right:12px}
 .lnchiprow{display:flex;align-items:center;gap:10px;min-width:0}.lnchiprow .label{flex:0 0 auto;font-size:11px}
+/* the slim Learn strip inside the player: one row, so it never covers the dance or the page */
+.learnstrip{display:flex;align-items:center;gap:6px;min-width:0}
+.learnstrip[hidden]{display:none}
+.lswhat{flex:0 0 auto;font:800 13px var(--f-body);color:var(--ink);white-space:nowrap;min-width:64px}
+.lsbtn{flex:0 0 auto;width:34px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:800 18px/1 var(--f-body);cursor:pointer}
+.lsbtn:disabled{opacity:.35}
+.pin.fs .learnstrip{margin-top:6px}.pin.fs .lswhat{color:#F3F1EC}
+.pin.fs .lncount i{background:rgba(255,255,255,.12);color:rgba(243,241,236,.7)}.pin.fs .lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
+.pin.fs .lsbtn{background:rgba(255,255,255,.12);border-color:transparent;color:#F3F1EC}
+.pin.fs.learning .dock{bottom:134px}

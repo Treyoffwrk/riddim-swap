@@ -30,7 +30,9 @@ LOOK.drawBody=(c,B,t,rect,o,dpr)=>{const s=LOOK.skel();c.save();try{if(s.glow){c
 const LOOK_VARS=new Set();
 LOOK.apply=()=>{const root=document.documentElement;for(const v of LOOK_VARS)root.style.removeProperty(v);LOOK_VARS.clear();
   const vars=LOOK.pack('theme').vars||{};for(const k in vars){root.style.setProperty(k,vars[k],'important');LOOK_VARS.add(k)}
-  CUE.col=null;CUE.stillKey='';try{drawBody()}catch(e){}};
+  CUE.col=null;CUE.stillKey='';try{drawBody()}catch(e){}
+  /* Body (the MirrorView page) uses the same look: leave it the resolved colours (not while trying a pack on) */
+  if(!Object.keys(LOOK.preview).length)try{localStorage.setItem('rs-look-now',JSON.stringify({skel:LOOK.skel(),ball:LOOK.ball(),theme:vars}))}catch(e){}};
 /* hear a click pack: a 1 and three beats */
 LOOK.hear=pk=>{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{});const t0=c.currentTime+0.05,d=pk.decay||1,pg=pk.gain||1;
   ['one','beat','beat','beat'].forEach((kd,i)=>{const when=t0+i*0.4,o=c.createOscillator(),g=c.createGain();o.type=pk.wave||'sine';o.frequency.value=pk.freq[kd];

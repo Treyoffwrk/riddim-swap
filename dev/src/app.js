@@ -1971,6 +1971,7 @@ async function goMirror(id){
 $('#mvBtn').addEventListener('click',()=>goMirror(null));
 /* the clip, its hits and its body tracking (so MirrorView shows the same dance body without tracking again) */
 async function sendClip(){
+  if(S.study)studyOff();   /* (and Learn) so the clip goes as it plays normally */
   const n=srcById(S.cur);
   if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
   const B=bodyOf(n);
@@ -1979,7 +1980,15 @@ async function sendClip(){
   let song=null;const so=S.liveSong;
   if(so&&so.ready&&!so.missing){let sb=so.blob||null;if(!sb)try{sb=await mediaGet(so.key)}catch(e){}
     if(sb&&sb.size)song={blob:sb,name:so.name||'Song',offset:S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar,ar:S.ar,vr:S.vr,cIn:S.cIn}}
-  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
+  /* cuts and the speed graph: the kept parts, and a table from clip time to the time the song plays (output time), so
+     Body keeps the song in time through the speed graph and skips the cut parts. (A routine sends just this clip.) */
+  let pieces=null,map=null,trim=[S.cIn,clipEnd()];
+  if(routineOn())song=null;
+  else{const L=segs();if(L.length>1||L.some(g=>g.k)){pieces=L.map(g=>[g.s,g.e]);map=[];
+    L.forEach((g,i)=>{const o0=segStart(i,L);for(let t=g.s;t<g.e-1e-6;t+=0.05)map.push([+t.toFixed(4),+(o0+toOut(g,t)).toFixed(4)]);map.push([+g.e.toFixed(4),+(o0+segLen(g)).toFixed(4)])});
+    trim=[L[0].s,L[L.length-1].e]}}
+  if(song&&map)song.offset=S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar;   /* song = offset + output time × ar */
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim,pieces,map,project:PJ.name||'',hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
       body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}
   catch(e){hMsg('Couldn’t open the clip in Body on this phone ('+(e&&e.message||e)+').');return false}
 }
@@ -1988,7 +1997,7 @@ $('#mvClip').addEventListener('click',sendClip);
 function takeTabReq(){let r=null,pj=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req');pj=localStorage.getItem('rs-open-proj');localStorage.removeItem('rs-open-proj')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click();
   if(pj)setTimeout(()=>$('#projBtn').click(),200)}   /* Projects tapped in Body */
 window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
-$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob&&!routineOn())sendClip();else goMirror(null)});
+$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob)sendClip();else goMirror(null)});   /* in a routine, the clip under the playhead */
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();

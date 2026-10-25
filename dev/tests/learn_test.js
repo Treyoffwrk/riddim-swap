@@ -69,5 +69,21 @@ const [,,HOST,CLIP,SONG,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUp
  /* 10. layout: the row of buttons fits a phone */
  const lay=await p.evaluate(()=>{const r=document.querySelector('.recrow'),bs=[...r.querySelectorAll('button:not([hidden])')].filter(b=>b.offsetParent);return {w:r.getBoundingClientRect().width,right:Math.max(...bs.map(b=>b.getBoundingClientRect().right)),pageW:document.documentElement.scrollWidth,vw:innerWidth}});
  rec('On a phone the Repeat / Study / Learn / Record row fits, no sideways scrolling',lay.right<=lay.vw-8&&lay.pageW<=lay.vw?'passed':'failed',JSON.stringify(lay));
+ /* 11. Learn doesn't take over the screen: the player grows by one slim row; the full panel sits below it in the page */
+ await p.evaluate(()=>window.scrollTo(0,0));const h0=await p.evaluate(()=>document.querySelector('.pin').getBoundingClientRect().height);
+ await p.click('#learnBtn');await p.waitForTimeout(800);
+ const lay2=await p.evaluate(()=>{const pin=document.querySelector('.pin'),bar=document.getElementById('learnBar');return {pinH:pin.getBoundingClientRect().height,barInPin:pin.contains(bar),strip:!document.getElementById('learnStrip').hidden&&pin.contains(document.getElementById('learnStrip'))}});
+ /* scrolled down: the pinned player stays small, the panel scrolls away under it like the rest of the page */
+ await p.evaluate(()=>window.scrollTo(0,1200));await p.waitForTimeout(300);const pinScrolled=await p.evaluate(()=>document.querySelector('.pin').getBoundingClientRect().height);
+ rec('Learn adds one slim row to the player; the full panel is in the page below it (doesn\'t cover other options)',lay2.pinH-h0<=48&&!lay2.barInPin&&lay2.strip&&pinScrolled-h0<=48?'passed':'failed',JSON.stringify({before:h0,with:lay2.pinH,scrolled:pinScrolled,barInPin:lay2.barInPin,strip:lay2.strip}));
+ /* full screen: only the slim strip shows, at the bottom with the play bar; the dancer is clear */
+ await p.evaluate(()=>window.scrollTo(0,0));await p.evaluate(()=>{const b=document.getElementById('fsBtn');b.hidden=false;b.click()});await p.waitForTimeout(800);
+ const fs=await p.evaluate(()=>{const pin=document.querySelector('.pin'),st=document.getElementById('stage').getBoundingClientRect(),strip=document.getElementById('learnStrip').getBoundingClientRect(),bar=document.getElementById('learnBar');
+   const pts=[[0.5,0.25],[0.5,0.5],[0.3,0.4],[0.7,0.4]].map(([x,y])=>document.elementFromPoint(st.left+st.width*x,st.top+st.height*y));const learnHit=pts.filter(e=>e&&(e.closest('#learnStrip')||e.closest('#learnBar'))).length;
+   const dk=document.getElementById('dock'),tr=document.querySelector('.pin .transport').getBoundingClientRect(),dr=dk&&!dk.hidden?dk.getBoundingClientRect():null;
+   return {dockClear:!dr||dr.bottom<=tr.top+30,fs:pin.classList.contains('fs'),stripH:Math.round(strip.height),stripTop:Math.round(strip.top),vh:innerHeight,learnHit,barVisible:!!(bar.offsetParent)&&document.elementFromPoint(innerWidth/2,innerHeight*0.6)?.closest('#learnBar')!=null}});
+ await p.screenshot({path:SHOT+'-fs.png'});
+ rec('Full screen: Learn is one slim row at the bottom; the middle of the video is clear',fs.dockClear&&fs.fs&&fs.stripH<=40&&fs.stripTop>fs.vh*0.7&&fs.learnHit===0&&!fs.barVisible?'passed':'failed',JSON.stringify(fs));
+ await p.keyboard.press('Escape');await p.evaluate(()=>{if(document.querySelector('.pin.fs'))document.getElementById('fsBtn').click()});await p.waitForTimeout(400);
  rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));
  await b.close()})();

@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 25 Oct 2026 · version rs-aaad150286 · repo Treyoffwrk/riddim-swap_
+_Last updated 25 Oct 2026 · version rs-93ff901e0f · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -38,6 +38,8 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
   - It uses Riddim Swap's header, with Projects, and its section bar. MirrorView's own Load video, Start here and Diagnostics sit in the ⋯ menu.
 - **Keeps your work.** Projects save on the phone. Backups and `.riddim` share bundles carry videos, songs and tracking.
 - **Learn mode** (the Learn button beside Study). Splits the clip into 8-counts (8 beats of the song, each starting on a 1; without a song, the clip's own tempo, or about 4 s pieces cut at the dancer's hits). Each 8-count loops at 50%, then 75%, then full speed (song pitch kept), then it's put together with up to 3 before it from the top, then the next one starts. A 1–8 count lights up as it plays; numbered buttons jump to any 8-count; Back / Slower / Again / Next. Options: slow first, put together, move on by itself, loops per speed (1–3). Progress (where you are, which are learnt) is kept per clip on the phone. Parts cut out of the clip are skipped. It runs on the Study engine, so sync, body, cues and cut-out work as usual. Source: `src/learn.js`.
+- **Learn on the phone screen** (25 Oct): Learn adds one slim row to the player (where you are, the speed, the 1–8 count, back/next); the 8-count buttons, Slower/Again and options sit in a panel below the player in the page, so nothing covers the dance or the other options. In full screen only the slim row shows, with the play bar.
+- **Body as part of Riddim Swap** (25 Oct): Body uses your Look (skeleton colours and glow, app theme; a new look shows when you come back to Body). The clip arrives with the project's name, its cuts and its speed graph: a table maps clip time to song time so the song stays in time through the speed graph, and cut parts are skipped while the song keeps playing. Whole / Upper / Legs is one setting for both pages. In a routine, Body opens the clip under the playhead (it used to open nothing). Source: `mirrorview/mv_link_block.py`.
 - **Look & sound** (the Look button in the header). A sheet with free colour pickers for the balls and skeleton, and 16 cosmetic packs: balls, skeleton (some with a glow), click sounds and app themes, a free Classic plus three extras of each. Nothing is locked on the web. Paid packs are only gated when the store is on (`?store=1`, or inside the App Store app): then they show a price, Buy and Try it (a preview with a bar to buy or stop), with a note that every feature stays free. Purchases are test purchases for now (no money taken). Source: `src/look.js`, packs in `src/packs.json`.
 - **Works offline after the first visit.** This includes the body tracker.
 
@@ -69,7 +71,9 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 48 suites at rs-aaad150286 (25 Oct 2026, Learn mode): all passed, including Learn (14/14) and the updated hip meter check. In the full run, one cue check (dancer ball landing, worst 151 ms) failed under load and passed alone (worst 77 ms); the Look suite couldn't start because a debug hook had lost `LOOK`, fixed and re-run 24/24 (the app itself was unaffected).
+**Last full regression:** 49 suites at rs-93ff901e0f (25 Oct 2026, compact Learn + Body integration): all passed, including Learn (16/16, with phone and full-screen layout checks) and the new Body link test (11/11: Look colours, glow and theme in Body, project name, cuts and speed graph with the song in time, gap p90 47 ms through a cut). In the full run: the Body header check expected the word "Body" (it now shows the project's name; check updated, 21/21 alone), Body camera start and cut-out lag failed under load (camera passed alone; cut-out re-run pending). The session suite's "coming back to a new version reloads it" check fails on the live build too, so it isn't from this change; the dedicated update test (real service worker) passes 5/5.
+
+**Previous:** 48 suites at rs-aaad150286 (25 Oct 2026, Learn mode): all passed, including Learn (14/14) and the updated hip meter check. In the full run, one cue check (dancer ball landing, worst 151 ms) failed under load and passed alone (worst 77 ms); the Look suite couldn't start because a debug hook had lost `LOOK`, fixed and re-run 24/24 (the app itself was unaffected).
 
 Also fixed with Learn: Repeat during Study or Learn now shows and sets your own Repeat (it used to switch their looping off), the project no longer saves Repeat as on because Study/Learn was running, and switching ball cues while paused redraws the skeleton (hip gauges come back).
 

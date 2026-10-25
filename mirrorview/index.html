@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-aaad150286'</script>
+<script>window.RS_BUILD='rs-93ff901e0f'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -514,7 +514,10 @@ body:not(.distance-mode) #stage:has(#mv-dock:not([hidden])) .pulse-hud #pulse-cu
 /* ---- Riddim Swap header ---- */
 .topbar .brand{font:800 22px 'Bricolage Grotesque',Figtree,sans-serif!important;letter-spacing:-.01em;color:var(--text)!important;gap:8px}
 .topbar .brand .brand-mark,.topbar .brand small,.topbar .top-center{display:none!important}
-.topbar .brand .rs-swap{color:#E8A33D}
+.topbar .brand .rs-swap{color:var(--song-hot,#E8A33D)}
+.topbar .brand .rs-proj{font:700 12px Figtree,sans-serif;color:var(--muted);max-width:30vw;overflow:hidden;text-overflow:ellipsis;margin-left:6px}
+.topbar .brand .rs-proj:empty{display:none}
+.topbar .brand.has-proj .rs-sec{display:none}.topbar .brand .rs-proj{display:inline-block;vertical-align:middle;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;letter-spacing:0}
 .topbar .brand .rs-sec{font:700 12px Figtree,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px;margin-left:4px}
 .top-actions>.diagnostics-button,.top-actions>.session-launch,.top-actions>.upload{display:none!important}
 .rs-top-btn{min-height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface,#171A21);color:var(--text);font:600 14px Figtree,sans-serif;cursor:pointer}
@@ -586,7 +589,7 @@ main{padding-bottom:12px}
 <body>
 <div class="app">
 <header class="topbar">
-<button aria-label="Riddim Swap: Body and mirror" class="brand" data-action="studio" type="button"><span class="brand-mark"><i></i><i></i></span>Riddim <span class="rs-swap">Swap</span><span class="rs-sec">Body</span><small>0.13</small></button>
+<button aria-label="Riddim Swap: Body and mirror" class="brand" data-action="studio" type="button"><span class="brand-mark"><i></i><i></i></span>Riddim <span class="rs-swap">Swap</span><span class="rs-sec">Body</span><span class="rs-proj" id="rs-proj"></span><small>0.13</small></button>
 <div class="top-center">SEE THE PATH. LEARN THE MOVE.</div>
 <div class="top-actions"><button class="text-button diagnostics-button" data-action="diagnostics">Diagnostics</button><button class="session-launch" data-session="open" aria-label="Start here: setup and Pulse backups">Start here</button><button class="button upload" data-action="import"><svg><use href="#i-upload"></use></svg><span>Load video</span></button></div>
 </header>
@@ -4140,14 +4143,15 @@ class PracticeView {
 }
 
 // ---- render.js ----
-const REF='#6E8BFF',CAM='#4FD1A1',HIPS='#FF5FA2';
+let REF='#6E8BFF',CAM='#4FD1A1',HIPS='#FF5FA2',REF_GLOW=0;
 function sizeCanvas(canvas,maxScale=2){const r=canvas.getBoundingClientRect(),d=Math.min(maxScale,globalThis.devicePixelRatio||1),w=Math.max(1,Math.round(r.width*d)),h=Math.max(1,Math.round(r.height*d));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;return true;}return false;}
 function write(ctx,text,x,y,{colour='#868ea0',size=10,align='left',font='monospace'}={}){ctx.save();ctx.font=`${size}px ${font}`;ctx.fillStyle=colour;ctx.textAlign=align;ctx.fillText(text,x,y);ctx.restore();}
 function line(ctx,a,b,colour,width=1,dash=[]){ctx.save();ctx.strokeStyle=colour;ctx.lineWidth=width;ctx.setLineDash(dash);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.restore();}
 function point2D(ctx,p,r,colour){ctx.fillStyle=colour;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();}
 function skeleton2D(ctx,points,rect,mirror,colour,alpha=1,dashed=false,stroke=2.6){
   if(!points)return;
-  if(!dashed&&alpha>=.9&&danceBody2D(ctx,points,rect,mirror,colour,stroke))return;
+  if(!dashed&&alpha>=.9){const g=colour===REF&&REF_GLOW>0;if(g){ctx.save();ctx.shadowColor=REF;ctx.shadowBlur=REF_GLOW*14*(window.devicePixelRatio||1);}
+    const ok=danceBody2D(ctx,points,rect,mirror,colour,stroke);if(g)ctx.restore();if(ok)return;}
   ctx.save();ctx.globalAlpha=alpha;ctx.lineWidth=stroke;ctx.strokeStyle=colour;ctx.fillStyle=colour;ctx.lineCap='round';ctx.setLineDash(dashed?[4,5]:[]);
   const valid=i=>points[i] && points[i].visibility>.55;
   for(const [a,b] of CONNECTIONS){if(!valid(a)||!valid(b))continue;const u=mapPoint(points[a],rect,mirror),v=mapPoint(points[b],rect,mirror);ctx.beginPath();ctx.moveTo(u.x,u.y);ctx.lineTo(v.x,v.y);ctx.stroke();}
@@ -6514,6 +6518,7 @@ function initBuildWorkspace(){
         /* Riddim Swap already tracked this clip on every frame (poses + person masks): use them, no second tracking */
         const n=usePreparedBody(rec.meta.body,'from Riddim Swap');if(n)window.__mvHandoff.body=n;window.__mvHandoff.masks=!!(rec.meta.body.mask);
       }
+      if(loaded&&rec.meta)rsClipUse(rec.meta);
       if(loaded&&rec.meta&&rec.meta.song&&rec.meta.song.blob instanceof Blob){if(useSong(rec.meta.song)){window.__mvHandoff.song=true;rsSaved=undefined;rsSongKeep(rec.meta.song,state.name);}}
       window.__mvHandoff.status=loaded?'opened':'not-opened';
       if(loaded){try{await tx(db,'readwrite',st=>st.delete(id));}catch(e){}
@@ -6685,8 +6690,8 @@ const rsSong={el:null,url:null,meta:null,mode:'clip',nudge:0,unlocked:false,want
     const pr=document.createElement('div');pr.className='rs-sub rs-part';pr.id='dancer-part';pr.hidden=true;pr.setAttribute('role','group');pr.setAttribute('aria-label','Which part of the dancer');
     pr.innerHTML='<span>Show</span><button type="button" data-part="all" aria-pressed="true">Whole</button><button type="button" data-part="upper" aria-pressed="false">Upper body</button><button type="button" data-part="legs" aria-pressed="false">Legs</button>';
     g1.append(pr);
-    try{const cp=localStorage.getItem('rs-mv-cutpart');if(cp==='upper'||cp==='legs')state.cutPart=cp;}catch(e){}
-    pr.addEventListener('click',e=>{const b=e.target.closest('[data-part]');if(!b)return;state.cutPart=b.dataset.part;state.refCutout=null;try{lastFrame.reference='';renderRevision++;localStorage.setItem('rs-mv-cutpart',state.cutPart);}catch(err){}partSync();});
+    try{const cp=localStorage.getItem('rs-cutpart');if(cp==='upper'||cp==='legs')state.cutPart=cp;}catch(e){}
+    pr.addEventListener('click',e=>{const b=e.target.closest('[data-part]');if(!b)return;state.cutPart=b.dataset.part;state.refCutout=null;try{lastFrame.reference='';renderRevision++;localStorage.setItem('rs-cutpart',state.cutPart);}catch(err){}partSync();});
     const partSync=()=>{const on=!!state.maskRef&&preparedReady();if(pr.hidden===on)pr.hidden=!on;pr.querySelectorAll('[data-part]').forEach(b=>{const v=String((state.cutPart||'all')===b.dataset.part);if(b.getAttribute('aria-pressed')!==v)b.setAttribute('aria-pressed',v);});};
     setInterval(partSync,300);}}
   setInterval(()=>{const c=document.getElementById('music-card');if(c)c.classList.toggle('rs-noan',!(music&&music.analysis));},500);
@@ -6717,8 +6722,8 @@ function useSong(meta){
   setSound(pref==='clip'||pref==='off'?pref:'song',false);
   return true;
 }
-const songAt=t=>{const m=rsSong.meta;return m.offset+(t-m.cIn)*m.ar/m.vr;};
-const clipAt=x=>{const m=rsSong.meta;return m.cIn+(x-m.offset)*m.vr/m.ar;};
+const songAt=t=>{const m=rsSong.meta;return m.offset+rsOut(t)*m.ar;};
+const clipAt=x=>{const m=rsSong.meta;return rsIn((x-m.offset)/m.ar);};
 /* Song mode plays it the way Riddim Swap does: the song at its own speed (× MirrorView's speed), the clip at Riddim Swap's
    clip speed, and the SONG leads: the clip's speed is nudged (up to ±6%, which you can't see) to stay with it. A real
    seek on the clip moves the song. */
@@ -6728,19 +6733,21 @@ function followSong(force){
   const el=rsSong.el;if(!el||!rsSong.meta)return;
   const v=refVideo, m=rsSong.meta, sp=state.speed||1, song=rsSong.mode==='song';
   if(!song){if(!el.paused)el.pause();if(rsSong.ratedClip){setClipRate(sp);rsSong.ratedClip=false;}return;}
-  const on=state.playing&&!v.paused&&!v.seeking&&!document.hidden;
-  const clipBase=sp*m.vr; rsSong.ratedClip=true;
+  const on=state.playing&&!v.paused&&(!v.seeking||performance.now()-rsClip.skipAt<800)&&!document.hidden;
+  const clipBase=sp*rsSlope(v.currentTime); rsSong.ratedClip=true;
   if(!on){if(!el.paused)el.pause();setClipRate(clipBase);return;}
   const tgt=songAt(v.currentTime), dur=el.duration||Infinity;
   if(tgt<0||tgt>=dur-0.05){if(!el.paused)el.pause();setClipRate(clipBase);return;}   /* this part of the clip is before (or after) the song */
   const sr=Math.max(0.25,Math.min(4,sp*m.ar));if(Math.abs(el.playbackRate-sr)>0.002)el.playbackRate=sr;
   if(el.paused||force){if(Math.abs(el.currentTime-tgt)>0.02)el.currentTime=tgt;const pp=el.play();if(pp)pp.catch(()=>{});setClipRate(clipBase);return;}
   const drift=v.currentTime-clipAt(el.currentTime);            /* + : the clip is ahead of the song */
-  if(Math.abs(drift)>0.3){el.currentTime=tgt;setClipRate(clipBase);return;}   /* a real jump: move the song */
+  const sk=performance.now()-rsClip.skipAt;
+  if(sk<2000&&Math.abs(drift)>0.06&&!v.seeking&&performance.now()-(rsClip.fixAt||0)>400){rsClip.fixAt=rsClip.skipAt=performance.now();v.currentTime=clipAt(el.currentTime+0.08*el.playbackRate);setClipRate(clipBase);return;}   /* just after a cut: the clip catches up with one quick jump (the song never moves) */
+  if(Math.abs(drift)>0.3){if(sk<800){setClipRate(clipBase);return;}el.currentTime=tgt;setClipRate(clipBase);return;}   /* a real jump: move the song */
   const k=Math.max(-0.06,Math.min(0.06,-drift*1.5));setClipRate(clipBase*(1+k));
 }
 refVideo.addEventListener('ratechange',()=>{if(!rsSetting&&rsSong.mode==='song'&&rsSong.el)followSong(false);});
-['play','playing','pause','seeked','seeking','ended'].forEach(ev=>refVideo.addEventListener(ev,()=>followSong(ev==='play'||ev==='playing'||ev==='seeked')));
+['play','playing','pause','seeked','seeking','ended'].forEach(ev=>refVideo.addEventListener(ev,()=>followSong((ev==='play'||ev==='playing'||ev==='seeked')&&!(performance.now()-rsClip.skipAt<800))));
 setInterval(()=>followSong(false),100);
 document.addEventListener('visibilitychange',()=>followSong(true));
 /* iPhone: a sound can only start from a tap. The first tap anywhere unlocks the song (silently), so later plays work. */
@@ -6773,8 +6780,68 @@ async function rsSongKeep(song,clipName){
 }
 setTimeout(()=>{if(!rsSong.el){let pref=null;try{pref=localStorage.getItem('rs-mv-sound');}catch(e){}setSound(pref==='off'?'off':'clip',false);}},0);
 
+
+/* ---- one look: Riddim Swap's Look sheet (skeleton colours, glow, theme) ---- */
+const RS_THEME_ALIAS={'--surface':['--panel'],'--dance':['--green'],'--ink':['--text']};
+let rsLookVars=[];
+function rsLookLoad(){
+  let L=null;try{L=JSON.parse(localStorage.getItem('rs-look-now')||'null');}catch(e){}
+  const hex=v=>typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v);
+  const sk=L&&L.skel||{};REF=hex(sk.dance)?sk.dance:'#6E8BFF';HIPS=hex(sk.hips)?sk.hips:'#FF5FA2';REF_GLOW=Math.max(0,Math.min(1,+sk.glow||0));
+  const root=document.documentElement;rsLookVars.forEach(k=>root.style.removeProperty(k));rsLookVars=[];
+  const set=(k,v)=>{if(/^--[a-z-]+$/.test(k)&&typeof v==='string'&&/^#[0-9a-f]{3,8}$/i.test(v)){root.style.setProperty(k,v,'important');rsLookVars.push(k);}};
+  const th=L&&L.theme||{};for(const k in th){set(k,th[k]);(RS_THEME_ALIAS[k]||[]).forEach(a=>set(a,th[k]));}
+  set('--ref',REF);set('--hips',HIPS);
+  window.__mvLook={ref:REF,hips:HIPS,glow:REF_GLOW,vars:rsLookVars.slice()};
+  try{lastFrame.reference='';renderRevision++;}catch(e){}
+}
+rsLookLoad();
+window.addEventListener('pageshow',rsLookLoad);
+window.addEventListener('storage',e=>{if(e.key==='rs-look-now')rsLookLoad();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)rsLookLoad();});
+
+/* ---- one project: name, cuts and speed graph from Riddim Swap ---- */
+const rsClip={pieces:null,map:null,project:'',skipAt:0};
+function rsClipUse(meta){
+  rsClip.pieces=Array.isArray(meta&&meta.pieces)&&meta.pieces.length?meta.pieces.map(p=>[+p[0],+p[1]]).filter(p=>p[1]>p[0]):null;
+  rsClip.map=Array.isArray(meta&&meta.map)&&meta.map.length>1?meta.map.map(p=>[+p[0],+p[1]]):null;
+  rsClip.project=String(meta&&meta.project||'').slice(0,60);
+  const el=document.getElementById('rs-proj');if(el){el.textContent=rsClip.project;el.title='Project: '+rsClip.project;el.closest('.brand')?.classList.toggle('has-proj',!!rsClip.project);}
+  try{localStorage.setItem('rs-mv-clipmeta',JSON.stringify({clip:state.name||'',pieces:rsClip.pieces,map:rsClip.map,project:rsClip.project}));}catch(e){}
+}
+/* after a reload, the same clip keeps its cuts and speed graph */
+function rsClipRestore(){
+  if(rsClip.pieces||rsClip.map||rsClip.project)return;let o=null;try{o=JSON.parse(localStorage.getItem('rs-mv-clipmeta')||'null');}catch(e){}
+  if(o&&o.clip&&o.clip===state.name){rsClip.pieces=o.pieces||null;rsClip.map=o.map||null;rsClip.project=o.project||'';const el=document.getElementById('rs-proj');if(el){el.textContent=rsClip.project;el.title='Project: '+rsClip.project;el.closest('.brand')?.classList.toggle('has-proj',!!rsClip.project);}}
+}
+setInterval(rsClipRestore,1000);
+/* clip time -> output time (the song's clock) and back, through the table; straight lines outside it */
+function rsOut(t){const M=rsClip.map;if(!M){const m=rsSong.meta;return m?(t-m.cIn)/m.vr:t;}
+  if(t<=M[0][0])return M[0][1]+(t-M[0][0])/((M[1][0]-M[0][0])/((M[1][1]-M[0][1])||1e-6));
+  let lo=0,hi=M.length-1;while(hi-lo>1){const k=(lo+hi)>>1;if(M[k][0]<=t)lo=k;else hi=k;}
+  const a=M[lo],b=M[hi];if(t>=b[0])return b[1];
+  /* a cut (a jump in clip time with no output time between): the output time where the next piece starts */
+  if(b[1]-a[1]<1e-6)return b[1];
+  return a[1]+(t-a[0])*(b[1]-a[1])/((b[0]-a[0])||1e-6);}
+function rsIn(x){const M=rsClip.map;if(!M){const m=rsSong.meta;return m?m.cIn+x*m.vr:x;}
+  if(x<=M[0][1])return M[0][0];if(x>=M[M.length-1][1])return M[M.length-1][0];
+  let lo=0,hi=M.length-1;while(hi-lo>1){const k=(lo+hi)>>1;if(M[k][1]<=x)lo=k;else hi=k;}
+  const a=M[lo],b=M[hi];return a[0]+(x-a[1])*(b[0]-a[0])/((b[1]-a[1])||1e-6);}
+/* how fast the clip runs against the song's clock here (the speed graph's local speed) */
+function rsSlope(t){const M=rsClip.map;if(!M){const m=rsSong.meta;return m?m.vr:1;}
+  const x=rsOut(t),d=0.08;const t0=rsIn(Math.max(M[0][1],x-d)),t1=rsIn(Math.min(M[M.length-1][1],x+d));const sl=(t1-t0)/(Math.min(M[M.length-1][1],x+d)-Math.max(M[0][1],x-d)||1);
+  return sl>0.2&&sl<5?sl:(rsSong.meta?rsSong.meta.vr:1);}
+/* cut parts are skipped: the clip jumps to the next kept part, the song just keeps going */
+function rsSkipCuts(){
+  const P=rsClip.pieces;if(P&&P.length>1&&state.playing&&!refVideo.seeking){const t=refVideo.currentTime;
+    if(!P.some(p=>t>=p[0]-0.02&&t<p[1])){const nx=P.find(p=>p[0]>t);if(nx){rsClip.skipAt=performance.now();rsClip.skips=(rsClip.skips||0)+1;
+      /* aim where the song will be when the frame arrives (the song doesn't wait), not at the piece's first frame */
+      const el=rsSong.el,sm=rsSong.mode==='song'&&el&&!el.paused&&rsSong.meta;let to=nx[0];if(sm){const c=clipAt(el.currentTime+0.12*el.playbackRate);if(c>nx[0]&&c<nx[1])to=c;}refVideo.currentTime=to;}}}
+  requestAnimationFrame(rsSkipCuts);}
+requestAnimationFrame(rsSkipCuts);
+
 /* test hook: only with #debug in the address */
-if(/debug/.test(location.hash))window.__mv={rsSong,setSound,followSong,you,loadYou,trackYou,lineUpYou,youSource,state,importFile,seek,setPlaying,get preparedBody(){return preparedBody;},preparedReady,get practiceView(){return practiceView;},get music(){return music;}};
+if(/debug/.test(location.hash))window.__mv={rsClip,rsOut,rsIn,rsSlope,rsLookLoad,songAt:t=>songAt(t),rsSong,setSound,followSong,you,loadYou,trackYou,lineUpYou,youSource,state,importFile,seek,setPlaying,get preparedBody(){return preparedBody;},preparedReady,get practiceView(){return practiceView;},get music(){return music;}};
 
 })();
 </script>

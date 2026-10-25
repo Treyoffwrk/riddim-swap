@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-aaad150286'</script>
+<script>window.RS_BUILD='rs-93ff901e0f'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -515,8 +515,8 @@ details.more .field{margin-top:8px}
 .lnhead b{font:800 16px var(--f-body);color:var(--ink)}
 .lnspeed{font:800 13px var(--f-body);padding:2px 9px;border-radius:999px;background:var(--dance);color:#0E1014}
 .lnloop{font-size:13px;color:var(--muted);margin-left:auto}
-.lncount{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}
-.lncount i{font:800 15px var(--f-body);font-style:normal;text-align:center;padding:7px 0;border-radius:9px;background:var(--sunk);color:var(--muted);transition:background .08s,color .08s}
+.lncount{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;flex:1 1 auto;min-width:0}
+.lncount i{font:800 13px var(--f-body);font-style:normal;text-align:center;padding:5px 0;border-radius:9px;background:var(--sunk);color:var(--muted);transition:background .08s,color .08s}
 .lncount i.past{color:var(--ink)}
 .lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
 .lnchips{display:flex;gap:6px;overflow-x:auto;padding:2px 1px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -531,6 +531,16 @@ details.more .field{margin-top:8px}
 .lnopts{margin-top:0}.lnoptbody{display:grid;gap:10px;padding:0 12px 12px}
 .recrow .btn{padding-left:12px;padding-right:12px}
 .lnchiprow{display:flex;align-items:center;gap:10px;min-width:0}.lnchiprow .label{flex:0 0 auto;font-size:11px}
+/* the slim Learn strip inside the player: one row, so it never covers the dance or the page */
+.learnstrip{display:flex;align-items:center;gap:6px;min-width:0}
+.learnstrip[hidden]{display:none}
+.lswhat{flex:0 0 auto;font:800 13px var(--f-body);color:var(--ink);white-space:nowrap;min-width:64px}
+.lsbtn{flex:0 0 auto;width:34px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);font:800 18px/1 var(--f-body);cursor:pointer}
+.lsbtn:disabled{opacity:.35}
+.pin.fs .learnstrip{margin-top:6px}.pin.fs .lswhat{color:#F3F1EC}
+.pin.fs .lncount i{background:rgba(255,255,255,.12);color:rgba(243,241,236,.7)}.pin.fs .lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
+.pin.fs .lsbtn{background:rgba(255,255,255,.12);border-color:transparent;color:#F3F1EC}
+.pin.fs.learning .dock{bottom:134px}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -699,31 +709,36 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
               <button id="modeSeq" aria-pressed="false">Routine</button>
             </div>
           </div>
-          <div class="learnbar" id="learnBar" hidden aria-label="Learn mode">
-            <div class="lnhead"><b id="learnWhat"></b><span class="lnspeed" id="learnSpeed"></span><span class="lnloop" id="learnLoop"></span></div>
+          <div class="learnstrip" id="learnStrip" hidden aria-label="Learn">
+            <button type="button" class="lsbtn" id="lsPrev" aria-label="Previous 8-count">‹</button>
+            <span class="lswhat" id="lsWhat"></span>
             <div class="lncount" id="learnCount" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i></div>
-            <div class="lnchiprow"><span class="label" id="learnChipLbl">8-counts</span><div class="lnchips" id="learnChips" role="group" aria-label="Choose an 8-count"></div></div>
-            <div class="lnbtns">
-              <button class="btn" id="lnPrev" type="button">◀ Back</button>
-              <button class="btn" id="lnSlow" type="button">Slower</button>
-              <button class="btn" id="lnAgain" type="button">Again</button>
-              <button class="btn primary" id="lnNext" type="button">Next ▶</button>
-            </div>
-            <details class="more lnopts">
-              <summary>Learn options</summary>
-              <div class="lnoptbody">
-                <label class="check"><input type="checkbox" id="lnBuild" checked> Slow first (50% → 75% → full speed)</label>
-                <label class="check"><input type="checkbox" id="lnTogether" checked> Put it together from the top after each one</label>
-                <label class="check"><input type="checkbox" id="lnAuto" checked> Move on by itself</label>
-                <div class="row"><span class="label">Loops at each speed</span><div class="seg" id="lnPer" role="group" aria-label="Loops at each speed" style="grid-template-columns:repeat(3,auto)"><button type="button" data-per="1">1</button><button type="button" data-per="2" aria-pressed="true">2</button><button type="button" data-per="3">3</button></div></div>
-              </div>
-            </details>
-            <p class="hint" id="learnHow" hidden></p>
+            <button type="button" class="lsbtn" id="lsNext" aria-label="Next 8-count">›</button>
           </div>
           <p class="hint" id="recMsg" hidden></p>
         </div>
       </div>
 
+      <div class="learnbar" id="learnBar" hidden aria-label="Learn mode">
+        <div class="lnhead"><b id="learnWhat"></b><span class="lnspeed" id="learnSpeed"></span><span class="lnloop" id="learnLoop"></span></div>
+        <div class="lnchiprow"><span class="label" id="learnChipLbl">8-counts</span><div class="lnchips" id="learnChips" role="group" aria-label="Choose an 8-count"></div></div>
+        <div class="lnbtns">
+          <button class="btn" id="lnPrev" type="button">◀ Back</button>
+          <button class="btn" id="lnSlow" type="button">Slower</button>
+          <button class="btn" id="lnAgain" type="button">Again</button>
+          <button class="btn primary" id="lnNext" type="button">Next ▶</button>
+        </div>
+        <details class="more lnopts">
+          <summary>Learn options</summary>
+          <div class="lnoptbody">
+            <label class="check"><input type="checkbox" id="lnBuild" checked> Slow first (50% → 75% → full speed)</label>
+            <label class="check"><input type="checkbox" id="lnTogether" checked> Put it together from the top after each one</label>
+            <label class="check"><input type="checkbox" id="lnAuto" checked> Move on by itself</label>
+            <div class="row"><span class="label">Loops at each speed</span><div class="seg" id="lnPer" role="group" aria-label="Loops at each speed" style="grid-template-columns:repeat(3,auto)"><button type="button" data-per="1">1</button><button type="button" data-per="2" aria-pressed="true">2</button><button type="button" data-per="3">3</button></div></div>
+          </div>
+        </details>
+        <p class="hint" id="learnHow" hidden></p>
+      </div>
       <section class="take" id="take" hidden aria-labelledby="h-take">
         <div class="row"><h2 id="h-take">Your take</h2><span class="hint" id="takeInfo" style="margin-left:auto"></span></div>
         <video id="takeVid" playsinline controls></video>
@@ -4170,6 +4185,7 @@ async function goMirror(id){
 $('#mvBtn').addEventListener('click',()=>goMirror(null));
 /* the clip, its hits and its body tracking (so MirrorView shows the same dance body without tracking again) */
 async function sendClip(){
+  if(S.study)studyOff();   /* (and Learn) so the clip goes as it plays normally */
   const n=srcById(S.cur);
   if(!n||n.missing||!n.blob){hMsg('Add this video again first: its file isn’t loaded on this phone.');return false}
   const B=bodyOf(n);
@@ -4178,7 +4194,15 @@ async function sendClip(){
   let song=null;const so=S.liveSong;
   if(so&&so.ready&&!so.missing){let sb=so.blob||null;if(!sb)try{sb=await mediaGet(so.key)}catch(e){}
     if(sb&&sb.size)song={blob:sb,name:so.name||'Song',offset:S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar,ar:S.ar,vr:S.vr,cIn:S.cIn}}
-  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim:[S.cIn,clipEnd()],hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
+  /* cuts and the speed graph: the kept parts, and a table from clip time to the time the song plays (output time), so
+     Body keeps the song in time through the speed graph and skips the cut parts. (A routine sends just this clip.) */
+  let pieces=null,map=null,trim=[S.cIn,clipEnd()];
+  if(routineOn())song=null;
+  else{const L=segs();if(L.length>1||L.some(g=>g.k)){pieces=L.map(g=>[g.s,g.e]);map=[];
+    L.forEach((g,i)=>{const o0=segStart(i,L);for(let t=g.s;t<g.e-1e-6;t+=0.05)map.push([+t.toFixed(4),+(o0+toOut(g,t)).toFixed(4)]);map.push([+g.e.toFixed(4),+(o0+segLen(g)).toFixed(4)])});
+    trim=[L[0].s,L[L.length-1].e]}}
+  if(song&&map)song.offset=S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar;   /* song = offset + output time × ar */
+  try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim,pieces,map,project:PJ.name||'',hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
       body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}
   catch(e){hMsg('Couldn’t open the clip in Body on this phone ('+(e&&e.message||e)+').');return false}
 }
@@ -4187,7 +4211,7 @@ $('#mvClip').addEventListener('click',sendClip);
 function takeTabReq(){let r=null,pj=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req');pj=localStorage.getItem('rs-open-proj');localStorage.removeItem('rs-open-proj')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click();
   if(pj)setTimeout(()=>$('#projBtn').click(),200)}   /* Projects tapped in Body */
 window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
-$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob&&!routineOn())sendClip();else goMirror(null)});
+$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob)sendClip();else goMirror(null)});   /* in a routine, the clip under the playhead */
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();
@@ -5729,7 +5753,9 @@ LOOK.drawBody=(c,B,t,rect,o,dpr)=>{const s=LOOK.skel();c.save();try{if(s.glow){c
 const LOOK_VARS=new Set();
 LOOK.apply=()=>{const root=document.documentElement;for(const v of LOOK_VARS)root.style.removeProperty(v);LOOK_VARS.clear();
   const vars=LOOK.pack('theme').vars||{};for(const k in vars){root.style.setProperty(k,vars[k],'important');LOOK_VARS.add(k)}
-  CUE.col=null;CUE.stillKey='';try{drawBody()}catch(e){}};
+  CUE.col=null;CUE.stillKey='';try{drawBody()}catch(e){}
+  /* Body (the MirrorView page) uses the same look: leave it the resolved colours (not while trying a pack on) */
+  if(!Object.keys(LOOK.preview).length)try{localStorage.setItem('rs-look-now',JSON.stringify({skel:LOOK.skel(),ball:LOOK.ball(),theme:vars}))}catch(e){}};
 /* hear a click pack: a 1 and three beats */
 LOOK.hear=pk=>{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{});const t0=c.currentTime+0.05,d=pk.decay||1,pg=pk.gain||1;
   ['one','beat','beat','beat'].forEach((kd,i)=>{const when=t0+i*0.4,o=c.createOscillator(),g=c.createGain();o.type=pk.wave||'sine';o.frequency.value=pk.freq[kd];
@@ -5892,7 +5918,7 @@ function learnCount(){
   let m=0;for(const b of c.beats)if(b<=t+0.03)m++;return Math.max(1,Math.min(8,m));
 }
 function learnUI(){
-  const L=S.learn, bar=$('#learnBar'), btn=$('#learnBtn'); btn.setAttribute('aria-pressed',String(!!L)); bar.hidden=!L; $('#learnTag').hidden=!L;
+  const L=S.learn, bar=$('#learnBar'), btn=$('#learnBtn'); btn.setAttribute('aria-pressed',String(!!L)); bar.hidden=!L; $('#learnStrip').hidden=!L; document.querySelector('.pin').classList.toggle('learning',!!L); $('#learnTag').hidden=!L;
   btn.disabled=!S.hasV||routineOn()||!!S.rec;
   if(!L)return;
   const o=learnOpts(), c=L.chunks[L.i], N=L.chunks.length, rate=S.study?S.study.rate:1;
@@ -5910,7 +5936,9 @@ function learnUI(){
   $('#learnHow').hidden=L.how==='song'; $('#learnHow').textContent=L.how==='dance'?'Counting from the clip\'s own tempo (no song beat).':L.how==='hits'?'No beat found: split about every 4 s at the dancer\'s hits. Add a song or tap the tempo for real 8-counts.':'';
   $('#lnBuild').checked=o.build; $('#lnTogether').checked=o.together; $('#lnAuto').checked=o.auto;
   $$('#lnPer button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.per===o.per)));
-  $('#lnPrev').disabled=L.i===0; $('#lnNext').disabled=L.i>=N-1;
+  $('#lnPrev').disabled=$('#lsPrev').disabled=L.i===0; $('#lnNext').disabled=$('#lsNext').disabled=L.i>=N-1;
+  /* the slim strip in the player (and in full screen): where you are, the speed, the 1-8 count */
+  $('#lsWhat').textContent=(L.phase==='together'?`${learnTopOf(L.i)+1}–${L.i+1}`:`${L.i+1}/${N}`)+' · '+Math.round(rate*100)+'%';
 }
 /* the 1-8 count: lit as it plays */
 function learnTick(){
@@ -5918,6 +5946,8 @@ function learnTick(){
   $$('#learnCount i').forEach((e,j)=>{e.classList.toggle('on',j+1===k);e.classList.toggle('past',j+1<k)});
 }
 $('#learnBtn').addEventListener('click',()=>{S.learn?learnOff():learnOn()});
+$('#lsPrev').addEventListener('click',()=>$('#lnPrev').click());
+$('#lsNext').addEventListener('click',()=>$('#lnNext').click());
 $('#lnPrev').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;learnStart(L.i-1,true)});
 $('#lnNext').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;L.done.add(L.i);learnStart(L.i+1,true)});
 $('#lnAgain').addEventListener('click',()=>{const L=S.learn;if(!L)return;L.hold=false;L.finished=false;learnStart(L.i,true)});

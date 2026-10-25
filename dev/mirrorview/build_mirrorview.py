@@ -140,6 +140,8 @@ s = s[:app.start(1)] + new_app + s[app.end(1):]
 
 # ---- part of Riddim Swap: header, sound in every view, phone layout (see mv_rs_block.py) ----
 exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_rs_block.py').read_text(), 'mv_rs_block.py', 'exec'))
+# ---- one look and one project with Riddim Swap (see mv_link_block.py) ----
+exec(compile((pathlib.Path(__file__).resolve().parent / 'mv_link_block.py').read_text(), 'mv_link_block.py', 'exec'))
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
 OUT.write_text(s)
