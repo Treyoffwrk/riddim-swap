@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 25 Oct 2026 · version rs-34f3c9b91f · repo Treyoffwrk/riddim-swap_
+_Last updated 27 Oct 2026 · version rs-fae73d23f1 · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -80,7 +80,9 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 51 suites at rs-34f3c9b91f (25 Oct 2026, skeleton fixes): all passed, including the stuck-video tests (both cases), skeleton drawing with the Accurate tracker, Body link 11/11 and Look 24/24. Suites track with the regular model for speed (RB_HEAVY=1 uses the heavy one); the skeleton suite uses the heavy one. One Learn check caught the normal sync nudge at 50% speed (video at 48.5%); its tolerance now matches the 75% check and Learn passes 16/16. The session suite still stops at its old "reloads on a new version" check (also fails on the earlier live build; the dedicated update test passes).
+**Last full regression:** 53 suites at rs-fae73d23f1 (27 Oct 2026, compilations): all passed, including the two compilation tests (with and without a chosen dancer). The session suite still stops at its old update check (fails on earlier builds too; the dedicated update test passes). The compilation test clip is made from the test assets (see compilation_test.js); it isn't stored in the repo.
+
+**Previous:** 51 suites at rs-34f3c9b91f (25 Oct 2026, skeleton fixes): all passed, including the stuck-video tests (both cases), skeleton drawing with the Accurate tracker, Body link 11/11 and Look 24/24. Suites track with the regular model for speed (RB_HEAVY=1 uses the heavy one); the skeleton suite uses the heavy one. One Learn check caught the normal sync nudge at 50% speed (video at 48.5%); its tolerance now matches the 75% check and Learn passes 16/16. The session suite still stops at its old "reloads on a new version" check (also fails on the earlier live build; the dedicated update test passes).
 
 **Previous:** 49 suites at rs-93ff901e0f (25 Oct 2026, compact Learn + Body integration): all passed, including Learn (16/16, with phone and full-screen layout checks) and the new Body link test (11/11: Look colours, glow and theme in Body, project name, cuts and speed graph with the song in time, gap p90 47 ms through a cut). In the full run: the Body header check expected the word "Body" (it now shows the project's name; check updated, 21/21 alone), Body camera start and cut-out lag failed under load and passed alone (cut-out lag 43 ms). The session suite's "coming back to a new version reloads it" check fails on the live build too, so it isn't from this change; the dedicated update test (real service worker) passes 5/5.
 
