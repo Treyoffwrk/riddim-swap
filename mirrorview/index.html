@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-34f3c9b91f'</script>
+<script>window.RS_BUILD='rs-fae73d23f1'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -847,6 +847,14 @@ main{padding-bottom:12px}
          rather than tracking the old picture again */
       const sigC=document.createElement('canvas');sigC.width=24;sigC.height=24;const scx=sigC.getContext('2d',{willReadFrequently:true});
       let lastSig=null, stale=0, kicks=0, stuckRun=0;
+      /* shot changes (edits, compilations): each frame's colour mix is compared with the frame next to it; a big change is a
+         cut. At a cut the follower starts fresh on the main dancer of the new shot (biggest, most central), a dancer you
+         chose only counts for the shot you chose them in, and cleaning never blends across it. */
+      const hists=new Map(), cutAt=new Set(); let crossed=false;
+      const histOf=d=>{const h=new Float32Array(64);for(let i=0;i<d.length;i+=4)h[(d[i]>>6)*16+(d[i+1]>>6)*4+(d[i+2]>>6)]++;const n=d.length/4;for(let i=0;i<64;i++)h[i]/=n;return h};
+      const cutBetween=(a,b,da,db)=>{let hd=0;for(let i=0;i<64;i++)hd+=Math.abs(a[i]-b[i]);let pd=0;if(da&&db){for(let i=0;i<da.length;i+=4)pd+=Math.abs(da[i]-db[i])+Math.abs(da[i+1]-db[i+1])+Math.abs(da[i+2]-db[i+2]);pd/=da.length/4*3}else pd=hd>0.45?99:0;   /* (the neighbour's picture may be gone: colours alone) */
+        if(root.RB_CUTDBG)root.RB_CUTDBG.push([+hd.toFixed(3),+pd.toFixed(1)]);return hd>0.6||(hd>0.35&&pd>38)};
+      const sigs=new Map();
       const sigOf=()=>{scx.drawImage(cv,0,0,24,24);return scx.getImageData(0,0,24,24).data};
       const same=(a,b)=>{if(!a||!b)return false;let d=0;for(let i=0;i<a.length;i+=4)d+=Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]);return d/(a.length/4*3)<0.15};
       let reloads=0;
@@ -857,7 +865,7 @@ main{padding-bottom:12px}
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(opt.signal&&opt.signal.aborted)break;
-        if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0}   /* going backwards: start again from the tap */
+        if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false}   /* going backwards: start again from the tap */
         /* the frame clock must agree with where we asked to go; after a long jump (going backwards) it can report a
            stale frame, so ask once more, then fall back to the requested time */
         const P0=performance.now();
@@ -880,6 +888,9 @@ main{padding-bottom:12px}
           if(same(sig,lastSig)){stale++;stuckRun++;if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
           P1=performance.now()}
         stuckRun=0;lastSig=sig;
+        {const h=histOf(sig);hists.set(k,h);sigs.set(k,sig);const nb=hists.has(k-1)?k-1:hists.has(k+1)?k+1:-1;
+          if(nb>=0&&cutBetween(h,hists.get(nb),sig,sigs.get(nb))){cutAt.add(nb<k?k:nb);prev=null;lost=0;crossed=true}
+          if(sigs.size>4){for(const q of sigs.keys())if(Math.abs(q-k)>2)sigs.delete(q)}}
         const t=mt!=null?mt:want[k]-0.5/fps;
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
         if(oi+1<order.length&&!(opt.signal&&opt.signal.aborted)){const nk=order[oi+1];pending={k:nk,p:seekTo(want[nk])}}
@@ -890,7 +901,7 @@ main{padding-bottom:12px}
           if(cands.length>1||(prev&&prev.app)||root.RB_DEBUG_ALL)cands.forEach(c=>{c.app=looks(cx,cv.width,cv.height,c.pts)});
           PR.look=performance.now()-D1;
           if(root.RB_DEBUG_ALL)root.RB_DEBUG_ALL.push({k,cands:cands.map(c=>({pts:c.pts,app:c.app}))});
-          const ch=choose(cands,prev,opt.pick&&!pickPose?opt.pick:null,asp,lost,!!opt.pick);
+          const ch=choose(cands,prev,opt.pick&&!pickPose?opt.pick:null,asp,lost,!!opt.pick&&!crossed);
           const M0=performance.now();if(ch){const m=r.segmentationMasks&&r.segmentationMasks[ch.i];
             /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
             if(m&&rt.delegate==='GPU'){mk=gpuMask(rt,m,mw,mh)}
@@ -921,11 +932,13 @@ main{padding-bottom:12px}
       const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
       const seen=rows.filter(r=>!isNaN(r[1])).length;
       if(root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
-      const C=clean(data,world,rows.length,asp);
+      const cutTimes=[...cutAt].filter(k=>k>0&&k<want.length).map(k=>want[k]-0.5/fps).sort((a,b)=>a-b);
+      const cutRows=new Set();for(const ct of cutTimes){const i=rows.findIndex(r=>r[0]>=ct-0.25/fps);if(i>0)cutRows.add(i)}
+      const C=clean(data,world,rows.length,asp,{cuts:cutRows});
       /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
       let mask=null; const withMask=masks.filter(Boolean).length;
       if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
-      return {v:2,cleanV:2,model:'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
+      return {v:2,cleanV:2,cuts:cutTimes,model:'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
         clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
     }finally{cleanup()}
   }
@@ -987,7 +1000,7 @@ main{padding-bottom:12px}
   const CLEAN_OLD={out:'median7',outT:0.08,outTx:0.16,fillVis:0.3,fillGap:6,sgX:2,sgCore:3,adapt:null};   /* before 25 Oct 2026, for comparisons */   /* adapt: [still, fast] speeds in torso lengths a frame: hands and feet are smoothed fully below 'still', not at all above 'fast' */
   function clean(D,Wd,n,asp,opt){
     const O={...CLEAN0,...(root.RB_CLEAN||{}),...(opt||{})};
-    const rep={flips:0,outliers:0,filled:0,runs:0};
+    const rep={flips:0,outliers:0,filled:0,runs:0}; const cutsS=O.cuts instanceof Set?O.cuts:new Set(O.cuts||[]);
     const has=i=>!isNaN(D[i*STRIDE+1]);
     const X=(i,j)=>D[i*STRIDE+1+j*3], Y=(i,j)=>D[i*STRIDE+2+j*3]*asp, V=(i,j)=>D[i*STRIDE+3+j*3];
     const torsoAt=i=>{const sx=(X(i,11)+X(i,12))/2,sy=(Y(i,11)+Y(i,12))/2,hx=(X(i,23)+X(i,24))/2,hy=(Y(i,23)+Y(i,24))/2;return Math.hypot(sx-hx,sy-hy)||1e-3};
@@ -995,11 +1008,12 @@ main{padding-bottom:12px}
     /* 1 runs */
     const runs=[];let a=-1;
     for(let i=0;i<=n;i++){const ok=i<n&&has(i);
+      if(ok&&a>=0&&cutsS.has(i)){runs.push([a,i-1]);a=i;continue}   /* a new shot starts here */
       if(ok&&a>=0){const h0=hipAt(i-1),h1=hipAt(i);if(Math.hypot(h1[0]-h0[0],h1[1]-h0[1])>1.0*torsoAt(i-1)){runs.push([a,i-1]);a=i;continue}}
       if(ok&&a<0)a=i; if(!ok&&a>=0){runs.push([a,i-1]);a=-1}}
     /* 4a join runs across short gaps when the body is where it was */
     const joined=[];for(const r of runs){const L=joined[joined.length-1];
-      if(L&&r[0]-L[1]-1<=6){const h0=hipAt(L[1]),h1=hipAt(r[0]);if(Math.hypot(h1[0]-h0[0],h1[1]-h0[1])<0.6*torsoAt(L[1])*(r[0]-L[1])){
+      if(L&&r[0]-L[1]-1<=6&&![...cutsS].some(c=>c>L[1]&&c<=r[0])){const h0=hipAt(L[1]),h1=hipAt(r[0]);if(Math.hypot(h1[0]-h0[0],h1[1]-h0[1])<0.6*torsoAt(L[1])*(r[0]-L[1])){
         for(let i=L[1]+1;i<r[0];i++){const u=(i-L[1])/(r[0]-L[1]);for(let c=1;c<STRIDE;c++){const p=D[L[1]*STRIDE+c],q=D[r[0]*STRIDE+c];D[i*STRIDE+c]=(c%3===0)?Math.min(p,q)*0.8:p+(q-p)*u}
           for(let c=0;c<WS;c++){const p=Wd[L[1]*WS+c],q=Wd[r[0]*WS+c];Wd[i*WS+c]=p+(q-p)*u}rep.filled++}
         L[1]=r[1];continue}}joined.push([r[0],r[1]])}
@@ -1106,6 +1120,7 @@ main{padding-bottom:12px}
     const get=k=>{const o=k*STRIDE;if(isNaN(B.data[o+1]))return null;const p=new Array(N);for(let j=0;j<N;j++)p[j]=[B.data[o+1+j*3],B.data[o+2+j*3],B.data[o+3+j*3]];return p};
     if(bd<=0.02)return get(best);
     const a=i-1,b=i; if(a<0||b>=B.n)return null; const ta=tAt(B,a),tb=tAt(B,b); if(tb-ta>0.07||t<ta||t>tb)return bd<=0.04?get(best):null;
+    if(B.cuts&&B.cuts.some(c=>c>ta+1e-4&&c<=tb+1e-4))return get(t-ta<tb-t?a:b);   /* a cut between the two frames: no blending of two different shots */
     const A=get(a),Bp=get(b); if(!A||!Bp)return A||Bp; const u=(t-ta)/(tb-ta);
     return A.map((p,j)=>[p[0]+(Bp[j][0]-p[0])*u,p[1]+(Bp[j][1]-p[1])*u,Math.min(p[2],Bp[j][2])]);
   }
@@ -1116,6 +1131,8 @@ main{padding-bottom:12px}
   const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
   const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
+  /* a colour mixed toward white by u (0-1), for the lighter left side */
+  function tint(c,u){const m=/^#([0-9a-f]{6})$/i.exec(String(c||''));if(!m)return c;const n=parseInt(m[1],16),f=v=>Math.round(v+(255-v)*u);return 'rgb('+f(n>>16)+','+f((n>>8)&255)+','+f(n&255)+')'}
   function draw(ctx,B,t,rect,o){
     o=o||{}; if(B&&B.v<2&&!B._up)upgrade(B); const P=poseAt(B,t); if(!P)return false;
     const X=p=>[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h], vis=j=>P[j][2]>=0.35;
@@ -1143,9 +1160,16 @@ main{padding-bottom:12px}
     /* pelvis: a hip bowl that tilts with the hips and opens up as they turn, plus a level guide when tilted */
     drawPelvis(ctx,q,hipsAt(B,t),{pink,lw,torso,tiltGuide:o.tiltGuide!==false});
     /* limbs */
+    /* easy to see on any background: a dark outline under each limb; the dancer's left side a lighter shade than their
+       right, so the sides can be told apart when mirroring; a dot on each hand and foot, where most of a move happens */
+    const lite=tint(blue,0.42);
+    const path=(ids)=>{ctx.beginPath();let on=false;for(const j of ids){if(!vis(j)){on=false;continue}if(!on){ctx.moveTo(...q[j]);on=true}else ctx.lineTo(...q[j])}};
+    const limbs=[[[11,13,15],0.9,1],[[12,14,16],0.9,0],[[23,25,27,31],1,1],[[24,26,28,32],1,0]];
+    if(o.outline!==false){ctx.save();ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.strokeStyle='rgba(8,9,12,.55)';for(const [ids,k] of limbs){ctx.lineWidth=lw*k+Math.max(3,lw*0.55);path(ids);ctx.stroke()}ctx.restore()}
+    for(const [ids,k,left] of limbs){ctx.strokeStyle=left&&o.sides!==false?lite:blue;ctx.lineWidth=lw*k;path(ids);ctx.stroke()}
     ctx.strokeStyle=blue;
-    const limb=(ids,w)=>{ctx.lineWidth=w;ctx.beginPath();let on=false;for(const j of ids){if(!vis(j)){on=false;continue}if(!on){ctx.moveTo(...q[j]);on=true}else ctx.lineTo(...q[j])}ctx.stroke()};
-    limb([11,13,15],lw*0.9);limb([12,14,16],lw*0.9);limb([23,25,27,31],lw);limb([24,26,28,32],lw);
+    if(o.ends!==false)for(const [j,left] of [[15,1],[16,0],[31,1],[32,0]]){if(!vis(j))continue;const r=Math.max(3.5,lw*0.62);
+      ctx.fillStyle='rgba(8,9,12,.6)';ctx.beginPath();ctx.arc(q[j][0],q[j][1],r+Math.max(1.5,lw*0.18),0,7);ctx.fill();ctx.fillStyle=left&&o.sides!==false?lite:blue;ctx.beginPath();ctx.arc(q[j][0],q[j][1],r,0,7);ctx.fill()}
     /* head */
     const hr=Math.max(6,Math.hypot(q[7][0]-q[8][0],q[7][1]-q[8][1])*0.75);
     ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();

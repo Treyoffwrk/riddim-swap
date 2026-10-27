@@ -1901,7 +1901,7 @@ function hitsFromBody(n){
 }
 $('#bodyTrack').addEventListener('click',async()=>{
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
-  S.bodyBusy=true; S.bodyT0=null; S.bodyLeft=''; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
+  S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyLeft=''; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   try{
     const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}});
@@ -1909,7 +1909,7 @@ $('#bodyTrack').addEventListener('click',async()=>{
     const got=hitsFromBody(n);
     $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
     if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
-  }catch(e){$('#bodyInfo').textContent='Body tracking didn’t run: '+((e&&e.message)||e)}
+  }catch(e){S.bodyErr='Body tracking didn’t run: '+((e&&e.message)||e);$('#bodyInfo').textContent=S.bodyErr}
   finally{S.bodyBusy=false;$('#bodyProg').hidden=true;enable();renderDance();renderMoves();updateMatch();scheduleFit();drawHitStrip()}
 });
 
@@ -2058,7 +2058,7 @@ $('#danceAnalyze').addEventListener('click',()=>findHits(srcById(S.cur)));
 function renderDance(){
   const n=srcById(S.cur), info=$('#danceInfo'), w=$('#danceWarn');
   if(S.analyzing)return; w.textContent='';
-  {const B=n&&bodyOf(n);if(!S.bodyBusy)$('#bodyInfo').textContent=B?bodyInfoText(n,B)+(n.motion&&n.motion.source==='pose'?' Hits come from the body.':''):'Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.'}
+  {const B=n&&bodyOf(n);if(!S.bodyBusy)$('#bodyInfo').textContent=!B&&S.bodyErr?S.bodyErr:B?bodyInfoText(n,B)+(n.motion&&n.motion.source==='pose'?' Hits come from the body.':''):'Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.'}
   $('#hitRow').hidden=true; $('#hitLevelRow').hidden=true;
   if(!n){info.textContent='Add a dance video first.';return}
   $('#danceAnalyze').textContent=n.motion?'Find again':'Find hits';
