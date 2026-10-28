@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 28 Oct 2026 · version rs-3d94bb9d96 · repo Treyoffwrk/riddim-swap_
+_Last updated 28 Oct 2026 · version rs-e6e714900c · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -50,7 +50,8 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 - **Easier to see** (27 Oct): dark outline under the limbs, the dancer's left side a lighter shade than their right, a dot on each hand and foot (main player; Body still draws its own style).
 - Tracking errors now stay on screen (a refresh used to replace them with the intro text).
 - **Body: Pulse box movable** (27 Oct): the Pulse box (BPM and the 8-count) used to sit fixed over the lower part of the video in Split, Overlay and Worldline, covering the dancer and the view controls. Now it starts as a small badge with just the count; tap it for the full box, drag it anywhere on the video (kept inside, position remembered); touches on it don't move the 3D view underneath. Body's dialogs no longer say "MirrorView".
-- **RTMPose trial (built, not switched on)**: body.js can refine the followed dancer with RTMPose whole-body (ONNX Runtime Web) using the current tracker's box and 3D; dormant until a model URL is set (the model hosts are blocked from the build workspace).
+- **RTMPose trial** (28 Oct): Tracking → RTMPose (trial). The regular tracker finds and follows the dancer (with the cut handling) and supplies the 3D for hip turn; RTMPose's whole-body model RTMW-m (distilled from RTMW-l, Apache-2.0) reads a 192×256 crop of them; points it isn't sure of (score < 0.3) keep the regular tracker's reading. Runs on ONNX Runtime Web 1.22 (WASM; no GPU on iOS 18). Model weights stored at half precision (65 MB, results identical to full precision; 8-bit versions broke the model), served from the app and kept across updates. Tracking again with another tracker keeps the previous skeleton: Compare → This track / Previous (orange) / Both. Phone check shows "RTMPose trial" and its ms/frame.
+  - Measured on a 20 s dancehall clip (no ground truth; three-way 'odd one out' among Regular, Accurate and RTMPose, which leans against RTMPose): wrists odd one out 87 / 28 / 49 times, elbows 19 / 7 / 26, knees 13 / 1 / 8, ankles 33 / 7 / 39; bone steadiness close to Accurate. RTMW-s was less exact (wrists 69, ankles 48). Speed on the test machine: RTMW-m 497 ms/frame, RTMW-s 237. Verdict so far: about on par with Accurate, better than Regular on wrists, places shoulders/hips at the joints, adds hands/feet points; much slower. Real-phone speed and the user's judgement on their clips are the open questions.
 - **Look & sound** (the Look button in the header). A sheet with free colour pickers for the balls and skeleton, and 16 cosmetic packs: balls, skeleton (some with a glow), click sounds and app themes, a free Classic plus three extras of each. Nothing is locked on the web. Paid packs are only gated when the store is on (`?store=1`, or inside the App Store app): then they show a price, Buy and Try it (a preview with a bar to buy or stop), with a note that every feature stays free. Purchases are test purchases for now (no money taken). Source: `src/look.js`, packs in `src/packs.json`.
 - **Works offline after the first visit.** This includes the body tracker.
 
@@ -82,7 +83,9 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 54 suites at rs-3d94bb9d96 (28 Oct 2026, movable Pulse box): all passed, including the new Pulse box test (10/10: starts small, tap to open/shrink, drag in Split and Worldline, kept on the video, remembered, no touches reach the 3D view). The session suite still stops at its old update check.
+**Last full regression:** 55 suites at rs-e6e714900c (28 Oct 2026, RTMPose trial): all passed, including the in-app trial test (6/6). One skeleton check expected two Tracking buttons (now three); updated. The session suite still stops at its old update check.
+
+**Previous:** 54 suites at rs-3d94bb9d96 (28 Oct 2026, movable Pulse box): all passed, including the new Pulse box test (10/10: starts small, tap to open/shrink, drag in Split and Worldline, kept on the video, remembered, no touches reach the 3D view). The session suite still stops at its old update check.
 
 **Previous:** 53 suites at rs-fae73d23f1 (27 Oct 2026, compilations): all passed, including the two compilation tests (with and without a chosen dancer). The session suite still stops at its old update check (fails on earlier builds too; the dedicated update test passes). The compilation test clip is made from the test assets (see compilation_test.js); it isn't stored in the repo.
 

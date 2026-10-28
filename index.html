@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-3d94bb9d96'</script>
+<script>window.RS_BUILD='rs-e6e714900c'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -784,7 +784,8 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
           </div>
-          <div class="row mv-only" id="trackQRow"><span class="label">Tracking</span><div class="seg" id="trackQ" role="group" aria-label="Tracking quality" style="grid-template-columns:auto auto"><button type="button" data-q="accurate" aria-pressed="true">Accurate</button><button type="button" data-q="fast" aria-pressed="false">Faster</button></div><span class="hint" id="trackQNote"></span></div>
+          <div class="row mv-only" id="trackQRow"><span class="label">Tracking</span><div class="seg" id="trackQ" role="group" aria-label="Tracking quality" style="grid-template-columns:auto auto auto"><button type="button" data-q="accurate" aria-pressed="true">Accurate</button><button type="button" data-q="fast" aria-pressed="false">Faster</button><button type="button" data-q="rtm" aria-pressed="false">RTMPose (trial)</button></div><span class="hint" id="trackQNote"></span></div>
+          <div class="row mv-only" id="cmpRow" hidden><span class="label">Compare</span><div class="seg" id="cmpSeg" role="group" aria-label="Which skeleton" style="grid-template-columns:auto auto auto"><button type="button" data-c="now" aria-pressed="true" id="cmpNow">This track</button><button type="button" data-c="prev" aria-pressed="false" id="cmpPrev">Previous</button><button type="button" data-c="both" aria-pressed="false">Both</button></div></div>
           <div class="prog" id="bodyProg" hidden><i></i></div>
           <div class="row mv-only" id="pickRow"><button class="btn sm" id="bodyPick">Choose the dancer</button><span class="hint" id="pickMsg"></span></div>
           <p class="hint mv-only" id="bodyInfo">Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.</p>
@@ -1704,7 +1705,7 @@ if(typeof module!=='undefined')module.exports=RA;
        then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
     ortURL:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.bundle.min.mjs',
     ortWasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
-    rtmURL:'',        /* set once the model is chosen and checked */
+    rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m.onnx',   /* RTMW-m whole-body (distilled from RTMW-l), weights stored at half precision (65 MB); chosen over RTMW-s, which was less exact on 28 Oct tests */
     rtmIn:[192,256]   /* model input width, height */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
@@ -2097,7 +2098,7 @@ if(typeof module!=='undefined')module.exports=RA;
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
   /* ---------- RTMPose trial ---------- */
   async function rtmLoad(){
-    const ort=await import(CFG.ortURL); ort.env.wasm.wasmPaths=CFG.ortWasm; ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
+    const ort=await import(CFG.ortURL); ort.env.wasm.wasmPaths=CFG.ortWasm; ort.env.logLevel='error'; ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
     const r=await fetch(rtmURL()); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
     const buf=new Uint8Array(await r.arrayBuffer());
     const session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
@@ -2138,7 +2139,7 @@ if(typeof module!=='undefined')module.exports=RA;
     o=o||{}; if(B&&B.v<2&&!B._up)upgrade(B); const P=poseAt(B,t); if(!P)return false;
     const X=p=>[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h], vis=j=>P[j][2]>=0.35;
     const q=P.map(X), sh=mid(q[11],q[12]), hp=mid(q[23],q[24]), torso=Math.hypot(sh[0]-hp[0],sh[1]-hp[1])||40;
-    const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(3,torso*0.11);
+    const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(o.lwScale?2:3,torso*0.11*(o.lwScale||1));   /* lwScale: thinner, for a second skeleton drawn on top to compare */
     ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
     /* hips' path relative to the chest over the last second, drawn around the hips now (scaled so a whine reads) */
     if(o.hipPath!==false){
@@ -3465,7 +3466,7 @@ const b64ToF32=s=>{if(!s)return null;const b=atob(s),u=new Uint8Array(b.length);
 async function bodiesForBackup(){
   const out={};
   for(const n of S.sources){if(!n.key)continue;const B=n.body||await mediaGet('body:'+n.key);if(!B||!B.data||!B.n)continue;
-    out[n.key]={v:B.v||1,cleanV:B.cleanV||0,stale:B.stale,kicks:B.kicks,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,seen:B.seen,multi:B.multi||0,clean:B.clean||null,pick:B.pick||null,start:B.start,end:B.end,
+    out[n.key]={v:B.v||1,cleanV:B.cleanV||0,stale:B.stale,kicks:B.kicks,rtmMs:B.rtmMs,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,seen:B.seen,multi:B.multi||0,clean:B.clean||null,pick:B.pick||null,start:B.start,end:B.end,
       data:f32ToB64(B.data),world:f32ToB64(B.world),hips:f32ToB64(B.hips)}}
   return out;
 }
@@ -4199,7 +4200,7 @@ $('#hitCheck').addEventListener('click',()=>{
 function srcOfEl(el){return S.sources.find(x=>x.el===el||x.el2===el)}
 function bodyOf(n){
   if(!n||!n.key)return null;
-  if(n.body===undefined){n.body=null;mediaGet('body:'+n.key).then(b=>{if(b&&b.data&&b.n){n.body=b;renderDance()}}).catch(()=>{})}
+  if(n.body===undefined){n.body=null;mediaGet('body:'+n.key).then(b=>{if(b&&b.data&&b.n){n.body=b;renderDance()}}).catch(()=>{});mediaGet('bodyalt:'+n.key).then(b=>{if(b&&b.data&&b.n){n.bodyAlt=b;cmpUI()}}).catch(()=>{})}
   return n.body;
 }
 try{const v0=localStorage.getItem('rs-body');if(v0==='0')$('#bodyShow').checked=false;const h0=localStorage.getItem('rs-hip');if(h0==='0')$('#hipShow').checked=false}catch(e){}
@@ -4226,7 +4227,11 @@ function drawBody(){
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   const ft=shownT(el);
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,ft,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
-  if($('#bodyShow').checked)LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  const cmpB=n.bodyAlt&&S.cmpShow!=='now'?n.bodyAlt:null;
+  if(cmpB&&S.cmpShow==='prev')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false});
+  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  /* Both: the previous skeleton thinner and on top, so the two can be seen where they differ */
+  if(cmpB&&S.cmpShow==='both')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,lwScale:0.5,ends:false});
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
 }
@@ -4245,6 +4250,7 @@ $('#bodyTrack').addEventListener('click',async()=>{
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   try{
     const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}});
+    if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
     n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
     const got=hitsFromBody(n);
     $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
@@ -5016,10 +5022,18 @@ function bodyInfoText(n,B){
   if(B.clean&&B.clean.flips)t+=` Fixed ${B.clean.flips} left/right mix-up${B.clean.flips>1?'s':''}.`;
   return t;
 }
+/* compare with the previous track (after tracking again with another tracker): this one, the previous one (orange) or both */
+S.cmpShow='now';
+function cmpName(B){return !B?'':/rtmpose/.test(B.model||'')?'RTMPose':/heavy/.test(B.model||'')?'Accurate':/full/.test(B.model||'')?'Faster':'earlier'}
+function cmpUI(){const n=srcById(S.cur),row=$('#cmpRow');if(!row)return;const on=!!(n&&n.body&&n.bodyAlt);row.hidden=!on;if(!on)return;
+  $('#cmpNow').textContent=cmpName(n.body);$('#cmpPrev').textContent=cmpName(n.bodyAlt)+' (orange)';
+  $$('#cmpSeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.c===S.cmpShow)))}
+$$('#cmpSeg button').forEach(b=>b.addEventListener('click',()=>{S.cmpShow=b.dataset.c;cmpUI();bodyKey=''}));
+setInterval(()=>{try{cmpUI()}catch(e){}},800);
 /* tracking quality: Accurate (the bigger tracker, keeps up with fast hands and feet) or Faster; Body uses the same */
-function trackQUI(){let q='accurate';try{q=localStorage.getItem('rs-track-q')==='fast'?'fast':'accurate'}catch(e){}
+function trackQUI(){let q='accurate';try{const v=localStorage.getItem('rs-track-q');q=v==='fast'||v==='rtm'?v:'accurate'}catch(e){}
   $$('#trackQ button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===q)));
-  $('#trackQNote').textContent=q==='accurate'?'Best for fast moves; about twice as slow.':'Quicker; less exact on fast hands and feet.'}
+  $('#trackQNote').textContent=q==='accurate'?'Best for fast moves; about twice as slow.':q==='rtm'?'Trial: RTMPose reads the dancer (body, hands and feet). Much slower to track (several minutes for a 30 s clip on a phone); a 65 MB download once. Track again to compare with your last track.':'Quicker; less exact on fast hands and feet.'}
 $$('#trackQ button').forEach(b=>b.addEventListener('click',()=>{try{localStorage.setItem('rs-track-q',b.dataset.q)}catch(e){}trackQUI()}));
 trackQUI();
 /* choose the dancer: the next tap on the video picks who to follow, then tracking runs */
@@ -5160,7 +5174,7 @@ async function phoneCheck(){
   add('Recording',`WebCodecs ${canCodecs()?'yes':'no'} · MediaRecorder ${mr}${S.recLast?' · last take used '+(S.recLast==='mr'?'MediaRecorder':'WebCodecs'):''}`);
   const ti=$('#takeInfo');if(S.recLast&&ti&&ti.textContent)add('Last take',ti.textContent.replace(/\s+/g,' ').trim());
   const bodies=S.sources.map(n=>n.body).filter(B=>B&&B.n);
-  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}${B.model?' · '+(/heavy/.test(B.model)?'Accurate':/full/.test(B.model)?'Faster':B.model.split(' ')[0])+(B.cleanV?'':' (old smoothing)'):''}${(()=>{const c=RB.coverage&&RB.coverage(B);return c?' · covers '+c.pct+'% of the clip':''})()}${B.stale!=null?' · stuck frames '+B.stale+(B.kicks?' (woken '+B.kicks+'×)':''):''}`)}
+  if(bodies.length){const B=bodies.find(x=>x.msPerFrame)||bodies[0];add('Outline',B.mask&&B.mask.frames?(RB.maskUsable(B)?'ok (cut-out works)':'empty: track again'):'none');add('Tracking',`${bodies.length} video${bodies.length>1?'s':''} tracked · ${B.msPerFrame?Math.round(B.msPerFrame)+' ms/frame':'speed not recorded'} · ${B.delegate||'?'} · ${B.n} frames${B.fps?' at '+Math.round(B.fps)+' fps':''}${B.model?' · '+(/rtmpose/.test(B.model)?'RTMPose trial':/heavy/.test(B.model)?'Accurate':/full/.test(B.model)?'Faster':B.model.split(' ')[0])+(B.cleanV?'':' (old smoothing)'):''}${(()=>{const c=RB.coverage&&RB.coverage(B);return c?' · covers '+c.pct+'% of the clip':''})()}${B.stale!=null?' · stuck frames '+B.stale+(B.kicks?' (woken '+B.kicks+'×)':''):''}${B.rtmMs?' · RTMPose '+Math.round(B.rtmMs)+' ms/frame':''}`)}
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}

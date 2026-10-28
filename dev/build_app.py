@@ -138,6 +138,11 @@ self.addEventListener('fetch',e=>{
       .catch(()=>caches.match(key).then(m=>m||caches.match('./index.html'))));
     return;
   }
+  /* the RTMPose trial's model (big, rarely changes): kept across updates like the tracker files */
+  if(url.origin===location.origin&&url.pathname.includes('/models/')&&url.pathname.endsWith('.onnx')){
+    e.respondWith(caches.open(KEEP).then(c=>c.match(req,{ignoreVary:true}).then(m=>m||fetch(req).then(r=>{if(r.ok)c.put(req,r.clone());return r}))));
+    return;
+  }
   /* app files: saved copy first */
   if(url.origin===location.origin){
     e.respondWith(caches.match(req).then(m=>m||fetch(req).then(r=>{if(r.ok){const c=r.clone();caches.open(VERSION).then(x=>x.put(req,c))}return r})));
@@ -145,7 +150,7 @@ self.addEventListener('fetch',e=>{
   }
   /* the body tracker: MediaPipe's runtime (pinned version) and pose model. Saved the first time they load, so body
      tracking, the cut-out and MirrorView's poses work offline afterwards. */
-  if((url.hostname==='cdn.jsdelivr.net'&&url.pathname.startsWith('/npm/@mediapipe/tasks-vision@'))||(url.hostname==='storage.googleapis.com'&&url.pathname.startsWith('/mediapipe-models/'))){
+  if((url.hostname==='cdn.jsdelivr.net'&&(url.pathname.startsWith('/npm/@mediapipe/tasks-vision@')||url.pathname.startsWith('/npm/onnxruntime-web@')))||(url.hostname==='storage.googleapis.com'&&url.pathname.startsWith('/mediapipe-models/'))){
     e.respondWith(caches.open(KEEP).then(c=>c.match(req,{ignoreVary:true}).then(m=>m||fetch(req).then(r=>{if(r.ok||r.type==='opaque')c.put(req,r.clone());return r}))));
     return;
   }
@@ -159,4 +164,10 @@ self.addEventListener('fetch',e=>{
 });
 """ % version
 (OUT / 'sw.js').write_text(sw)
+# the RTMPose trial models (stored at half precision, computed at full precision)
+import shutil
+(OUT / 'models').mkdir(exist_ok=True)
+for f in pathlib.Path('/home/claude/models').glob('*.onnx'):
+    dst = OUT / 'models' / f.name
+    if not dst.exists() or dst.stat().st_size != f.stat().st_size: shutil.copy(f, dst)
 print('built', OUT, 'version', version, 'index.html', len(html), 'bytes')

@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-3d94bb9d96'</script>
+<script>window.RS_BUILD='rs-e6e714900c'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -759,7 +759,7 @@ main{padding-bottom:12px}
        then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
     ortURL:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.bundle.min.mjs',
     ortWasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
-    rtmURL:'',        /* set once the model is chosen and checked */
+    rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m.onnx',   /* RTMW-m whole-body (distilled from RTMW-l), weights stored at half precision (65 MB); chosen over RTMW-s, which was less exact on 28 Oct tests */
     rtmIn:[192,256]   /* model input width, height */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
@@ -1152,7 +1152,7 @@ main{padding-bottom:12px}
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
   /* ---------- RTMPose trial ---------- */
   async function rtmLoad(){
-    const ort=await import(CFG.ortURL); ort.env.wasm.wasmPaths=CFG.ortWasm; ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
+    const ort=await import(CFG.ortURL); ort.env.wasm.wasmPaths=CFG.ortWasm; ort.env.logLevel='error'; ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
     const r=await fetch(rtmURL()); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
     const buf=new Uint8Array(await r.arrayBuffer());
     const session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
@@ -1193,7 +1193,7 @@ main{padding-bottom:12px}
     o=o||{}; if(B&&B.v<2&&!B._up)upgrade(B); const P=poseAt(B,t); if(!P)return false;
     const X=p=>[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h], vis=j=>P[j][2]>=0.35;
     const q=P.map(X), sh=mid(q[11],q[12]), hp=mid(q[23],q[24]), torso=Math.hypot(sh[0]-hp[0],sh[1]-hp[1])||40;
-    const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(3,torso*0.11);
+    const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(o.lwScale?2:3,torso*0.11*(o.lwScale||1));   /* lwScale: thinner, for a second skeleton drawn on top to compare */
     ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
     /* hips' path relative to the chest over the last second, drawn around the hips now (scaled so a whine reads) */
     if(o.hipPath!==false){
