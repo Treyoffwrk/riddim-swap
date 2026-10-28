@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-fae73d23f1'</script>
+<script>window.RS_BUILD='rs-3d94bb9d96'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -584,6 +584,16 @@ main{padding-bottom:12px}
 .music-card.rs-pulse-below{margin-top:10px}
 .mv-dock{margin-top:10px!important}
 .music-card.rs-noan .music-mini-status{margin-top:4px}
+
+.pulse-hud.rs-hud{pointer-events:auto!important;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;transition:opacity .2s}
+.pulse-hud.rs-hud.rs-drag{cursor:grabbing;opacity:.85}
+.pulse-hud.rs-hud.rs-placed{transform:none!important;bottom:auto!important;right:auto!important}
+.pulse-hud.rs-hud.rs-mini{width:auto!important;min-width:0!important;padding:6px 10px!important;border-radius:12px!important}
+.pulse-hud.rs-hud.rs-mini .pulse-hud-title small,.pulse-hud.rs-hud.rs-mini #pulse-counts,.pulse-hud.rs-hud.rs-mini .pulse-hud-title>span{display:none!important}
+.pulse-hud.rs-hud.rs-mini .pulse-beat-line{gap:0!important;margin:0!important}
+.pulse-hud.rs-hud.rs-mini #pulse-current{font-size:22px!important;line-height:1!important;min-width:1.2em;text-align:center}
+.pulse-hud.rs-hud .rs-hud-grip{position:absolute;top:4px;right:6px;font-size:10px;letter-spacing:1px;color:#8d96b8;pointer-events:none}
+.pulse-hud.rs-hud.rs-mini .rs-hud-grip{display:none}
 </style>
 </head>
 <body>
@@ -604,7 +614,7 @@ main{padding-bottom:12px}
 </nav>
 <main>
 <section class="workspace-heading">
-<div><p class="eyebrow">MIRRORVIEW / MOVEMENT STUDIO</p><h1>Your move. <em>Made visible.</em></h1></div>
+<div><p class="eyebrow">RIDDIM SWAP / BODY</p><h1>Your move. <em>Made visible.</em></h1></div>
 <div aria-label="Workspace view" class="mode-switch" role="group">
 <button data-mode="split"><svg><use href="#i-split"></use></svg><span>Split</span></button>
 <button data-mode="overlay"><svg><use href="#i-layers"></use></svg><span>Overlay</span></button>
@@ -701,7 +711,7 @@ main{padding-bottom:12px}
 </div>
 </div>
 <div aria-live="polite" class="toast" hidden="" id="toast" role="status"></div>
-<dialog aria-labelledby="modal-title" id="modal"><input accept="video/*,.mp4,.m4v,.mov,.webm,.ogv,.mkv" hidden="" id="file-input" type="file"/><div class="modal-head"><div><p class="eyebrow" id="modal-eyebrow">MIRRORVIEW</p><h2 id="modal-title"></h2></div><button aria-label="Close dialog" class="icon-button" data-action="close-modal"><svg><use href="#i-close"></use></svg></button></div><div id="modal-content"></div></dialog>
+<dialog aria-labelledby="modal-title" id="modal"><input accept="video/*,.mp4,.m4v,.mov,.webm,.ogv,.mkv" hidden="" id="file-input" type="file"/><div class="modal-head"><div><p class="eyebrow" id="modal-eyebrow">RIDDIM SWAP · BODY</p><h2 id="modal-title"></h2></div><button aria-label="Close dialog" class="icon-button" data-action="close-modal"><svg><use href="#i-close"></use></svg></button></div><div id="modal-content"></div></dialog>
 <svg aria-hidden="true" class="icon-defs" xmlns="http://www.w3.org/2000/svg"><defs>
 <symbol id="i-upload" viewbox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"></path></symbol>
 <symbol id="i-download" viewbox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 16v5h16v-5"></path></symbol>
@@ -744,7 +754,13 @@ main{padding-bottom:12px}
     modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
     edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
     maskW:120,        /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
-    numPoses:3        /* people looked for per frame; the followed dancer is chosen by continuity */
+    numPoses:3,       /* people looked for per frame; the followed dancer is chosen by continuity */
+    /* RTMPose trial (Tracking: RTMPose): the dancer is still found and followed by the tracker above (regular model),
+       then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
+    ortURL:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.bundle.min.mjs',
+    ortWasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
+    rtmURL:'',        /* set once the model is chosen and checked */
+    rtmIn:[192,256]   /* model input width, height */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
   const WJ=[11,12,23,24,25,26,27,28], WS=WJ.length*3;   /* world (metric, hip-centred) x,y,z for shoulders, hips, knees, ankles */
@@ -754,7 +770,8 @@ main{padding-bottom:12px}
   let runtime=null, loading=null, loadedModel='';
   /* which tracker: 'heavy' (Accurate, the default: keeps up with fast hands and feet better, about twice as slow, a 30 MB
      download kept for offline use) or 'full' (Faster). Set from Riddim Swap's Track body card; Body uses the same. */
-  function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':'heavy'}
+  function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy|rtm)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':q==='rtm'&&rtmURL()?'rtm':'heavy'}
+  const rtmURL=()=>root.RB_RTM_URL||CFG.rtmURL;
   async function load(){
     const want=modelName();
     if(runtime&&loadedModel===want)return runtime; if(loading&&loading.want===want)return loading;
@@ -762,14 +779,15 @@ main{padding-bottom:12px}
     loading=(async()=>{
       const sdk=await import(CFG.sdkURL);
       const files=await sdk.FilesetResolver.forVisionTasks(CFG.wasmURL);
-      const r=await fetch(CFG.modelURL.replace(/pose_landmarker_full/g,'pose_landmarker_'+want)); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
+      const r=await fetch(CFG.modelURL.replace(/pose_landmarker_full/g,'pose_landmarker_'+(want==='rtm'?'full':want))); if(!r.ok)throw new Error('Body model download failed ('+r.status+')');
       const model=new Uint8Array(await r.arrayBuffer());
       /* person masks (segmentation) come from the same pass, for the cut-out */
       const gcv=document.createElement('canvas');
       const opts=d=>({baseOptions:{modelAssetBuffer:model,delegate:d},canvas:gcv,runningMode:'IMAGE',numPoses:CFG.numPoses,minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5,outputSegmentationMasks:true});
       let task,delegate=(root.RB_DELEGATE==='CPU')?'CPU':'GPU';   /* GPU on phones; RB_DELEGATE lets tests pick the CPU */
       try{task=await sdk.PoseLandmarker.createFromOptions(files,opts(delegate))}catch(e){delegate='CPU';task=await sdk.PoseLandmarker.createFromOptions(files,opts('CPU'))}
-      runtime={task,delegate,sdk,gcv,model:want}; loadedModel=want; return runtime;
+      const rtm=want==='rtm'?await rtmLoad():null;
+      runtime={task,delegate,sdk,gcv,model:want,rtm}; loadedModel=want; return runtime;
     })(); loading.want=want;
     try{return await loading}catch(e){loading=null;throw e}
   }
@@ -918,6 +936,7 @@ main{padding-bottom:12px}
         if(ch){if(prev&&!ch.vel){const a=geom(prev.pts,asp),b2=geom(ch.pts,asp),k2=1+lost,nv=[(b2.hp[0]-a.hp[0])/k2,(b2.hp[1]-a.hp[1])/k2],ov=prev.vel||nv;ch.vel=[0.6*ov[0]+0.4*nv[0],0.6*ov[1]+0.4*nv[1]]}
           learnLooks(prev,ch);
           prev=ch;lost=0;if(opt.pick&&!pickPose)pickPose=ch}else lost++;
+        let wb=null;if(ch&&rt.rtm){try{const R=await rtmRefine(rt.rtm,cv,ch.pts);if(R){wb=R.wb;ch.pts=R.pts}}catch(e){rt.rtm.errors=(rt.rtm.errors||0)+1}}
         const row=new Float32Array(STRIDE); row[0]=t; const wr=new Float32Array(WS).fill(NaN);
         if(ch){for(let j=0;j<N;j++){row[1+j*3]=ch.pts[j][0];row[2+j*3]=ch.pts[j][1];row[3+j*3]=ch.pts[j][2]}
           if(ch.w)WJ.forEach((j,u)=>{wr[u*3]=ch.w[j][0];wr[u*3+1]=ch.w[j][1];wr[u*3+2]=ch.w[j][2]})}
@@ -938,8 +957,8 @@ main{padding-bottom:12px}
       /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
       let mask=null; const withMask=masks.filter(Boolean).length;
       if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
-      return {v:2,cleanV:2,cuts:cutTimes,model:'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
+      return {v:2,cleanV:2,cuts:cutTimes,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
+        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
     }finally{cleanup()}
   }
 
@@ -1131,6 +1150,43 @@ main{padding-bottom:12px}
   const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
   const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
+  /* ---------- RTMPose trial ---------- */
+  async function rtmLoad(){
+    const ort=await import(CFG.ortURL); ort.env.wasm.wasmPaths=CFG.ortWasm; ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
+    const r=await fetch(rtmURL()); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
+    const buf=new Uint8Array(await r.arrayBuffer());
+    const session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+    const [W,H]=CFG.rtmIn, cc=document.createElement('canvas'); cc.width=W; cc.height=H;
+    return {ort,session,W,H,cc,cx:cc.getContext('2d',{willReadFrequently:true}),inName:session.inputNames[0],ms:0,n:0};
+  }
+  /* COCO-WholeBody (133) -> the 33 points the app uses. Hands: MediaPipe's pinky/index/thumb points sit near the knuckles. */
+  const WB33=[0,1,1,1,2,2,2,3,4,71,77,5,6,7,8,9,10,108,129,96,117,93,114,11,12,13,14,15,16,19,22,17,20];
+  async function rtmRefine(M,cv,pts){
+    const vis=pts.filter(p=>p[2]>0.3);const use=vis.length>=6?vis:pts;
+    let x0=1,y0=1,x1=0,y1=0;for(const p of use){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}
+    const Wc=cv.width,Hc=cv.height;let cx=(x0+x1)/2*Wc,cy=(y0+y1)/2*Hc,bw=(x1-x0)*Wc*1.25,bh=(y1-y0)*Hc*1.25;
+    const ar=M.W/M.H;if(bw/bh>ar)bh=bw/ar;else bw=bh*ar;if(!(bw>8&&bh>8))return null;
+    const sx=cx-bw/2,sy=cy-bh/2;
+    /* crop, keeping the box's shape; parts outside the frame stay black */
+    M.cx.fillStyle='#000';M.cx.fillRect(0,0,M.W,M.H);
+    const ax=Math.max(0,sx),ay=Math.max(0,sy),bx=Math.min(Wc,sx+bw),by=Math.min(Hc,sy+bh);if(bx<=ax||by<=ay)return null;
+    M.cx.drawImage(cv,ax,ay,bx-ax,by-ay,(ax-sx)/bw*M.W,(ay-sy)/bh*M.H,(bx-ax)/bw*M.W,(by-ay)/bh*M.H);
+    const d=M.cx.getImageData(0,0,M.W,M.H).data,A=M.W*M.H,inp=new Float32Array(3*A);
+    const mean=[123.675,116.28,103.53],std=[58.395,57.12,57.375];
+    for(let i=0;i<A;i++){inp[i]=(d[i*4]-mean[0])/std[0];inp[A+i]=(d[i*4+1]-mean[1])/std[1];inp[2*A+i]=(d[i*4+2]-mean[2])/std[2]}
+    const t0=performance.now();
+    const out=await M.session.run({[M.inName]:new M.ort.Tensor('float32',inp,[1,3,M.H,M.W])});
+    M.ms+=performance.now()-t0;M.n++;
+    const names=M.session.outputNames,sxo=out[names[0]],syo=out[names[1]],K=sxo.dims[1],Lx=sxo.dims[2],Ly=syo.dims[2],rx=Lx/M.W,ry=Ly/M.H;
+    const wb=new Float32Array(K*3);
+    for(let k=0;k<K;k++){let bxI=0,bxV=-1e9,byI=0,byV=-1e9;const ox=k*Lx,oy=k*Ly;
+      for(let i=0;i<Lx;i++){const v=sxo.data[ox+i];if(v>bxV){bxV=v;bxI=i}}for(let i=0;i<Ly;i++){const v=syo.data[oy+i];if(v>byV){byV=v;byI=i}}
+      wb[k*3]=(sx+bxI/rx/M.W*bw)/Wc;wb[k*3+1]=(sy+byI/ry/M.H*bh)/Hc;wb[k*3+2]=Math.max(0,Math.min(1,0.5*(bxV+byV)))}
+    if(K<133)return null;
+    /* points RTMPose isn't sure of keep the tracker's own reading */
+    const np=pts.map((p,j)=>{const k=WB33[j],sc=wb[k*3+2];return sc>=0.3?[wb[k*3],wb[k*3+1],Math.max(p[2],sc)]:p});
+    return {pts:np,wb};
+  }
   /* a colour mixed toward white by u (0-1), for the lighter left side */
   function tint(c,u){const m=/^#([0-9a-f]{6})$/i.exec(String(c||''));if(!m)return c;const n=parseInt(m[1],16),f=v=>Math.round(v+(255-v)*u);return 'rgb('+f(n>>16)+','+f((n>>8)&255)+','+f(n&255)+')'}
   function draw(ctx,B,t,rect,o){
@@ -6919,6 +6975,29 @@ function rsSkipCuts(){
   requestAnimationFrame(rsSkipCuts);}
 requestAnimationFrame(rsSkipCuts);
 
+
+/* ---- the Pulse box: drag it anywhere on the video, tap to shrink it to the count ---- */
+(function(){const hud=document.getElementById('pulse-hud');if(!hud)return;
+  hud.classList.add('rs-hud');const grip=document.createElement('span');grip.className='rs-hud-grip';grip.textContent='DRAG · TAP';hud.appendChild(grip);
+  let st={mini:true,x:null,y:null};try{const o=JSON.parse(localStorage.getItem('rs-mv-pulsehud')||'null');if(o)st={...st,...o};}catch(e){}
+  const keep=()=>{try{localStorage.setItem('rs-mv-pulsehud',JSON.stringify(st));}catch(e){}};
+  const place=()=>{hud.classList.toggle('rs-mini',!!st.mini);const par=hud.offsetParent;if(st.x==null||!par){hud.classList.remove('rs-placed');hud.style.removeProperty('left');hud.style.removeProperty('top');return;}
+    const pr=par.getBoundingClientRect(),w=hud.offsetWidth,h=hud.offsetHeight;
+    const x=Math.max(4,Math.min(pr.width-w-4,st.x*pr.width)),y=Math.max(4,Math.min(pr.height-h-4,st.y*pr.height));
+    hud.classList.add('rs-placed');hud.style.setProperty('left',x+'px','important');hud.style.setProperty('top',y+'px','important');
+    if(st.mini&&pr.width>0&&pr.height>0){st.x=x/pr.width;st.y=y/pr.height;}};   /* remember where the badge actually is (kept on the video); the full box only moves over to fit while open */
+  let drag=null;
+  hud.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();const r=hud.getBoundingClientRect();drag={id:e.pointerId,sx:e.clientX,sy:e.clientY,ox:r.left,oy:r.top,moved:false};try{hud.setPointerCapture(e.pointerId);}catch(_){} });
+  hud.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;e.stopPropagation();const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;if(!drag.moved&&Math.hypot(dx,dy)<6)return;drag.moved=true;hud.classList.add('rs-drag');
+    const par=hud.offsetParent;if(!par)return;const pr=par.getBoundingClientRect();st.x=(drag.ox+dx-pr.left)/pr.width;st.y=(drag.oy+dy-pr.top)/pr.height;place();});
+  const end=e=>{if(!drag||e.pointerId!==drag.id)return;e.stopPropagation();hud.classList.remove('rs-drag');if(!drag.moved){st.mini=!st.mini;}drag=null;place();keep();};
+  hud.addEventListener('pointerup',end);hud.addEventListener('pointercancel',end);
+  ['click','touchstart','mousedown','wheel'].forEach(ev=>hud.addEventListener(ev,e=>e.stopPropagation(),{passive:ev!=='click'}));
+  new MutationObserver(()=>{if(!hud.hidden)place();}).observe(hud,{attributes:true,attributeFilter:['hidden']});
+  window.addEventListener('resize',place);setTimeout(place,0);
+  window.__mvPulseHud={get st(){return st},place};
+})();
+
 /* test hook: only with #debug in the address */
 if(/debug/.test(location.hash))window.__mv={rsClip,rsOut,rsIn,rsSlope,rsLookLoad,songAt:t=>songAt(t),rsSong,setSound,followSong,you,loadYou,trackYou,lineUpYou,youSource,state,importFile,seek,setPlaying,get preparedBody(){return preparedBody;},preparedReady,get practiceView(){return practiceView;},get music(){return music;}};
 
@@ -6971,7 +7050,7 @@ if(/debug/.test(location.hash))window.__mv={rsClip,rsOut,rsIn,rsSlope,rsLookLoad
     if (!modal.open) return;
     const scrollable = content.scrollHeight > content.clientHeight + 3;
     const atEnd = content.scrollTop + content.clientHeight >= content.scrollHeight - 3;
-    const text = !scrollable ? 'MIRRORVIEW' : atEnd ? 'MIRRORVIEW · MORE ABOVE ↑' : 'MIRRORVIEW · MORE BELOW ↓';
+    const text = !scrollable ? 'RIDDIM SWAP · BODY' : atEnd ? 'RIDDIM SWAP · BODY · MORE ABOVE ↑' : 'RIDDIM SWAP · BODY · MORE BELOW ↓';
     if (eyebrow.textContent !== text) eyebrow.textContent = text;
   }
   function queueHint() { if (!hintFrame) hintFrame = requestAnimationFrame(updateHint); }

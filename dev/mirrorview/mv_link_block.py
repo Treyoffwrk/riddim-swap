@@ -101,3 +101,50 @@ rep("      if(loaded&&rec.meta&&rec.meta.song&&rec.meta.song.blob instanceof Blo
 s = s.replace("'rs-mv-cutpart'", "'rs-cutpart'")
 assert "'rs-mv-cutpart'" not in s
 rep("window.__mv={rsSong,", "window.__mv={rsClip,rsOut,rsIn,rsSlope,rsLookLoad,songAt:t=>songAt(t),rsSong,")
+
+# --- 3. Pulse box: movable and collapsible ---------------------------------------------------------------------------
+# It used to sit fixed over the lower part of the video (and ignore touches), covering the dancer and the view controls
+# in every mode. Now: drag it anywhere on the video (kept inside it, remembered); tap it to switch between the full box
+# and a small badge with just the count. It starts as the badge.
+PULSE_CSS = """
+.pulse-hud.rs-hud{pointer-events:auto!important;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;transition:opacity .2s}
+.pulse-hud.rs-hud.rs-drag{cursor:grabbing;opacity:.85}
+.pulse-hud.rs-hud.rs-placed{transform:none!important;bottom:auto!important;right:auto!important}
+.pulse-hud.rs-hud.rs-mini{width:auto!important;min-width:0!important;padding:6px 10px!important;border-radius:12px!important}
+.pulse-hud.rs-hud.rs-mini .pulse-hud-title small,.pulse-hud.rs-hud.rs-mini #pulse-counts,.pulse-hud.rs-hud.rs-mini .pulse-hud-title>span{display:none!important}
+.pulse-hud.rs-hud.rs-mini .pulse-beat-line{gap:0!important;margin:0!important}
+.pulse-hud.rs-hud.rs-mini #pulse-current{font-size:22px!important;line-height:1!important;min-width:1.2em;text-align:center}
+.pulse-hud.rs-hud .rs-hud-grip{position:absolute;top:4px;right:6px;font-size:10px;letter-spacing:1px;color:#8d96b8;pointer-events:none}
+.pulse-hud.rs-hud.rs-mini .rs-hud-grip{display:none}
+"""
+i = s.rfind('</style>')
+s = s[:i] + PULSE_CSS + s[i:]
+PULSE_JS = r"""
+/* ---- the Pulse box: drag it anywhere on the video, tap to shrink it to the count ---- */
+(function(){const hud=document.getElementById('pulse-hud');if(!hud)return;
+  hud.classList.add('rs-hud');const grip=document.createElement('span');grip.className='rs-hud-grip';grip.textContent='DRAG · TAP';hud.appendChild(grip);
+  let st={mini:true,x:null,y:null};try{const o=JSON.parse(localStorage.getItem('rs-mv-pulsehud')||'null');if(o)st={...st,...o};}catch(e){}
+  const keep=()=>{try{localStorage.setItem('rs-mv-pulsehud',JSON.stringify(st));}catch(e){}};
+  const place=()=>{hud.classList.toggle('rs-mini',!!st.mini);const par=hud.offsetParent;if(st.x==null||!par){hud.classList.remove('rs-placed');hud.style.removeProperty('left');hud.style.removeProperty('top');return;}
+    const pr=par.getBoundingClientRect(),w=hud.offsetWidth,h=hud.offsetHeight;
+    const x=Math.max(4,Math.min(pr.width-w-4,st.x*pr.width)),y=Math.max(4,Math.min(pr.height-h-4,st.y*pr.height));
+    hud.classList.add('rs-placed');hud.style.setProperty('left',x+'px','important');hud.style.setProperty('top',y+'px','important');
+    if(st.mini&&pr.width>0&&pr.height>0){st.x=x/pr.width;st.y=y/pr.height;}};   /* remember where the badge actually is (kept on the video); the full box only moves over to fit while open */
+  let drag=null;
+  hud.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();const r=hud.getBoundingClientRect();drag={id:e.pointerId,sx:e.clientX,sy:e.clientY,ox:r.left,oy:r.top,moved:false};try{hud.setPointerCapture(e.pointerId);}catch(_){} });
+  hud.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;e.stopPropagation();const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;if(!drag.moved&&Math.hypot(dx,dy)<6)return;drag.moved=true;hud.classList.add('rs-drag');
+    const par=hud.offsetParent;if(!par)return;const pr=par.getBoundingClientRect();st.x=(drag.ox+dx-pr.left)/pr.width;st.y=(drag.oy+dy-pr.top)/pr.height;place();});
+  const end=e=>{if(!drag||e.pointerId!==drag.id)return;e.stopPropagation();hud.classList.remove('rs-drag');if(!drag.moved){st.mini=!st.mini;}drag=null;place();keep();};
+  hud.addEventListener('pointerup',end);hud.addEventListener('pointercancel',end);
+  ['click','touchstart','mousedown','wheel'].forEach(ev=>hud.addEventListener(ev,e=>e.stopPropagation(),{passive:ev!=='click'}));
+  new MutationObserver(()=>{if(!hud.hidden)place();}).observe(hud,{attributes:true,attributeFilter:['hidden']});
+  window.addEventListener('resize',place);setTimeout(place,0);
+  window.__mvPulseHud={get st(){return st},place};
+})();
+"""
+rep("/* test hook: only with #debug in the address */", PULSE_JS + "\n/* test hook: only with #debug in the address */")
+
+# --- 4. leftover MirrorView name on its dialogs: Riddim Swap · Body ---
+s = s.replace('id="modal-eyebrow">MIRRORVIEW<', 'id="modal-eyebrow">RIDDIM SWAP · BODY<')
+s = s.replace("'MIRRORVIEW", "'RIDDIM SWAP · BODY")
+s = s.replace('>MIRRORVIEW / MOVEMENT STUDIO<', '>RIDDIM SWAP / BODY<')
