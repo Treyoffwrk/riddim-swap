@@ -146,6 +146,7 @@
             <button class="btn" id="repeat" aria-pressed="false" disabled>Repeat</button>
             <button class="btn" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed">Study ½×</button>
             <button class="btn" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed">Learn</button>
+            <button class="btn" id="snipBtn" aria-pressed="false" disabled title="Build a routine while you watch: tap Start from and Finish here, again and again">Snip</button>
             <button class="btn rec" id="recBtn" disabled>Record</button>
             <div class="seg mode" id="modeSeg" role="group" aria-label="What plays" hidden>
               <button id="modeClip" aria-pressed="true">Clip</button>
@@ -157,6 +158,12 @@
             <span class="lswhat" id="lsWhat"></span>
             <div class="lncount" id="learnCount" aria-hidden="true"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i></div>
             <button type="button" class="lsbtn" id="lsNext" aria-label="Next 8-count">›</button>
+          </div>
+          <div class="snipstrip" id="snipStrip" hidden aria-label="Snip a routine">
+            <button type="button" class="btn snipin" id="snipIn">Start from</button>
+            <button type="button" class="btn snipout" id="snipOut">Finish here</button>
+            <span class="lswhat snipwhat" id="snipWhat"></span>
+            <button type="button" class="lsbtn" id="snipUndo" aria-label="Undo the last snippet">↶</button>
           </div>
           <p class="hint" id="recMsg" hidden></p>
         </div>
@@ -181,6 +188,12 @@
           </div>
         </details>
         <p class="hint" id="learnHow" hidden></p>
+      </div>
+      <div class="learnbar snipbar" id="snipBar" hidden aria-label="Snip a routine">
+        <div class="lnhead"><b>Snip a routine</b><span class="lnloop" id="snipCount"></span></div>
+        <p class="hint" id="snipMsg"></p>
+        <div class="row"><span class="label">Make each snippet whole</span><div class="seg" id="snipUnit" role="group" aria-label="Snap each snippet to" style="grid-template-columns:repeat(4,auto)"><button type="button" data-u="8">8-counts</button><button type="button" data-u="4">4s</button><button type="button" data-u="1">Counts</button><button type="button" data-u="0">Off</button></div></div>
+        <div class="lnbtns" style="grid-template-columns:1fr 2fr"><button class="btn" id="snipDone" type="button">Done</button><button class="btn primary" id="snipPlay" type="button">Play routine on repeat</button></div>
       </div>
       <section class="take" id="take" hidden aria-labelledby="h-take">
         <div class="row"><h2 id="h-take">Your take</h2><span class="hint" id="takeInfo" style="margin-left:auto"></span></div>

@@ -21,7 +21,7 @@ rd = lambda p: p.read_text()
 page = (rd(src/'head.html') + rd(src/'style.css') + rd(src/'markup.html')
         + '\n' + rd(R/'analysis.js') + '\n</script>\n<script>'
         + '\n' + rd(R/'body.js') + '\n</script>\n<script>'
-        + rd(src/'app.js').replace('/*@timeline*/\n', rd(src/'timeline.js'), 1).replace('/*@cues*/\n', rd(src/'cues.js'), 1).replace('/*@learn*/\n', rd(src/'learn.js'), 1).replace('/*@look*/\n', rd(src/'look.js').replace('/*@packs*/[]', rd(src/'packs.json').strip()), 1) + rd(src/'tail.html'))
+        + rd(src/'app.js').replace('/*@timeline*/\n', rd(src/'timeline.js'), 1).replace('/*@cues*/\n', rd(src/'cues.js'), 1).replace('/*@learn*/\n', rd(src/'learn.js'), 1).replace('/*@snip*/\n', rd(src/'snip.js'), 1).replace('/*@look*/\n', rd(src/'look.js').replace('/*@packs*/[]', rd(src/'packs.json').strip()), 1) + rd(src/'tail.html'))
 if '--check' in sys.argv:
     want = pathlib.Path(sys.argv[sys.argv.index('--check') + 1]).read_text()
     if page == want: print('identical', len(page), 'chars'); sys.exit(0)

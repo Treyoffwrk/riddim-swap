@@ -507,7 +507,7 @@ details.more .field{margin-top:8px}
 .lnbtns{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .lnbtns .btn{min-width:0;padding-left:4px;padding-right:4px}
 .lnopts{margin-top:0}.lnoptbody{display:grid;gap:10px;padding:0 12px 12px}
-.recrow .btn{padding-left:12px;padding-right:12px}
+.recrow .btn{padding-left:8px;padding-right:8px;flex:1 1 auto;min-width:0;white-space:nowrap}.recrow .seg.mode{flex:0 1 auto;min-width:0}
 .lnchiprow{display:flex;align-items:center;gap:10px;min-width:0}.lnchiprow .label{flex:0 0 auto;font-size:11px}
 /* the slim Learn strip inside the player: one row, so it never covers the dance or the page */
 .learnstrip{display:flex;align-items:center;gap:6px;min-width:0}
@@ -519,3 +519,13 @@ details.more .field{margin-top:8px}
 .pin.fs .lncount i{background:rgba(255,255,255,.12);color:rgba(243,241,236,.7)}.pin.fs .lncount i.on{background:var(--song-hot,var(--dance));color:#0E1014}
 .pin.fs .lsbtn{background:rgba(255,255,255,.12);border-color:transparent;color:#F3F1EC}
 .pin.fs.learning .dock{bottom:134px}
+
+/* Snip: Start from / Finish here in the player (and in full screen) */
+.snipstrip{display:flex;align-items:center;gap:6px;min-width:0}
+.snipstrip[hidden]{display:none}
+.snipstrip .btn{flex:1 1 0;min-width:0;padding:8px 6px}
+.snipstrip .snipin.on{background:var(--dance);color:#0E1014;border-color:var(--dance)}
+.snipstrip .snipwhat{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.snipbar .hint{margin:0}
+.pin.fs .snipstrip{margin-top:6px}.pin.fs .snipstrip .btn{background:rgba(255,255,255,.12);border-color:transparent;color:#F3F1EC}
+.pin.fs .snipstrip .snipin.on{background:var(--dance);color:#0E1014}

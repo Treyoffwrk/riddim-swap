@@ -1,6 +1,6 @@
 # Riddim Swap + MirrorView: status, architecture and testing
 
-_Last updated 22 Oct 2026 · version rs-78bec99bf2 · repo Treyoffwrk/riddim-swap_
+_Last updated 29 Oct 2026 · version rs-d37aa63294 · repo Treyoffwrk/riddim-swap_
 
 **Live app:** https://treyoffwrk.github.io/riddim-swap/ (install from Safari: Share → Add to Home Screen)
 
@@ -37,6 +37,30 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
   - **Sound** in every view: Song (Riddim Swap's song, in time with the clip, at its own speed: song = offset + (clip time − clip start) × song speed ÷ clip speed; the song leads and the clip is nudged up to ±6%), Clip (the video's own sound) or Off. It doesn't depend on Pulse, so sound still plays when Pulse can't read a clip's audio.
   - It uses Riddim Swap's header, with Projects, and its section bar. MirrorView's own Load video, Start here and Diagnostics sit in the ⋯ menu.
 - **Keeps your work.** Projects save on the phone. Backups and `.riddim` share bundles carry videos, songs and tracking.
+- **Snip a routine** (the Snip button beside Learn). Build a choreography while you watch, without leaving the player:
+  - Play any of the project's clips and tap **Start from** where a move begins and **Finish here** where it ends, again and again; switch clips whenever you like. Each pair becomes a move added to the end of the routine, in order.
+  - **Finish here** again, with no new Start from, carries on from where the last snippet ended (same clip), to chop a long phrase.
+  - With a song beat, Start from moves to the nearest beat you hear, and each snippet is made whole **8-counts** (or 4s, or single counts, or Off), measured on the routine song's own beats, so the next snippet starts on a 1 with no gaps. The first snippet of an empty routine starts the routine's song with the music heard at Start from, moved to the nearest 1.
+  - **↶** undoes the last snippet; **Play routine on repeat** plays them back to back and loops. The strip stays in the player in full screen. Code: src/snip.js (marker `/*@snip*/`); test: tests/snip_test.js (10 checks).
+- **Learn mode** (the Learn button beside Study). Splits the clip into 8-counts (8 beats of the song, each starting on a 1; without a song, the clip's own tempo, or about 4 s pieces cut at the dancer's hits). Each 8-count loops at 50%, then 75%, then full speed (song pitch kept), then it's put together with up to 3 before it from the top, then the next one starts. A 1–8 count lights up as it plays; numbered buttons jump to any 8-count; Back / Slower / Again / Next. Options: slow first, put together, move on by itself, loops per speed (1–3). Progress (where you are, which are learnt) is kept per clip on the phone. Parts cut out of the clip are skipped. It runs on the Study engine, so sync, body, cues and cut-out work as usual. Source: `src/learn.js`.
+- **Learn on the phone screen** (25 Oct): Learn adds one slim row to the player (where you are, the speed, the 1–8 count, back/next); the 8-count buttons, Slower/Again and options sit in a panel below the player in the page, so nothing covers the dance or the other options. In full screen only the slim row shows, with the play bar.
+- **Body as part of Riddim Swap** (25 Oct): Body uses your Look (skeleton colours and glow, app theme; a new look shows when you come back to Body). The clip arrives with the project's name, its cuts and its speed graph: a table maps clip time to song time so the song stays in time through the speed graph, and cut parts are skipped while the song keeps playing. Whole / Upper / Legs is one setting for both pages. In a routine, Body opens the clip under the playhead (it used to open nothing). Source: `mirrorview/mv_link_block.py`.
+- **Skeleton on fast moves** (25 Oct):
+  - *Frozen skeleton on iPhone fixed.* iPhone stops giving new frames to a video it can't see, so the hidden tracking video froze part-way; since 24 Oct the tracker kept going and tracked the same picture again and again (the skeleton stood still while the dancer moved). Now the tracking video shows as a small preview in the corner while it works, every frame is checked to have changed (a stuck video is woken with a short play, and reloaded now and then), and if it can't be woken that stretch is left empty and the clip summary says how much is covered. The phone check counts stuck frames. Test: the live build froze for 312 frames under a simulated stuck video; the new one never repeats a pose and covers 100% when a play wakes the video.
+  - *Smoothing that keeps up.* Hands and feet are smoothed only while nearly still and left as tracked when they move fast; only one-frame glitches are removed; fewer gaps are filled with guesses. Measured on a dancehall clip against the heavy tracker: fast-move error for elbows −13%, ankles −14%, wrists −14% (wrists wobble a little more when still).
+  - *Tracking: Accurate / Faster* under Track body. Accurate (default) uses MediaPipe's heavy pose model (more exact on fast, blurred limbs; about twice as slow; a 30 MB download kept for offline use). Both pages use the same setting.
+  - The skeleton is drawn at the time of the frame actually on screen (requestVideoFrameCallback), not the player's clock.
+  - Clips tracked before this keep the old smoothing; the Clip tab suggests Track again.
+- **Compilations and edits** (27 Oct): the tracker finds shot changes (each frame's colours against the one next to it) and starts fresh on the main dancer of each new shot; a dancer you chose counts only for the shot you chose them in; cleaning and drawing never blend across a cut. On a 4-shot test edit the old build left 1.5 s without a skeleton after one cut (and 0% of the last two shots with a chosen dancer); the new one covers every shot (95–100%) and is back on the first frame after each cut, with or without a chosen dancer. It also found a cut inside a TikTok clip that was itself an edit.
+- **Easier to see** (27 Oct): dark outline under the limbs, the dancer's left side a lighter shade than their right, a dot on each hand and foot (main player; Body still draws its own style).
+- Tracking errors now stay on screen (a refresh used to replace them with the intro text).
+- **Body: Pulse box movable** (27 Oct): the Pulse box (BPM and the 8-count) used to sit fixed over the lower part of the video in Split, Overlay and Worldline, covering the dancer and the view controls. Now it starts as a small badge with just the count; tap it for the full box, drag it anywhere on the video (kept inside, position remembered); touches on it don't move the 3D view underneath. Body's dialogs no longer say "MirrorView".
+- **RTMPose is the default tracker** (29 Oct, after the user judged it better on real clips): Tracking → RTMPose (default) / Accurate / Faster, with a time estimate from this phone's measured speed (rough guesses before the first track). Older tracks suggest "Track again with RTMPose".
+  - *Speed:* the RTMPose runtime is served with the app (vendor/ort), and the service worker adds cross-origin isolation headers (COOP/COEP) to the app's own pages and files, so the runtime uses several cores; the WebGPU build is used when the browser has a GPU API (iOS 26+, desktop). Test machine (2 cores): 409 → 271 ms/frame. Everything the app loads from elsewhere allows isolation (CORP/CORS checked).
+  - *Fingers and toes:* RTMPose's 21 points per hand and 3 per foot are kept per frame (B.ext, 48 points; never blended across cuts; in backups) and drawn as thin finger bones with fingertip dots and a heel-to-toes outline per foot, with the same outline and left/right shading. Body (MirrorView) doesn't draw them yet.
+- **RTMPose trial** (28 Oct): Tracking → RTMPose (trial). The regular tracker finds and follows the dancer (with the cut handling) and supplies the 3D for hip turn; RTMPose's whole-body model RTMW-m (distilled from RTMW-l, Apache-2.0) reads a 192×256 crop of them; points it isn't sure of (score < 0.3) keep the regular tracker's reading. Runs on ONNX Runtime Web 1.22 (WASM; no GPU on iOS 18). Model weights stored at half precision (65 MB, results identical to full precision; 8-bit versions broke the model), served from the app and kept across updates. Tracking again with another tracker keeps the previous skeleton: Compare → This track / Previous (orange) / Both. Phone check shows "RTMPose trial" and its ms/frame.
+  - Measured on a 20 s dancehall clip (no ground truth; three-way 'odd one out' among Regular, Accurate and RTMPose, which leans against RTMPose): wrists odd one out 87 / 28 / 49 times, elbows 19 / 7 / 26, knees 13 / 1 / 8, ankles 33 / 7 / 39; bone steadiness close to Accurate. RTMW-s was less exact (wrists 69, ankles 48). Speed on the test machine: RTMW-m 497 ms/frame, RTMW-s 237. Verdict so far: about on par with Accurate, better than Regular on wrists, places shoulders/hips at the joints, adds hands/feet points; much slower. Real-phone speed and the user's judgement on their clips are the open questions.
+- **Look & sound** (the Look button in the header). A sheet with free colour pickers for the balls and skeleton, and 16 cosmetic packs: balls, skeleton (some with a glow), click sounds and app themes, a free Classic plus three extras of each. Nothing is locked on the web. Paid packs are only gated when the store is on (`?store=1`, or inside the App Store app): then they show a price, Buy and Try it (a preview with a bar to buy or stop), with a note that every feature stays free. Purchases are test purchases for now (no money taken). Source: `src/look.js`, packs in `src/packs.json`.
 - **Works offline after the first visit.** This includes the body tracker.
 
 ## Architecture
@@ -54,7 +78,7 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 **Key behaviours**
 
-- **Sync.** The song plays steadily. The video's speed is nudged by up to ±6% until they line up, and the song only jumps on real seeks.
+- **Sync.** The song plays steadily and is never seeked during play. The video's speed is nudged by up to ±6%; on a large drift the video jumps to the song ("video caught up" in the phone check). Video stalls don't pause the song. (Before 24 Oct the song was re-seeked on drift; on iPhone each seek is ~0.4 s of silence, which looked like new drift, so it looped every ~2 s.)
 - **Updates.** The app checks for a new version when you come back to it (and every 10 minutes). It reloads when idle; otherwise it shows an Update bar.
 - **Sound engine.** The live sound engine only opens when needed, and closes when the app is in the background.
 - **Takes** use WebCodecs MP4 where available, and MediaRecorder otherwise. An audio edit list keeps takes in sync.
@@ -67,7 +91,29 @@ Riddim Swap is a phone-first dance practice app (an installable web app). You lo
 
 Tests use Playwright + Chromium, with the tracker files served locally; MediaPipe runs on the CPU in tests.
 
-**Last full regression:** 40 suites, all passed (23 Oct 2026), at the isolation build.
+**Last full regression:** 55 suites at rs-d37aa63294 (29 Oct 2026, RTMPose default, fingers and toes, multi-core): all passed, including the in-app RTMPose test (7/7: time estimate, compare, fingers and toes drawn, phone check) and the service-worker suites with cross-origin isolation on (sw 13/13, update 5/5, offline 3/3). One cue timing check failed under load and passed alone (13/13). The session suite still stops at its old update check.
+
+**Previous:** 55 suites at rs-e6e714900c (28 Oct 2026, RTMPose trial): all passed, including the in-app trial test (6/6). One skeleton check expected two Tracking buttons (now three); updated. The session suite still stops at its old update check.
+
+**Previous:** 54 suites at rs-3d94bb9d96 (28 Oct 2026, movable Pulse box): all passed, including the new Pulse box test (10/10: starts small, tap to open/shrink, drag in Split and Worldline, kept on the video, remembered, no touches reach the 3D view). The session suite still stops at its old update check.
+
+**Previous:** 53 suites at rs-fae73d23f1 (27 Oct 2026, compilations): all passed, including the two compilation tests (with and without a chosen dancer). The session suite still stops at its old update check (fails on earlier builds too; the dedicated update test passes). The compilation test clip is made from the test assets (see compilation_test.js); it isn't stored in the repo.
+
+**Previous:** 51 suites at rs-34f3c9b91f (25 Oct 2026, skeleton fixes): all passed, including the stuck-video tests (both cases), skeleton drawing with the Accurate tracker, Body link 11/11 and Look 24/24. Suites track with the regular model for speed (RB_HEAVY=1 uses the heavy one); the skeleton suite uses the heavy one. One Learn check caught the normal sync nudge at 50% speed (video at 48.5%); its tolerance now matches the 75% check and Learn passes 16/16. The session suite still stops at its old "reloads on a new version" check (also fails on the earlier live build; the dedicated update test passes).
+
+**Previous:** 49 suites at rs-93ff901e0f (25 Oct 2026, compact Learn + Body integration): all passed, including Learn (16/16, with phone and full-screen layout checks) and the new Body link test (11/11: Look colours, glow and theme in Body, project name, cuts and speed graph with the song in time, gap p90 47 ms through a cut). In the full run: the Body header check expected the word "Body" (it now shows the project's name; check updated, 21/21 alone), Body camera start and cut-out lag failed under load and passed alone (cut-out lag 43 ms). The session suite's "coming back to a new version reloads it" check fails on the live build too, so it isn't from this change; the dedicated update test (real service worker) passes 5/5.
+
+**Previous:** 48 suites at rs-aaad150286 (25 Oct 2026, Learn mode): all passed, including Learn (14/14) and the updated hip meter check. In the full run, one cue check (dancer ball landing, worst 151 ms) failed under load and passed alone (worst 77 ms); the Look suite couldn't start because a debug hook had lost `LOOK`, fixed and re-run 24/24 (the app itself was unaffected).
+
+Also fixed with Learn: Repeat during Study or Learn now shows and sets your own Repeat (it used to switch their looping off), the project no longer saves Repeat as on because Study/Learn was running, and switching ball cues while paused redraws the skeleton (hip gauges come back).
+
+**Previous:** 47 suites at rs-2acc5fd05a (24 Oct 2026, Look & sound merged): all passed, including Look (24/24), isolation with tracking on the GPU, slow video, skeleton drawing and tracking with a silent frame clock. Three checks failed in the full run: the hip meter check (it expected gauges while ball cues are on; updated for the new behaviour), and Body camera start and the quick-flick swipe, which passed when re-run alone (timing under load).
+
+**Earlier:** 43 suites at rs-e0adbf4354, including a slow-video test (video plays 15% slower than asked: 0 song jumps in 10 s).
+
+**Skeleton on phones (24 Oct 2026, rs-2acc5fd05a):** on iPhone, tracking could stop part-way through a clip (the hidden video stops reporting frames) and still say it was complete ("197 of 197 frames" on a 35 s clip), so the skeleton vanished after about 6 s. Tracking now carries on through to the end, and the Clip tab and phone check say how much of the clip is covered. Also: no skeleton on the old picture while a loop restarts, and the hip gauges are hidden while the ball cues use the side bars. Tests: with the frame clock going silent after 100 frames, the old build covered 2.6 s of a 12 s clip and the new one all of it.
+
+**Cut-out on phones (24 Oct 2026):** masks made on the GPU (as on iPhone) were all zero, so Upper / Legs / Cut out showed nothing. They are now drawn through MediaPipe's DrawingUtils and read back (median IoU 0.964 against CPU masks). Clips tracked before this have empty masks; Cut out detects that and offers Track again.
 
 **Measured so far**
 
@@ -130,6 +176,9 @@ Routine timeline:
 - Split here cuts a move in two.
 
 **Not verified (needs a real iPhone)**
+
+- Look & sound: the skeleton glow on real tracked footage, and the sheet and store on a real iPhone.
+- That tracking now covers the whole clip on iPhone (simulated in tests, not yet seen on the phone).
 
 - How fast tracking runs on the phone's GPU.
 - AAC priming on Safari recordings.
