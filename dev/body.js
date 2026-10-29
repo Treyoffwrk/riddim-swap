@@ -17,10 +17,10 @@
     edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
     maskW:120,        /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
     numPoses:3,       /* people looked for per frame; the followed dancer is chosen by continuity */
-    /* RTMPose trial (Tracking: RTMPose): the dancer is still found and followed by the tracker above (regular model),
+    /* RTMPose (Tracking: RTMPose): the dancer is still found and followed by the tracker above (regular model),
        then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
-    ortURL:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.bundle.min.mjs',
-    ortWasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
+    /* ONNX Runtime Web 1.22.0, served with the app (its worker threads must come from the app's own address) */
+    ortBase:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'vendor/ort/',
     rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m.onnx',   /* RTMW-m whole-body (distilled from RTMW-l), weights stored at half precision (65 MB); chosen over RTMW-s, which was less exact on 28 Oct tests */
     rtmIn:[192,256]   /* model input width, height */
   };
@@ -32,7 +32,7 @@
   let runtime=null, loading=null, loadedModel='';
   /* which tracker: 'heavy' (Accurate, the default: keeps up with fast hands and feet better, about twice as slow, a 30 MB
      download kept for offline use) or 'full' (Faster). Set from Riddim Swap's Track body card; Body uses the same. */
-  function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy|rtm)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':q==='rtm'&&rtmURL()?'rtm':'heavy'}
+  function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy|rtm)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':q==='accurate'?'heavy':rtmURL()?'rtm':'heavy'}   /* RTMPose is the default (29 Oct: judged the better skeleton on real clips) */
   const rtmURL=()=>root.RB_RTM_URL||CFG.rtmURL;
   async function load(){
     const want=modelName();
@@ -203,15 +203,17 @@
         if(ch){for(let j=0;j<N;j++){row[1+j*3]=ch.pts[j][0];row[2+j*3]=ch.pts[j][1];row[3+j*3]=ch.pts[j][2]}
           if(ch.w)WJ.forEach((j,u)=>{wr[u*3]=ch.w[j][0];wr[u*3+1]=ch.w[j][1];wr[u*3+2]=ch.w[j][2]})}
         else row.fill(NaN,1);
-        slot[k]={row,wr,mk,pick:ch};
+        slot[k]={row,wr,mk,pick:ch,wb:ch?wb:null};
         if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));
       }
       /* frames in time order; drop repeats (a seek that landed on the same frame) */
-      const rows=[], worlds=[], masks=[]; let last=-1;
-      for(const sl of slot.filter(Boolean).sort((x,y)=>x.row[0]-y.row[0])){const t=sl.row[0];if(t<=last+1e-4)continue;last=t;rows.push(sl.row);worlds.push(sl.wr);masks.push(sl.mk)}
+      const rows=[], worlds=[], masks=[], exts=[]; let last=-1;
+      for(const sl of slot.filter(Boolean).sort((x,y)=>x.row[0]-y.row[0])){const t=sl.row[0];if(t<=last+1e-4)continue;last=t;rows.push(sl.row);worlds.push(sl.wr);masks.push(sl.mk);exts.push(sl.wb)}
       const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
       const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
       const seen=rows.filter(r=>!isNaN(r[1])).length;
+      /* RTMPose's extra points: both feet (heel, big toe, small toe) and all 21 points of each hand, per frame */
+      let ext=null;if(exts.some(Boolean)){ext=new Float32Array(rows.length*EXTN*3).fill(NaN);exts.forEach((w,i)=>{if(!w)return;EXTI.forEach((k,u)=>{const o=(i*EXTN+u)*3;if(w[k*3+2]>=0.3){ext[o]=w[k*3];ext[o+1]=w[k*3+1];ext[o+2]=w[k*3+2]}})})}
       if(root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
       const cutTimes=[...cutAt].filter(k=>k>0&&k<want.length).map(k=>want[k]-0.5/fps).sort((a,b)=>a-b);
       const cutRows=new Set();for(const ct of cutTimes){const i=rows.findIndex(r=>r[0]>=ct-0.25/fps);if(i>0)cutRows.add(i)}
@@ -219,8 +221,8 @@
       /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
       let mask=null; const withMask=masks.filter(Boolean).length;
       if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
-      return {v:2,cleanV:2,cuts:cutTimes,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
+      return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
+        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
     }finally{cleanup()}
   }
 
@@ -395,6 +397,16 @@
   function index(B,t){let lo=0,hi=B.n-1;if(hi<0)return -1;while(lo<hi){const m=(lo+hi)>>1;if(tAt(B,m)<t)lo=m+1;else hi=m}return lo}
   /* pose at time t: the exact frame when one is within 20 ms, else interpolated between the two neighbours when they
      are close (≤70 ms apart); never across gaps */
+  /* hand and foot points (RTMPose): EXTI are their indices in the 133-point whole-body set */
+  const EXTI=[17,18,19,20,21,22,...Array.from({length:42},(_,i)=>91+i)], EXTN=EXTI.length;
+  /* the hand/foot points for the frame on screen: the nearest frame, blended with the next one like poseAt (never across a cut) */
+  function extAt(B,t){
+    if(!B||!B.ext||!B.n)return null; const i=index(B,t); const a=Math.max(0,i-1),b=Math.min(B.n-1,i); const ta=tAt(B,a),tb=tAt(B,b);
+    const get=k=>{const o=k*EXTN*3;return Array.from({length:EXTN},(_,u)=>[B.ext[o+u*3],B.ext[o+u*3+1],B.ext[o+u*3+2]])};
+    if(tb-ta>0.07||t<ta-0.04||t>tb+0.04||(B.cuts&&B.cuts.some(c=>c>ta+1e-4&&c<=tb+1e-4)))return get(Math.abs(t-ta)<Math.abs(t-tb)?a:b);
+    const A=get(a),Bb=get(b),u=tb>ta?(t-ta)/(tb-ta):0;
+    return A.map((p,j)=>isNaN(p[0])?Bb[j]:isNaN(Bb[j][0])?p:[p[0]+(Bb[j][0]-p[0])*u,p[1]+(Bb[j][1]-p[1])*u,Math.min(p[2],Bb[j][2])]);
+  }
   function poseAt(B,t){
     if(!B||!B.n)return null; const i=index(B,t); const cand=[i-1,i].filter(k=>k>=0&&k<B.n);
     let best=-1,bd=1e9;for(const k of cand){const dd=Math.abs(tAt(B,k)-t);if(dd<bd){bd=dd;best=k}}
@@ -412,14 +424,21 @@
   const mid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
   const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
-  /* ---------- RTMPose trial ---------- */
+  /* ---------- RTMPose ---------- */
   async function rtmLoad(){
-    const ort=await import(CFG.ortURL); ort.env.wasm.wasmPaths=CFG.ortWasm; ort.env.logLevel='error'; ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
+    /* the graphics chip when the browser offers it (iOS 26+, desktop); otherwise several cores when the page is
+       cross-origin isolated (the service worker arranges that), else one */
+    const gpu=!root.RB_NO_GPU&&typeof navigator!=='undefined'&&!!navigator.gpu&&!!(await navigator.gpu.requestAdapter().catch(()=>null));
+    const ort=await import(new URL(CFG.ortBase+(gpu?'ort.webgpu.bundle.min.mjs':'ort.wasm.bundle.min.mjs'),location.href).href);
+    ort.env.wasm.wasmPaths=new URL(CFG.ortBase,location.href).href; ort.env.logLevel='error';
+    ort.env.wasm.numThreads=self.crossOriginIsolated&&!root.RB_ONE_THREAD?Math.max(1,Math.min(4,(navigator.hardwareConcurrency||2))):1;
     const r=await fetch(rtmURL()); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
     const buf=new Uint8Array(await r.arrayBuffer());
-    const session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+    let session=null,ep='wasm';
+    if(gpu)try{session=await ort.InferenceSession.create(buf,{executionProviders:['webgpu'],graphOptimizationLevel:'all',logSeverityLevel:3});ep='webgpu'}catch(e){session=null}
+    if(!session)session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all',logSeverityLevel:3});
     const [W,H]=CFG.rtmIn, cc=document.createElement('canvas'); cc.width=W; cc.height=H;
-    return {ort,session,W,H,cc,cx:cc.getContext('2d',{willReadFrequently:true}),inName:session.inputNames[0],ms:0,n:0};
+    return {ort,session,W,H,cc,cx:cc.getContext('2d',{willReadFrequently:true}),inName:session.inputNames[0],ms:0,n:0,ep:ep+(ep==='wasm'?'×'+ort.env.wasm.numThreads:'')};
   }
   /* COCO-WholeBody (133) -> the 33 points the app uses. Hands: MediaPipe's pinky/index/thumb points sit near the knuckles. */
   const WB33=[0,1,1,1,2,2,2,3,4,71,77,5,6,7,8,9,10,108,129,96,117,93,114,11,12,13,14,15,16,19,22,17,20];
@@ -486,7 +505,19 @@
     if(o.outline!==false){ctx.save();ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.strokeStyle='rgba(8,9,12,.55)';for(const [ids,k] of limbs){ctx.lineWidth=lw*k+Math.max(3,lw*0.55);path(ids);ctx.stroke()}ctx.restore()}
     for(const [ids,k,left] of limbs){ctx.strokeStyle=left&&o.sides!==false?lite:blue;ctx.lineWidth=lw*k;path(ids);ctx.stroke()}
     ctx.strokeStyle=blue;
-    if(o.ends!==false)for(const [j,left] of [[15,1],[16,0],[31,1],[32,0]]){if(!vis(j))continue;const r=Math.max(3.5,lw*0.62);
+    /* fingers and toes (RTMPose tracks): thin bones from the wrist along each finger, a dot on each fingertip, and a heel-to-toes
+       outline for each foot; same outline and left/right shading as the limbs */
+    const E=o.hands!==false&&B.ext?extAt(B,t):null; let handsDrawn=false;
+    if(E){const XE=u=>{const p=E[u];return p&&!isNaN(p[0])?[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h]:null};
+      const seg=(pts,w,col)=>{if(pts.some(p=>!p))return;ctx.lineWidth=w+Math.max(2,w*0.9);ctx.strokeStyle='rgba(8,9,12,.5)';ctx.beginPath();ctx.moveTo(...pts[0]);for(const p of pts.slice(1))ctx.lineTo(...p);ctx.stroke();
+        ctx.lineWidth=w;ctx.strokeStyle=col;ctx.beginPath();ctx.moveTo(...pts[0]);for(const p of pts.slice(1))ctx.lineTo(...p);ctx.stroke()};
+      const hw=Math.max(1.5,lw*0.28);
+      for(const [base,left] of [[6,1],[27,0]]){const col=left&&o.sides!==false?lite:blue;let any=false;
+        for(const ch of [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]]){const pts=ch.map(i=>XE(base+i));if(pts.every(Boolean)){seg(pts,hw,col);any=true}}
+        if(any){handsDrawn=true;for(const i of [4,8,12,16,20]){const p=XE(base+i);if(!p)continue;ctx.fillStyle=col;ctx.beginPath();ctx.arc(p[0],p[1],Math.max(1.8,lw*0.2),0,7);ctx.fill()}}}
+      for(const [ank,b,sm,hl,left] of [[27,0,1,2,1],[28,3,4,5,0]]){const col=left&&o.sides!==false?lite:blue,H=XE(hl),T1=XE(b),T2=XE(sm);if(!H||!T1||!T2)continue;
+        if(vis(ank))seg([q[ank],H],Math.max(1.5,lw*0.4),col);seg([H,T1,T2,H],Math.max(1.5,lw*0.4),col)}}
+    if(o.ends!==false)for(const [j,left] of [[15,1],[16,0],[31,1],[32,0]]){if(handsDrawn&&j<20)continue;if(!vis(j))continue;const r=Math.max(3.5,lw*0.62);
       ctx.fillStyle='rgba(8,9,12,.6)';ctx.beginPath();ctx.arc(q[j][0],q[j][1],r+Math.max(1.5,lw*0.18),0,7);ctx.fill();ctx.fillStyle=left&&o.sides!==false?lite:blue;ctx.beginPath();ctx.arc(q[j][0],q[j][1],r,0,7);ctx.fill()}
     /* head */
     const hr=Math.max(6,Math.hypot(q[7][0]-q[8][0],q[7][1]-q[8][1])*0.75);
@@ -650,6 +681,6 @@
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,CLEAN0,CLEAN_OLD,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

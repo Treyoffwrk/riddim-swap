@@ -126,6 +126,10 @@ self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.a
    saved copy never goes stale; a new tracker version would have a new address. */
 const KEEP='rs-runtime-1';
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==VERSION&&k!==KEEP).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+/* cross-origin isolation: the app's own pages and files go out with COOP/COEP headers (GitHub Pages can't send them), so
+   the RTMPose runtime can use several cores (SharedArrayBuffer). Everything the app loads from elsewhere allows it (CORP/CORS). */
+const ISO=r=>{if(!r||r.type==='opaque'||!r.status)return r;const h=new Headers(r.headers);h.set('Cross-Origin-Opener-Policy','same-origin');h.set('Cross-Origin-Embedder-Policy','require-corp');h.set('Cross-Origin-Resource-Policy','same-origin');return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h})};
+const isoP=p=>Promise.resolve(p).then(ISO);
 self.addEventListener('fetch',e=>{
   const req=e.request; if(req.method!=='GET')return;
   const url=new URL(req.url);
@@ -134,18 +138,18 @@ self.addEventListener('fetch',e=>{
   if(req.mode==='navigate'||(url.origin===location.origin&&url.pathname.endsWith('.html'))){
     const key=new URL(url.pathname.endsWith('/')?url.pathname+'index.html':url.pathname,location.origin).href;
     /* always check with the server (a quick 'has it changed?'), so a new version isn't hidden by the browser's cache */
-    e.respondWith(fetch(req.mode==='navigate'?new Request(url.href,{cache:'no-cache',credentials:'same-origin'}):req).then(r=>{if(r.ok&&(r.type==='basic'||r.type==='default')){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
-      .catch(()=>caches.match(key).then(m=>m||caches.match('./index.html'))));
+    e.respondWith(isoP(fetch(req.mode==='navigate'?new Request(url.href,{cache:'no-cache',credentials:'same-origin'}):req).then(r=>{if(r.ok&&(r.type==='basic'||r.type==='default')){const c=r.clone();caches.open(VERSION).then(x=>x.put(key,c))}return r})
+      .catch(()=>caches.match(key).then(m=>m||caches.match('./index.html')))));
     return;
   }
-  /* the RTMPose trial's model (big, rarely changes): kept across updates like the tracker files */
-  if(url.origin===location.origin&&url.pathname.includes('/models/')&&url.pathname.endsWith('.onnx')){
-    e.respondWith(caches.open(KEEP).then(c=>c.match(req,{ignoreVary:true}).then(m=>m||fetch(req).then(r=>{if(r.ok)c.put(req,r.clone());return r}))));
+  /* (the RTMPose runtime and model below are kept across updates, like the tracker files) */
+  if(url.origin===location.origin&&((url.pathname.includes('/models/')&&url.pathname.endsWith('.onnx'))||url.pathname.includes('/vendor/ort/'))){
+    e.respondWith(isoP(caches.open(KEEP).then(c=>c.match(req,{ignoreVary:true}).then(m=>m||fetch(req).then(r=>{if(r.ok)c.put(req,r.clone());return r})))));
     return;
   }
   /* app files: saved copy first */
   if(url.origin===location.origin){
-    e.respondWith(caches.match(req).then(m=>m||fetch(req).then(r=>{if(r.ok){const c=r.clone();caches.open(VERSION).then(x=>x.put(req,c))}return r})));
+    e.respondWith(isoP(caches.match(req).then(m=>m||fetch(req).then(r=>{if(r.ok){const c=r.clone();caches.open(VERSION).then(x=>x.put(req,c))}return r}))));
     return;
   }
   /* the body tracker: MediaPipe's runtime (pinned version) and pose model. Saved the first time they load, so body
@@ -164,8 +168,15 @@ self.addEventListener('fetch',e=>{
 });
 """ % version
 (OUT / 'sw.js').write_text(sw)
-# the RTMPose trial models (stored at half precision, computed at full precision)
+# the RTMPose runtime (ONNX Runtime Web 1.22.0): plain WASM, and the WebGPU build for browsers that have a GPU API
 import shutil
+ORT = pathlib.Path('/tmp/claude-0/-home-claude/c7d6fa6b-e9dd-5d62-903e-3e4d46a3b3b0/scratchpad/node_modules/onnxruntime-web/dist')
+if not ORT.exists(): ORT = pathlib.Path('/home/claude/vendor-src/onnxruntime-web/dist')
+(OUT / 'vendor' / 'ort').mkdir(parents=True, exist_ok=True)
+for f in ['ort.wasm.bundle.min.mjs','ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs','ort.webgpu.bundle.min.mjs','ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs']:
+    src, dst = ORT / f, OUT / 'vendor' / 'ort' / f
+    if not dst.exists() or dst.stat().st_size != src.stat().st_size: shutil.copy(src, dst)
+# the RTMPose models (stored at half precision, computed at full precision)
 (OUT / 'models').mkdir(exist_ok=True)
 for f in pathlib.Path('/home/claude/models').glob('*.onnx'):
     dst = OUT / 'models' / f.name
