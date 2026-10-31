@@ -21,7 +21,8 @@
        then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
     /* ONNX Runtime Web 1.22.0, served with the app (its worker threads must come from the app's own address) */
     ortBase:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'vendor/ort/',
-    rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m.onnx',   /* RTMW-m whole-body (distilled from RTMW-l), weights stored at half precision (65 MB); chosen over RTMW-s, which was less exact on 28 Oct tests */
+    rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m8.onnx',   /* RTMW-m whole-body (distilled from RTMW-l). Weights: the early layers (which small errors upset) at half precision, the rest at 8 bits with a scale per filter: 44 MB (39 MB as sent) instead of 65, keypoints matching the half-precision model (tests/rtm_dl_test.js, dev notes). Chosen over RTMW-s, which was less exact */
+    rtmBytes:43736921, rtmMB:42,
     rtmIn:[192,256]   /* model input width, height */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
@@ -425,6 +426,33 @@
   const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
   /* ---------- RTMPose ---------- */
+  /* the model download, with progress (RB.rtmStatus), shared between a prefetch and tracking. The service worker keeps
+     the file, so after the first time it comes from the phone. total: the file's size (the server may send it
+     compressed, when the header's length is the compressed one) */
+  const DL={state:'idle',got:0,total:0,p:null,err:''};
+  async function rtmFetch(keep){
+    const url=rtmURL(),r=await fetch(url); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
+    const len=+r.headers.get('content-length')||0,enc=r.headers.get('content-encoding');
+    const total=url===CFG.rtmURL&&CFG.rtmBytes?CFG.rtmBytes:(!enc&&len?len:0);
+    DL.state='loading';DL.got=0;DL.total=total;
+    if(!r.body||!r.body.getReader){const b=new Uint8Array(await r.arrayBuffer());DL.got=b.length;DL.state='ready';return keep?b:null}
+    const rd=r.body.getReader(),parts=[];let n=0;
+    for(;;){const {done,value}=await rd.read();if(done)break;n+=value.length;DL.got=n;if(keep)parts.push(value)}
+    DL.state='ready';DL.total=DL.total||n;if(!keep)return null;
+    const out=new Uint8Array(n);let o=0;for(const q of parts){out.set(q,o);o+=q.length}return out;
+  }
+  /* get the model (and the runtime's engine file) onto the phone ahead of time, without keeping it in memory */
+  function rtmPrefetch(){
+    if(DL.p)return DL.p;
+    DL.p=(async()=>{try{
+      await rtmFetch(false);
+      try{await fetch(new URL(CFG.ortBase+'ort.wasm.bundle.min.mjs',location.href).href);await (await fetch(new URL(CFG.ortBase+'ort-wasm-simd-threaded.wasm',location.href).href)).arrayBuffer()}catch(e){}
+      DL.state='ready';return true}catch(e){DL.state='error';DL.err=e.message||String(e);DL.p=null;return false}})();
+    return DL.p;
+  }
+  /* is the model already on this phone? (the service worker's store) */
+  async function rtmCached(){try{if(!self.caches)return false;const c=await caches.open('rs-runtime-1');return !!(await c.match(new URL(rtmURL(),location.href).href,{ignoreVary:true}))}catch(e){return false}}
+  const rtmStatus=()=>({state:DL.state,got:DL.got,total:DL.total,err:DL.err});
   async function rtmLoad(){
     /* the graphics chip when the browser offers it (iOS 26+, desktop); otherwise several cores when the page is
        cross-origin isolated (the service worker arranges that), else one */
@@ -432,8 +460,8 @@
     const ort=await import(new URL(CFG.ortBase+(gpu?'ort.webgpu.bundle.min.mjs':'ort.wasm.bundle.min.mjs'),location.href).href);
     ort.env.wasm.wasmPaths=new URL(CFG.ortBase,location.href).href; ort.env.logLevel='error';
     ort.env.wasm.numThreads=self.crossOriginIsolated&&!root.RB_ONE_THREAD?Math.max(1,Math.min(4,(navigator.hardwareConcurrency||2))):1;
-    const r=await fetch(rtmURL()); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
-    const buf=new Uint8Array(await r.arrayBuffer());
+    if(DL.p)await DL.p;   /* a download already under way: wait for it, then read it from the phone */
+    const buf=await rtmFetch(true);
     let session=null,ep='wasm';
     if(gpu)try{session=await ort.InferenceSession.create(buf,{executionProviders:['webgpu'],graphOptimizationLevel:'all',logSeverityLevel:3});ep='webgpu'}catch(e){session=null}
     if(!session)session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all',logSeverityLevel:3});
@@ -681,6 +709,6 @@
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

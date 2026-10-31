@@ -11,7 +11,18 @@
 rep("const REF='#6E8BFF',CAM='#4FD1A1',HIPS='#FF5FA2';", "let REF='#6E8BFF',CAM='#4FD1A1',HIPS='#FF5FA2',REF_GLOW=0;")
 rep("  if(!dashed&&alpha>=.9&&danceBody2D(ctx,points,rect,mirror,colour,stroke))return;",
     "  if(!dashed&&alpha>=.9){const g=colour===REF&&REF_GLOW>0;if(g){ctx.save();ctx.shadowColor=REF;ctx.shadowBlur=REF_GLOW*14*(window.devicePixelRatio||1);}\n"
-    "    const ok=danceBody2D(ctx,points,rect,mirror,colour,stroke);if(g)ctx.restore();if(ok)return;}")
+    "    const ok=(colour===REF&&rsSameSkeleton(ctx,rect,mirror))||danceBody2D(ctx,points,rect,mirror,colour,stroke);if(g)ctx.restore();if(ok)return;}")
+# the dancer's skeleton is drawn exactly as on Riddim Swap's player: the same drawing code and the same track (RTMPose's
+# fingers and toes, outline, lighter left side, hip path), in the Look colours. Falls back to Body's own drawing when the
+# clip's track didn't come from Riddim Swap (a video loaded in Body itself).
+rep("function danceBody2D(ctx,points,rect,mirror,colour,stroke){",
+    "function rsSameSkeleton(ctx,rect,mirror){\n"
+    "  if(!preparedBody||preparedBody.key!==state.key||typeof RB==='undefined'||!RB.draw||!Number.isFinite(state.referencePoseTime))return false;\n"
+    "  const r=mirror?{x:rect.x+rect.w,y:rect.y,w:-rect.w,h:rect.h}:rect;\n"
+    "  try{return RB.draw(ctx,preparedBody,state.referencePoseTime,r,{dance:REF,hips:HIPS,meter:false,tiltGuide:false})===true}catch(e){return false}\n"
+    "}\n"
+    "window.__mvSkel={draw:(c,r,m)=>rsSameSkeleton(c,r,m),get B(){return preparedBody},get t(){return state.referencePoseTime},get refPose(){return state.refPose},get colours(){return {ref:REF,hips:HIPS}}};\n"
+    "function danceBody2D(ctx,points,rect,mirror,colour,stroke){")
 # the brand's "Swap" follows the theme's song colour
 s = s.replace(".topbar .brand .rs-swap{color:#E8A33D}", ".topbar .brand .rs-swap{color:var(--song-hot,#E8A33D)}\n.topbar .brand .rs-proj{font:700 12px Figtree,sans-serif;color:var(--muted);max-width:30vw;overflow:hidden;text-overflow:ellipsis;margin-left:6px}\n.topbar .brand .rs-proj:empty{display:none}\n.topbar .brand.has-proj .rs-sec{display:none}.topbar .brand .rs-proj{display:inline-block;vertical-align:middle;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;letter-spacing:0}", 1)
 assert '.rs-proj' in s

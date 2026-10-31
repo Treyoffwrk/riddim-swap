@@ -1,12 +1,16 @@
 /* Riddim Swap offline support. Version changes on every build. */
-const VERSION='rs-dd86a0a8fb';
+const VERSION='rs-db09be1482';
 const SHELL=['./','./index.html','./mirrorview/','./mirrorview/index.html','./manifest.webmanifest','./vendor/mp4-muxer.js',
   './icons/icon-192.png','./icons/icon-512.png','./icons/maskable-512.png','./icons/apple-touch-icon.png','./icons/favicon-32.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 /* kept across app updates: the body tracker (runtime and model) and fonts. Their addresses name exact versions, so a
    saved copy never goes stale; a new tracker version would have a new address. */
 const KEEP='rs-runtime-1';
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==VERSION&&k!==KEEP).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+const MODELS=["rtmw-m8.onnx"];
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==VERSION&&k!==KEEP).map(k=>caches.delete(k))))
+  /* models the app no longer uses (an older RTMPose file) are removed from the phone */
+  .then(()=>caches.open(KEEP)).then(c=>c.keys().then(rs=>Promise.all(rs.filter(r=>{const u=new URL(r.url);return u.origin===location.origin&&u.pathname.includes('/models/')&&!MODELS.some(m=>u.pathname.endsWith('/models/'+m))}).map(r=>c.delete(r)))))
+  .then(()=>self.clients.claim()))});
 /* cross-origin isolation: the app's own pages and files go out with COOP/COEP headers (GitHub Pages can't send them), so
    the RTMPose runtime can use several cores (SharedArrayBuffer). Everything the app loads from elsewhere allows it (CORP/CORS). */
 const ISO=r=>{if(!r||r.type==='opaque'||!r.status)return r;const h=new Headers(r.headers);h.set('Cross-Origin-Opener-Policy','same-origin');h.set('Cross-Origin-Embedder-Policy','require-corp');h.set('Cross-Origin-Resource-Policy','same-origin');return new Response(r.body,{status:r.status,statusText:r.statusText,headers:h})};

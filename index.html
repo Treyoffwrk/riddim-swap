@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-dd86a0a8fb'</script>
+<script>window.RS_BUILD='rs-db09be1482'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -551,6 +551,9 @@ details.more .field{margin-top:8px}
 .snipbar .hint{margin:0}
 .pin.fs .snipstrip{margin-top:6px}.pin.fs .snipstrip .btn{background:rgba(255,255,255,.12);border-color:transparent;color:#F3F1EC}
 .pin.fs .snipstrip .snipin.on{background:var(--dance);color:#0E1014}
+
+/* RTMPose: get the model ready ahead of time */
+.rtmget{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.rtmget[hidden]{display:none}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -807,7 +810,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
           </div>
-          <div class="row mv-only" id="trackQRow"><span class="label">Tracking</span><div class="seg" id="trackQ" role="group" aria-label="Tracking quality" style="grid-template-columns:auto auto auto"><button type="button" data-q="rtm" aria-pressed="true">RTMPose</button><button type="button" data-q="accurate" aria-pressed="false">Accurate</button><button type="button" data-q="fast" aria-pressed="false">Faster</button></div><span class="hint" id="trackQNote"></span></div>
+          <div class="row mv-only" id="trackQRow"><span class="label">Tracking</span><div class="seg" id="trackQ" role="group" aria-label="Tracking quality" style="grid-template-columns:auto auto auto"><button type="button" data-q="rtm" aria-pressed="true">RTMPose</button><button type="button" data-q="accurate" aria-pressed="false">Accurate</button><button type="button" data-q="fast" aria-pressed="false">Faster</button></div><span class="hint" id="trackQNote"></span><span class="rtmget" id="rtmGetRow" hidden><button type="button" class="btn sm" id="rtmGet">Download it now</button><span class="hint" id="rtmGetMsg"></span></span></div>
           <div class="row mv-only" id="cmpRow" hidden><span class="label">Compare</span><div class="seg" id="cmpSeg" role="group" aria-label="Which skeleton" style="grid-template-columns:auto auto auto"><button type="button" data-c="now" aria-pressed="true" id="cmpNow">This track</button><button type="button" data-c="prev" aria-pressed="false" id="cmpPrev">Previous</button><button type="button" data-c="both" aria-pressed="false">Both</button></div></div>
           <div class="prog" id="bodyProg" hidden><i></i></div>
           <div class="row mv-only" id="pickRow"><button class="btn sm" id="bodyPick">Choose the dancer</button><span class="hint" id="pickMsg"></span></div>
@@ -1728,7 +1731,8 @@ if(typeof module!=='undefined')module.exports=RA;
        then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
     /* ONNX Runtime Web 1.22.0, served with the app (its worker threads must come from the app's own address) */
     ortBase:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'vendor/ort/',
-    rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m.onnx',   /* RTMW-m whole-body (distilled from RTMW-l), weights stored at half precision (65 MB); chosen over RTMW-s, which was less exact on 28 Oct tests */
+    rtmURL:(typeof location!=='undefined'&&/\/mirrorview\//.test(location.pathname)?'../':'')+'models/rtmw-m8.onnx',   /* RTMW-m whole-body (distilled from RTMW-l). Weights: the early layers (which small errors upset) at half precision, the rest at 8 bits with a scale per filter: 44 MB (39 MB as sent) instead of 65, keypoints matching the half-precision model (tests/rtm_dl_test.js, dev notes). Chosen over RTMW-s, which was less exact */
+    rtmBytes:43736921, rtmMB:42,
     rtmIn:[192,256]   /* model input width, height */
   };
   const N=33, STRIDE=1+N*3;   /* packed sample: t, then x,y,visibility for each landmark */
@@ -2132,6 +2136,33 @@ if(typeof module!=='undefined')module.exports=RA;
   const lerp2=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u];
   /* draw the dance body for video time t into ctx. rect = where the video frame sits on the canvas (object-fit: contain). */
   /* ---------- RTMPose ---------- */
+  /* the model download, with progress (RB.rtmStatus), shared between a prefetch and tracking. The service worker keeps
+     the file, so after the first time it comes from the phone. total: the file's size (the server may send it
+     compressed, when the header's length is the compressed one) */
+  const DL={state:'idle',got:0,total:0,p:null,err:''};
+  async function rtmFetch(keep){
+    const url=rtmURL(),r=await fetch(url); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
+    const len=+r.headers.get('content-length')||0,enc=r.headers.get('content-encoding');
+    const total=url===CFG.rtmURL&&CFG.rtmBytes?CFG.rtmBytes:(!enc&&len?len:0);
+    DL.state='loading';DL.got=0;DL.total=total;
+    if(!r.body||!r.body.getReader){const b=new Uint8Array(await r.arrayBuffer());DL.got=b.length;DL.state='ready';return keep?b:null}
+    const rd=r.body.getReader(),parts=[];let n=0;
+    for(;;){const {done,value}=await rd.read();if(done)break;n+=value.length;DL.got=n;if(keep)parts.push(value)}
+    DL.state='ready';DL.total=DL.total||n;if(!keep)return null;
+    const out=new Uint8Array(n);let o=0;for(const q of parts){out.set(q,o);o+=q.length}return out;
+  }
+  /* get the model (and the runtime's engine file) onto the phone ahead of time, without keeping it in memory */
+  function rtmPrefetch(){
+    if(DL.p)return DL.p;
+    DL.p=(async()=>{try{
+      await rtmFetch(false);
+      try{await fetch(new URL(CFG.ortBase+'ort.wasm.bundle.min.mjs',location.href).href);await (await fetch(new URL(CFG.ortBase+'ort-wasm-simd-threaded.wasm',location.href).href)).arrayBuffer()}catch(e){}
+      DL.state='ready';return true}catch(e){DL.state='error';DL.err=e.message||String(e);DL.p=null;return false}})();
+    return DL.p;
+  }
+  /* is the model already on this phone? (the service worker's store) */
+  async function rtmCached(){try{if(!self.caches)return false;const c=await caches.open('rs-runtime-1');return !!(await c.match(new URL(rtmURL(),location.href).href,{ignoreVary:true}))}catch(e){return false}}
+  const rtmStatus=()=>({state:DL.state,got:DL.got,total:DL.total,err:DL.err});
   async function rtmLoad(){
     /* the graphics chip when the browser offers it (iOS 26+, desktop); otherwise several cores when the page is
        cross-origin isolated (the service worker arranges that), else one */
@@ -2139,8 +2170,8 @@ if(typeof module!=='undefined')module.exports=RA;
     const ort=await import(new URL(CFG.ortBase+(gpu?'ort.webgpu.bundle.min.mjs':'ort.wasm.bundle.min.mjs'),location.href).href);
     ort.env.wasm.wasmPaths=new URL(CFG.ortBase,location.href).href; ort.env.logLevel='error';
     ort.env.wasm.numThreads=self.crossOriginIsolated&&!root.RB_ONE_THREAD?Math.max(1,Math.min(4,(navigator.hardwareConcurrency||2))):1;
-    const r=await fetch(rtmURL()); if(!r.ok)throw new Error('RTMPose model download failed ('+r.status+')');
-    const buf=new Uint8Array(await r.arrayBuffer());
+    if(DL.p)await DL.p;   /* a download already under way: wait for it, then read it from the phone */
+    const buf=await rtmFetch(true);
     let session=null,ep='wasm';
     if(gpu)try{session=await ort.InferenceSession.create(buf,{executionProviders:['webgpu'],graphOptimizationLevel:'all',logSeverityLevel:3});ep='webgpu'}catch(e){session=null}
     if(!session)session=await ort.InferenceSession.create(buf,{executionProviders:['wasm'],graphOptimizationLevel:'all',logSeverityLevel:3});
@@ -2388,7 +2419,7 @@ if(typeof module!=='undefined')module.exports=RA;
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
@@ -2801,6 +2832,7 @@ function relinkSource(id,f){
   enable(); renderSources(); renderMoves(); updateTrim(); updateMissing();
 }
 function addVideo(f){
+  setTimeout(()=>{try{rtmAutoFetch()}catch(e){}},1500);
   if(!f)return; if(S.rec)stopRecording(); pause();
   const miss=S.sources.find(x=>x.missing&&x.fname===f.name&&x.size===f.size);
   if(miss){relinkSource(miss.id,f);return}
@@ -4302,11 +4334,13 @@ $('#bodyTrack').addEventListener('click',async()=>{
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
   S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyStartAt=performance.now(); S.bodyLeft=''; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
+  const dlIv=setInterval(()=>{if(!S.bodyBusy||S.bodyT0){clearInterval(dlIv);return}const st=RB.rtmStatus();if(st.state==='loading'&&st.got>0&&!S.rtmCached){$('#bodyInfo').textContent='Downloading the RTMPose model (first time only)… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB':' MB');if(st.total)bar.style.width=Math.min(100,Math.round(st.got/st.total*100))+'%'}},300);
   try{
     const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}});
     try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n);if(el2>5)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
     if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
     n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
+    RB.rtmCached().then(c=>{if(c)S.rtmCached=true}).catch(()=>{});
     const got=hitsFromBody(n);
     $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
     if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
@@ -4396,7 +4430,7 @@ async function sendClip(){
     trim=[L[0].s,L[L.length-1].e]}}
   if(song&&map)song.offset=S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar;   /* song = offset + output time × ar */
   try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim,pieces,map,project:PJ.name||'',hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
-      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}
+      body:B?{v:B.v,cleanV:B.cleanV,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0,ext:B.ext||null,cuts:B.cuts||null}:null});goMirror(id);return true}
   catch(e){hMsg('Couldn’t open the clip in Body on this phone ('+(e&&e.message||e)+').');return false}
 }
 $('#mvClip').addEventListener('click',sendClip);
@@ -5094,8 +5128,27 @@ function trackEstimate(q){const n=srcById(S.cur),el=n&&n.el,d=el&&isFinite(el.du
 function trackQUI(){let q='rtm';try{const v=localStorage.getItem('rs-track-q');q=v==='fast'||v==='accurate'?v:'rtm'}catch(e){}
   $$('#trackQ button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===q)));
   const est=trackEstimate(q);
-  $('#trackQNote').textContent=(q==='rtm'?'The best skeleton, with hands and feet (a 65 MB download the first time).':q==='accurate'?'MediaPipe\'s bigger tracker: quicker than RTMPose, no fingers.':'Quickest; less exact on fast hands and feet.')+(est?' Tracking takes '+est+'.':'')}
+  const mb=RB.CFG.rtmMB||65, st=RB.rtmStatus?RB.rtmStatus():{state:'idle'}, have=st.state==='ready'||S.rtmCached;
+  $('#trackQNote').textContent=(q==='rtm'?'The best skeleton, with hands and feet'+(have?' (ready on this phone).':' (about '+mb+' MB to download the first time).'):q==='accurate'?'MediaPipe\'s bigger tracker: quicker than RTMPose, no fingers.':'Quickest; less exact on fast hands and feet.')+(est?' Tracking takes '+est+'.':'')}
 $$('#trackQ button').forEach(b=>b.addEventListener('click',()=>{try{localStorage.setItem('rs-track-q',b.dataset.q)}catch(e){}trackQUI()}));
+/* RTMPose's model: shows whether it's on this phone, lets you download it ahead of time (with progress), and fetches it by
+   itself on Wi-Fi once you have a video (never on mobile data or with Data Saver on) */
+function rtmMB(n){return (n/1048576).toFixed(n>10485760?0:1)}
+function rtmGetUI(){
+  const q=(()=>{try{return localStorage.getItem('rs-track-q')||'rtm'}catch(e){return 'rtm'}})(), st=RB.rtmStatus(), row=$('#rtmGetRow');
+  row.hidden=q!=='rtm'||(S.rtmCached&&st.state!=='loading')||(st.state==='ready'&&!S.rtmJustGot);
+  $('#rtmGet').hidden=st.state==='loading'||st.state==='ready'; $('#rtmGet').textContent=st.state==='error'?'Try the download again':'Download it now';
+  $('#rtmGetMsg').textContent=st.state==='loading'?'Downloading the RTMPose model… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB ('+Math.min(100,Math.round(st.got/st.total*100))+'%)':' MB'):st.state==='ready'?'Downloaded: ready on this phone.':st.state==='error'?'The download stopped ('+st.err+').':'';
+}
+function rtmPrefetchNow(){const p=RB.rtmPrefetch();S.rtmJustGot=true;const iv=setInterval(()=>{rtmGetUI();trackQUI()},400);p.then(ok=>{clearInterval(iv);if(ok)S.rtmCached=true;rtmGetUI();trackQUI()});rtmGetUI()}
+$('#rtmGet').addEventListener('click',rtmPrefetchNow);
+RB.rtmCached().then(c=>{S.rtmCached=c;rtmGetUI();trackQUI()});
+function rtmAutoFetch(){
+  try{const c=navigator.connection,q=localStorage.getItem('rs-track-q')||'rtm';
+    if(q!=='rtm'||S.rtmCached||RB.rtmStatus().state!=='idle'||!c||c.saveData||!/^(wifi|ethernet)$/.test(c.type||''))return;
+    rtmPrefetchNow()}catch(e){}
+}
+setInterval(()=>{try{rtmGetUI()}catch(e){}},2000);
 setInterval(()=>{try{trackQUI()}catch(e){}},2000);
 trackQUI();
 /* choose the dancer: the next tap on the video picks who to follow, then tracking runs */

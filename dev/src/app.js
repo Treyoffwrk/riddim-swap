@@ -406,6 +406,7 @@ function relinkSource(id,f){
   enable(); renderSources(); renderMoves(); updateTrim(); updateMissing();
 }
 function addVideo(f){
+  setTimeout(()=>{try{rtmAutoFetch()}catch(e){}},1500);
   if(!f)return; if(S.rec)stopRecording(); pause();
   const miss=S.sources.find(x=>x.missing&&x.fname===f.name&&x.size===f.size);
   if(miss){relinkSource(miss.id,f);return}
@@ -1907,11 +1908,13 @@ $('#bodyTrack').addEventListener('click',async()=>{
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
   S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyStartAt=performance.now(); S.bodyLeft=''; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
+  const dlIv=setInterval(()=>{if(!S.bodyBusy||S.bodyT0){clearInterval(dlIv);return}const st=RB.rtmStatus();if(st.state==='loading'&&st.got>0&&!S.rtmCached){$('#bodyInfo').textContent='Downloading the RTMPose model (first time only)… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB':' MB');if(st.total)bar.style.width=Math.min(100,Math.round(st.got/st.total*100))+'%'}},300);
   try{
     const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}});
     try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n);if(el2>5)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
     if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
     n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
+    RB.rtmCached().then(c=>{if(c)S.rtmCached=true}).catch(()=>{});
     const got=hitsFromBody(n);
     $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
     if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
@@ -2001,7 +2004,7 @@ async function sendClip(){
     trim=[L[0].s,L[L.length-1].e]}}
   if(song&&map)song.offset=S.offset+(S.variant&&S.variant.shift||0)+((S.avComp||0)+(S.sndDelay||0))*S.ar;   /* song = offset + output time × ar */
   try{const id=await handOff('clip',n.blob,n.fname||n.name||'clip.mp4',{trim,pieces,map,project:PJ.name||'',hits:(n.motion&&hitsOf(n).map(b=>b.t))||null,song,
-      body:B?{v:B.v,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0}:null});goMirror(id);return true}
+      body:B?{v:B.v,cleanV:B.cleanV,model:B.model,w:B.w,h:B.h,fps:B.fps,n:B.n,data:B.data,mask:B.mask||null,world:B.world||null,hips:B.hips||null,multi:B.multi||0,ext:B.ext||null,cuts:B.cuts||null}:null});goMirror(id);return true}
   catch(e){hMsg('Couldn’t open the clip in Body on this phone ('+(e&&e.message||e)+').');return false}
 }
 $('#mvClip').addEventListener('click',sendClip);
@@ -2699,8 +2702,27 @@ function trackEstimate(q){const n=srcById(S.cur),el=n&&n.el,d=el&&isFinite(el.du
 function trackQUI(){let q='rtm';try{const v=localStorage.getItem('rs-track-q');q=v==='fast'||v==='accurate'?v:'rtm'}catch(e){}
   $$('#trackQ button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===q)));
   const est=trackEstimate(q);
-  $('#trackQNote').textContent=(q==='rtm'?'The best skeleton, with hands and feet (a 65 MB download the first time).':q==='accurate'?'MediaPipe\'s bigger tracker: quicker than RTMPose, no fingers.':'Quickest; less exact on fast hands and feet.')+(est?' Tracking takes '+est+'.':'')}
+  const mb=RB.CFG.rtmMB||65, st=RB.rtmStatus?RB.rtmStatus():{state:'idle'}, have=st.state==='ready'||S.rtmCached;
+  $('#trackQNote').textContent=(q==='rtm'?'The best skeleton, with hands and feet'+(have?' (ready on this phone).':' (about '+mb+' MB to download the first time).'):q==='accurate'?'MediaPipe\'s bigger tracker: quicker than RTMPose, no fingers.':'Quickest; less exact on fast hands and feet.')+(est?' Tracking takes '+est+'.':'')}
 $$('#trackQ button').forEach(b=>b.addEventListener('click',()=>{try{localStorage.setItem('rs-track-q',b.dataset.q)}catch(e){}trackQUI()}));
+/* RTMPose's model: shows whether it's on this phone, lets you download it ahead of time (with progress), and fetches it by
+   itself on Wi-Fi once you have a video (never on mobile data or with Data Saver on) */
+function rtmMB(n){return (n/1048576).toFixed(n>10485760?0:1)}
+function rtmGetUI(){
+  const q=(()=>{try{return localStorage.getItem('rs-track-q')||'rtm'}catch(e){return 'rtm'}})(), st=RB.rtmStatus(), row=$('#rtmGetRow');
+  row.hidden=q!=='rtm'||(S.rtmCached&&st.state!=='loading')||(st.state==='ready'&&!S.rtmJustGot);
+  $('#rtmGet').hidden=st.state==='loading'||st.state==='ready'; $('#rtmGet').textContent=st.state==='error'?'Try the download again':'Download it now';
+  $('#rtmGetMsg').textContent=st.state==='loading'?'Downloading the RTMPose model… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB ('+Math.min(100,Math.round(st.got/st.total*100))+'%)':' MB'):st.state==='ready'?'Downloaded: ready on this phone.':st.state==='error'?'The download stopped ('+st.err+').':'';
+}
+function rtmPrefetchNow(){const p=RB.rtmPrefetch();S.rtmJustGot=true;const iv=setInterval(()=>{rtmGetUI();trackQUI()},400);p.then(ok=>{clearInterval(iv);if(ok)S.rtmCached=true;rtmGetUI();trackQUI()});rtmGetUI()}
+$('#rtmGet').addEventListener('click',rtmPrefetchNow);
+RB.rtmCached().then(c=>{S.rtmCached=c;rtmGetUI();trackQUI()});
+function rtmAutoFetch(){
+  try{const c=navigator.connection,q=localStorage.getItem('rs-track-q')||'rtm';
+    if(q!=='rtm'||S.rtmCached||RB.rtmStatus().state!=='idle'||!c||c.saveData||!/^(wifi|ethernet)$/.test(c.type||''))return;
+    rtmPrefetchNow()}catch(e){}
+}
+setInterval(()=>{try{rtmGetUI()}catch(e){}},2000);
 setInterval(()=>{try{trackQUI()}catch(e){}},2000);
 trackQUI();
 /* choose the dancer: the next tap on the video picks who to follow, then tracking runs */

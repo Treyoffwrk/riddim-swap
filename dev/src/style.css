@@ -529,3 +529,6 @@ details.more .field{margin-top:8px}
 .snipbar .hint{margin:0}
 .pin.fs .snipstrip{margin-top:6px}.pin.fs .snipstrip .btn{background:rgba(255,255,255,.12);border-color:transparent;color:#F3F1EC}
 .pin.fs .snipstrip .snipin.on{background:var(--dance);color:#0E1014}
+
+/* RTMPose: get the model ready ahead of time */
+.rtmget{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.rtmget[hidden]{display:none}
