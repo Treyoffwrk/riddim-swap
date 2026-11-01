@@ -14,6 +14,11 @@
     sdkURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs',
     wasmURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
     modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+    seekWait:4000,    /* ms: a seek that hasn't answered by then counts as stuck */
+    rtmWait:30,       /* s on screen: RTMPose not answering by then stops the run (progress is kept) */
+    maxRevives:4,     /* fresh video players in a row before tracking stops (progress is kept) */
+    saveEvery:8000,   /* ms between progress saves while tracking */
+    partialEvery:4000,/* ms between live previews of the skeleton so far (opt.onPartial) */
     edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
     maskW:120,        /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
     numPoses:3,       /* people looked for per frame; the followed dancer is chosen by continuity */
@@ -86,12 +91,14 @@
      skipped however slow the phone is. Each sample keeps the frame's own media time. */
   async function track(url,opt){
     opt=opt||{}; const rt=await load();
-    const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='auto';
     /* shown as a small preview in the corner while it tracks: iPhone stops giving new frames to a video it can't see
        (an invisible one froze part-way, so the same picture was tracked again and again and the skeleton stood still) */
-    v.className='rb-trackvid';v.setAttribute('aria-hidden','true');
-    v.style.cssText='position:fixed;right:10px;bottom:calc(84px + env(safe-area-inset-bottom,0px));height:88px;width:auto;max-width:30vw;border-radius:10px;opacity:1;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.5);background:#000'; document.body.append(v); v.src=url;
-    const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove()};
+    const makeVid=()=>{const e=document.createElement('video'); e.muted=true; e.playsInline=true; e.setAttribute('playsinline',''); e.preload='auto';
+      e.className='rb-trackvid';e.setAttribute('aria-hidden','true');
+      e.style.cssText='position:fixed;right:10px;bottom:calc(84px + env(safe-area-inset-bottom,0px));height:88px;width:auto;max-width:30vw;border-radius:10px;opacity:1;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.5);background:#000'; document.body.append(e); e.src=url; return e};
+    let v=makeVid();
+    let saveNow=null, onVis=null;
+    const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove();if(onVis)document.removeEventListener('visibilitychange',onVis)};
     try{
       await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('This video could not be read for body tracking.'))});
       const W=v.videoWidth,H=v.videoHeight, sc=Math.min(1,CFG.edge/Math.max(W,H));
@@ -99,18 +106,25 @@
       const start=Math.max(0,opt.start||0), end=Math.min(v.duration||0,opt.end||v.duration||0);
       const hasRVFC=typeof v.requestVideoFrameCallback==='function';
       /* frame rate: play a moment and read the frame clock (falls back to 30) */
-      let fps=opt.fps||0;
+      /* carrying on from a run that stopped part-way: the frames it finished come back as they were */
+      let R=opt.resume&&opt.resume.fps&&opt.resume.n&&opt.resume.recs?opt.resume:null;
+      let fps=opt.fps||(R&&R.fps)||root.RB_TEST_FPS||0;
       if(!fps&&hasRVFC){const ts=[];await new Promise(res=>{let k=0;const cb=(now,m)=>{ts.push(m.mediaTime);if(++k<12)v.requestVideoFrameCallback(cb);else res()};v.requestVideoFrameCallback(cb);v.play().catch(res);setTimeout(res,1500)});v.pause();
         /* a busy phone skips frame callbacks, which makes gaps of 2 or 3 frames: the smallest gap is the real frame time */
         const d=[];for(let i=1;i<ts.length;i++)if(ts[i]-ts[i-1]>0.008)d.push(ts[i]-ts[i-1]);d.sort((a,b)=>a-b);const md=d.length?d[0]:1/30;
         let f0=1/md;for(const c of [24,25,30,48,50,60])if(Math.abs(f0-c)/c<0.08)f0=c;fps=Math.min(60,Math.max(15,Math.round(f0)))}
-      const seekTo=t=>new Promise(res=>{let done=false;const fin=m=>{if(done)return;done=true;res(m)};
+      /* a seek that never answers (seen on iPhone: the video stops decoding and neither the frame clock nor 'seeked' ever
+         fires, so tracking froze for good part-way) gives up after a few seconds and is counted; two in a row and the
+         video is loaded afresh in a new player */
+      let seekFails=0;
+      const seekTo=t=>new Promise(res=>{let done=false,to=0;const el=v;const fin=m=>{if(done)return;done=true;clearTimeout(to);if(el===v){if(m===undefined)seekFails++;else seekFails=0}res(m)};
         if(hasRVFC)v.requestVideoFrameCallback((now,m)=>fin(m.mediaTime));
         v.addEventListener('seeked',()=>setTimeout(()=>fin(null),hasRVFC?120:30),{once:true});
+        to=setTimeout(()=>fin(undefined),CFG.seekWait);
         v.currentTime=t;});
       /* check the frame time by stepping: from a frame, nudge forward until the next frame shows; that gap is one frame.
          (the frame clock above can read 2 frames as one when the phone is busy) */
-      if(!opt.fps){let best=0;for(const base of [start+0.3,start+(end-start)/2]){const m0=await seekTo(base);if(m0==null)continue;
+      if(!opt.fps&&!R&&!root.RB_TEST_FPS){let best=0;for(const base of [start+0.3,start+(end-start)/2]){const m0=await seekTo(base);if(m0==null)continue;
         for(let st=1;st<=10;st++){const m=await seekTo(m0+st/120+1e-4);if(m!=null&&m>m0+1e-4){best=Math.max(best,1/(m-m0));break}}}
         if(best>0){let f1=best;for(const c of [24,25,30,48,50,60])if(Math.abs(f1-c)/c<0.08)f1=c;fps=Math.max(fps||0,Math.min(60,Math.round(f1)))}}
       fps=fps||30;
@@ -143,20 +157,81 @@
         /* still stuck after a few tries: load the video afresh once in a while (a new start often unsticks it) */
         if(stuckRun>=4&&stuckRun%25===4&&reloads<4){reloads++;try{v.removeAttribute('src');v.load();v.src=url;await new Promise(r=>{const f=()=>r();v.addEventListener('loadeddata',f,{once:true});setTimeout(f,3000)})}catch(e){}}
         try{await v.play()}catch(e){}await new Promise(r=>setTimeout(r,90));try{v.pause()}catch(e){}return seekTo(t)};
+      /* ---- keeping progress: finished frames are handed to opt.onSave in small batches (every few seconds, when the app
+         goes to the background, and when tracking stops), so a run that stops part-way (the phone froze the video, the
+         app was closed, or iOS reloaded the page) can carry on from there instead of starting again ---- */
+      const skipped=new Set(); let unsaved=[], lastSave=performance.now(), saving=Promise.resolve();
+      const lite=c=>c?{pts:c.pts,app:c.app||null,appRef:c.appRef||null,appN:c.appN||0,vel:c.vel||null}:null;
+      const recOf=k=>{if(skipped.has(k))return {k,skip:true};const s=slot[k];return s&&{k,row:s.row,wr:s.wr,mk:s.mk,wb:s.wb,h:hists.get(k)||null,pick:lite(s.pick)}};
+      saveNow=()=>{if(!opt.onSave||!unsaved.length)return saving;const recs=unsaved.map(recOf).filter(Boolean);unsaved=[];lastSave=performance.now();
+        const st={fps,start,end,n:want.length,cuts:[...cutAt],recs,done:slot.filter(Boolean).length+skipped.size};
+        saving=saving.then(()=>opt.onSave(st)).catch(()=>{});return saving};
+      onVis=()=>{if(document.hidden)saveNow()};document.addEventListener('visibilitychange',onVis);
+      if(R&&(R.n!==want.length||Math.abs((R.start||0)-start)>1e-3))R=null;   /* a different stretch of the clip: start afresh */
+      if(R){for(const q of R.recs){if(!(q.k>=0&&q.k<want.length))continue;
+          if(q.skip){skipped.add(q.k);continue}
+          slot[q.k]={row:q.row,wr:q.wr,mk:q.mk,wb:q.wb,pick:q.pick};if(q.h)hists.set(q.k,q.h)}
+        (R.cuts||[]).forEach(k=>cutAt.add(k));
+        done=slot.filter(Boolean).length+skipped.size;
+        if(opt.pick&&slot[anchor]&&slot[anchor].pick)pickPose=slot[anchor].pick;
+        if(opt.onProgress)opt.onProgress(Math.min(1,done/want.length))}
+      const resumed=R?done:0;
+      const isDone=k=>!!slot[k]||skipped.has(k);
+      const nextTodo=oi=>{for(let j=oi+1;j<order.length;j++)if(!isDone(order[j]))return order[j];return -1};
+      const stall=m=>Object.assign(new Error(m),{stall:true});
+      /* the RTMPose step can't hang the run: if it doesn't answer within CFG.rtmWait seconds of the app being on screen,
+         tracking stops (progress kept) so it can be started again */
+      const visWait=(p,sec,msg)=>new Promise((res,rej)=>{let c=0,ok=false;const iv=setInterval(()=>{if(ok)return;if(!document.hidden)c++;if(c>=sec){ok=true;clearInterval(iv);rej(stall(msg))}},1000);
+        p.then(x=>{if(ok)return;ok=true;clearInterval(iv);res(x)},e=>{if(ok)return;ok=true;clearInterval(iv);rej(e)})});
+      let revives=0, revived=0;
+      const revive=async()=>{if(++revives>CFG.maxRevives)throw stall('The video stopped giving frames');revived++;
+        try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove();v=makeVid();
+        await new Promise(r=>{const f=()=>r();v.addEventListener('loadeddata',f,{once:true});setTimeout(f,6000)});seekFails=0;lastSig=null};
+      /* the result from the frames finished so far: at the end (final), and while tracking for the live preview (no masks) */
+      const assemble=final=>{
+      /* frames in time order; drop repeats (a seek that landed on the same frame) */
+      const rows=[], worlds=[], masks=[], exts=[]; let last=-1;
+      for(const sl of slot.filter(Boolean).sort((x,y)=>x.row[0]-y.row[0])){const t=sl.row[0];if(t<=last+1e-4)continue;last=t;rows.push(sl.row);worlds.push(sl.wr);masks.push(sl.mk);exts.push(sl.wb)}
+      const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
+      const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
+      const seen=rows.filter(r=>!isNaN(r[1])).length;
+      /* RTMPose's extra points: both feet (heel, big toe, small toe) and all 21 points of each hand, per frame */
+      let ext=null;if(exts.some(Boolean)){ext=new Float32Array(rows.length*EXTN*3).fill(NaN);exts.forEach((w,i)=>{if(!w)return;EXTI.forEach((k,u)=>{const o=(i*EXTN+u)*3;if(w[k*3+2]>=0.3){ext[o]=w[k*3];ext[o+1]=w[k*3+1];ext[o+2]=w[k*3+2]}})})}
+      if(final&&root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
+      const cutTimes=[...cutAt].filter(k=>k>0&&k<want.length).map(k=>want[k]-0.5/fps).sort((a,b)=>a-b);
+      const cutRows=new Set();for(const ct of cutTimes){const i=rows.findIndex(r=>r[0]>=ct-0.25/fps);if(i>0)cutRows.add(i)}
+      const C=clean(data,world,rows.length,asp,{cuts:cutRows});
+      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
+      let mask=null; const withMask=final?masks.filter(Boolean).length:0;
+      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
+      return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
+        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null,resumed,revived,partial:!final};
+      };
+      let lastPartial=R?-1e9:performance.now();   /* carrying on: show what was kept straight away */
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
-        if(opt.signal&&opt.signal.aborted)break;
+        if(opt.signal&&opt.signal.aborted){await saveNow();throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})}
         if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false}   /* going backwards: start again from the tap */
+        if(isDone(k)){if(slot[k]){if(slot[k].pick){prev=slot[k].pick;lost=0}else lost++}continue}   /* finished in an earlier run */
+        /* the app is in the background: iPhone stops the video and the tracker, so keep what's done and wait to come back */
+        if(document.hidden){await saveNow();pending=null;await new Promise(r=>{const f=()=>{if(!document.hidden){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)});await new Promise(r=>setTimeout(r,400));seekFails=Math.max(seekFails,2)}
+        if(seekFails>=2){pending=null;await revive()}
+        if(performance.now()-lastSave>CFG.saveEvery)saveNow();
+        if(root.RB_TEST_HOOK)await root.RB_TEST_HOOK({k,done,v});
         /* the frame clock must agree with where we asked to go; after a long jump (going backwards) it can report a
            stale frame, so ask once more, then fall back to the requested time */
         const P0=performance.now();
         const tol=Math.max(1.5/fps,0.06);
-        let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null; if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
+        let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null;
+        /* the seek never answered: whatever picture is showing isn't this frame. Load the video afresh and try this frame again
+           (after CFG.maxRevives fresh players in a row, the run stops with progress kept) */
+        if(mt===undefined){await revive();oi--;continue}
+        if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
         /* no new frame showed (a variable-rate clip has fewer frames than the steps): nothing new to track here */
         /* (iPhone can stop reporting frames for a hidden video part-way through: skipping then dropped the rest of the
            clip, so the skeleton vanished after a few seconds. Now the frame is tracked at the asked time unless the frame
            clock is clearly working and says this step showed no new frame.) */
-        if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
+        if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){skipped.add(k);unsaved.push(k);if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
         else if(mt!=null){clockMiss=0;clockHits++}
         let P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
         let sig=sigOf();
@@ -166,15 +241,15 @@
            if(pending){try{await pending.p}catch(e){}pending=null}
             const m2=a<1?(await new Promise(r=>setTimeout(r,80)),await seekTo(want[k]+0.002)):await wake(want[k]+0.001*(a+1));
             cx.drawImage(v,0,0,cv.width,cv.height);sig=sigOf();if(m2!=null&&Math.abs(m2-want[k])<=tol)mt=m2}
-          if(same(sig,lastSig)){stale++;stuckRun++;if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
+          if(same(sig,lastSig)){stale++;stuckRun++;skipped.add(k);unsaved.push(k);if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
           P1=performance.now()}
-        stuckRun=0;lastSig=sig;
+        stuckRun=0;lastSig=sig;revives=0;
         {const h=histOf(sig);hists.set(k,h);sigs.set(k,sig);const nb=hists.has(k-1)?k-1:hists.has(k+1)?k+1:-1;
           if(nb>=0&&cutBetween(h,hists.get(nb),sig,sigs.get(nb))){cutAt.add(nb<k?k:nb);prev=null;lost=0;crossed=true}
           if(sigs.size>4){for(const q of sigs.keys())if(Math.abs(q-k)>2)sigs.delete(q)}}
         const t=mt!=null?mt:want[k]-0.5/fps;
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
-        if(oi+1<order.length&&!(opt.signal&&opt.signal.aborted)){const nk=order[oi+1];pending={k:nk,p:seekTo(want[nk])}}
+        {const nk=nextTodo(oi);if(nk>=0&&!(opt.signal&&opt.signal.aborted))pending={k:nk,p:seekTo(want[nk])}}
         const s=performance.now(); let cands=[], mk=null;
         const PR={};const D0=performance.now();rt.task.detect(cv,r=>{const D1=performance.now();PR.det=D1-D0;
           const L=r.landmarks||[], Wl=r.worldLandmarks||[];
@@ -199,32 +274,20 @@
         if(ch){if(prev&&!ch.vel){const a=geom(prev.pts,asp),b2=geom(ch.pts,asp),k2=1+lost,nv=[(b2.hp[0]-a.hp[0])/k2,(b2.hp[1]-a.hp[1])/k2],ov=prev.vel||nv;ch.vel=[0.6*ov[0]+0.4*nv[0],0.6*ov[1]+0.4*nv[1]]}
           learnLooks(prev,ch);
           prev=ch;lost=0;if(opt.pick&&!pickPose)pickPose=ch}else lost++;
-        let wb=null;if(ch&&rt.rtm){try{const R=await rtmRefine(rt.rtm,cv,ch.pts);if(R){wb=R.wb;ch.pts=R.pts}}catch(e){rt.rtm.errors=(rt.rtm.errors||0)+1}}
+        let wb=null;if(ch&&rt.rtm){try{const Rr=await visWait(rtmRefine(rt.rtm,cv,ch.pts),CFG.rtmWait,'RTMPose stopped answering');if(Rr){wb=Rr.wb;ch.pts=Rr.pts}}catch(e){if(e&&e.stall)throw e;rt.rtm.errors=(rt.rtm.errors||0)+1}}
         const row=new Float32Array(STRIDE); row[0]=t; const wr=new Float32Array(WS).fill(NaN);
         if(ch){for(let j=0;j<N;j++){row[1+j*3]=ch.pts[j][0];row[2+j*3]=ch.pts[j][1];row[3+j*3]=ch.pts[j][2]}
           if(ch.w)WJ.forEach((j,u)=>{wr[u*3]=ch.w[j][0];wr[u*3+1]=ch.w[j][1];wr[u*3+2]=ch.w[j][2]})}
         else row.fill(NaN,1);
-        slot[k]={row,wr,mk,pick:ch,wb:ch?wb:null};
+        slot[k]={row,wr,mk,pick:ch,wb:ch?wb:null};unsaved.push(k);
+        if(opt.onPartial&&performance.now()-lastPartial>CFG.partialEvery){lastPartial=performance.now();try{opt.onPartial(assemble(false))}catch(e){}}
         if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));
       }
-      /* frames in time order; drop repeats (a seek that landed on the same frame) */
-      const rows=[], worlds=[], masks=[], exts=[]; let last=-1;
-      for(const sl of slot.filter(Boolean).sort((x,y)=>x.row[0]-y.row[0])){const t=sl.row[0];if(t<=last+1e-4)continue;last=t;rows.push(sl.row);worlds.push(sl.wr);masks.push(sl.mk);exts.push(sl.wb)}
-      const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
-      const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
-      const seen=rows.filter(r=>!isNaN(r[1])).length;
-      /* RTMPose's extra points: both feet (heel, big toe, small toe) and all 21 points of each hand, per frame */
-      let ext=null;if(exts.some(Boolean)){ext=new Float32Array(rows.length*EXTN*3).fill(NaN);exts.forEach((w,i)=>{if(!w)return;EXTI.forEach((k,u)=>{const o=(i*EXTN+u)*3;if(w[k*3+2]>=0.3){ext[o]=w[k*3];ext[o+1]=w[k*3+1];ext[o+2]=w[k*3+2]}})})}
-      if(root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
-      const cutTimes=[...cutAt].filter(k=>k>0&&k<want.length).map(k=>want[k]-0.5/fps).sort((a,b)=>a-b);
-      const cutRows=new Set();for(const ct of cutTimes){const i=rows.findIndex(r=>r[0]>=ct-0.25/fps);if(i>0)cutRows.add(i)}
-      const C=clean(data,world,rows.length,asp,{cuts:cutRows});
-      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
-      let mask=null; const withMask=masks.filter(Boolean).length;
-      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
-      return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
-    }finally{cleanup()}
+      /* let a save that's still being written finish first, so it can't land after the app clears kept progress */
+      unsaved=[];await saving;
+      return assemble(true);
+    }catch(e){if(saveNow)try{await saveNow()}catch(_){}throw e}
+    finally{cleanup()}
   }
 
   /* ---------- following one dancer ----------

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-db09be1482'</script>
+<script>window.RS_BUILD='rs-0e28b32c18'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -554,6 +554,20 @@ details.more .field{margin-top:8px}
 
 /* RTMPose: get the model ready ahead of time */
 .rtmget{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.rtmget[hidden]{display:none}
+
+/* while the body tracks: progress, practise the tracked part, tap-the-beat, ready chime */
+.waitbar .hint{margin:0}
+.waitbar .lnhead .btn{margin-left:8px}
+.waitprog{margin:0}
+.waitbar.ready{border-color:var(--accent,#3ddc84)}
+.tapgame{display:grid;gap:8px}
+.tapgame[hidden]{display:none}
+.tappad{appearance:none;border:2px solid var(--line);border-radius:18px;background:var(--surface-2,rgba(255,255,255,.04));color:var(--ink);min-height:132px;display:grid;place-content:center;gap:4px;font:800 26px var(--f-body);touch-action:manipulation;user-select:none;-webkit-user-select:none;transition:transform .06s,border-color .1s,background .1s}
+.tappad small{font:600 14px var(--f-body);color:var(--muted)}
+.tappad:active{transform:scale(.98)}
+.tappad.perfect{border-color:#3ddc84;background:rgba(61,220,132,.14)}
+.tappad.good{border-color:#7DF9FF;background:rgba(125,249,255,.10)}
+.tappad.off{border-color:#FFB347;background:rgba(255,179,71,.10)}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -759,6 +773,19 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </details>
         <p class="hint" id="learnHow" hidden></p>
       </div>
+      <div class="learnbar waitbar" id="waitBar" hidden aria-label="While the body tracks">
+        <div class="lnhead"><b id="waitHead">Tracking the body</b><span class="lnloop" id="waitPct"></span><button type="button" class="btn sm" id="waitClose" hidden>Close</button></div>
+        <div class="prog waitprog"><i id="waitProg"></i></div>
+        <p class="hint" id="waitMsg"></p>
+        <div class="lnbtns" id="waitBtns" style="grid-template-columns:1fr 1fr"><button class="btn" id="waitPractise" type="button" aria-pressed="false">Practise the tracked part</button><button class="btn" id="waitTap" type="button" aria-pressed="false">Tap the beat</button></div>
+        <div class="tapgame" id="tapGame" hidden>
+          <button type="button" class="tappad" id="tapPad"><span id="tapBig">Get ready…</span><small id="tapSmall"></small></button>
+          <p class="hint" id="tapScore"></p>
+          <div class="row" id="tapUseRow" hidden><button class="btn sm" id="tapUse" type="button">Use it</button></div>
+        </div>
+        <label class="check"><input type="checkbox" id="waitChime" checked> Chime when it’s ready</label>
+        <button class="btn primary" id="waitCarry" type="button" hidden>Carry on tracking</button>
+      </div>
       <div class="learnbar snipbar" id="snipBar" hidden aria-label="Snip a routine">
         <div class="lnhead"><b>Snip a routine</b><span class="lnloop" id="snipCount"></span></div>
         <p class="hint" id="snipMsg"></p>
@@ -807,6 +834,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="subhead"><h3>Dancer’s body</h3></div>
           <div class="bodyrow mv-only" id="bodyRow">
             <button class="btn sm primary" id="bodyTrack" disabled>Track body</button>
+            <button class="btn sm" id="bodyFresh" hidden>Start over</button>
             <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
           </div>
@@ -1724,6 +1752,11 @@ if(typeof module!=='undefined')module.exports=RA;
     sdkURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs',
     wasmURL:'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm',
     modelURL:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+    seekWait:4000,    /* ms: a seek that hasn't answered by then counts as stuck */
+    rtmWait:30,       /* s on screen: RTMPose not answering by then stops the run (progress is kept) */
+    maxRevives:4,     /* fresh video players in a row before tracking stops (progress is kept) */
+    saveEvery:8000,   /* ms between progress saves while tracking */
+    partialEvery:4000,/* ms between live previews of the skeleton so far (opt.onPartial) */
     edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
     maskW:120,        /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
     numPoses:3,       /* people looked for per frame; the followed dancer is chosen by continuity */
@@ -1796,12 +1829,14 @@ if(typeof module!=='undefined')module.exports=RA;
      skipped however slow the phone is. Each sample keeps the frame's own media time. */
   async function track(url,opt){
     opt=opt||{}; const rt=await load();
-    const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.setAttribute('playsinline',''); v.preload='auto';
     /* shown as a small preview in the corner while it tracks: iPhone stops giving new frames to a video it can't see
        (an invisible one froze part-way, so the same picture was tracked again and again and the skeleton stood still) */
-    v.className='rb-trackvid';v.setAttribute('aria-hidden','true');
-    v.style.cssText='position:fixed;right:10px;bottom:calc(84px + env(safe-area-inset-bottom,0px));height:88px;width:auto;max-width:30vw;border-radius:10px;opacity:1;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.5);background:#000'; document.body.append(v); v.src=url;
-    const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove()};
+    const makeVid=()=>{const e=document.createElement('video'); e.muted=true; e.playsInline=true; e.setAttribute('playsinline',''); e.preload='auto';
+      e.className='rb-trackvid';e.setAttribute('aria-hidden','true');
+      e.style.cssText='position:fixed;right:10px;bottom:calc(84px + env(safe-area-inset-bottom,0px));height:88px;width:auto;max-width:30vw;border-radius:10px;opacity:1;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.5);background:#000'; document.body.append(e); e.src=url; return e};
+    let v=makeVid();
+    let saveNow=null, onVis=null;
+    const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove();if(onVis)document.removeEventListener('visibilitychange',onVis)};
     try{
       await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('This video could not be read for body tracking.'))});
       const W=v.videoWidth,H=v.videoHeight, sc=Math.min(1,CFG.edge/Math.max(W,H));
@@ -1809,18 +1844,25 @@ if(typeof module!=='undefined')module.exports=RA;
       const start=Math.max(0,opt.start||0), end=Math.min(v.duration||0,opt.end||v.duration||0);
       const hasRVFC=typeof v.requestVideoFrameCallback==='function';
       /* frame rate: play a moment and read the frame clock (falls back to 30) */
-      let fps=opt.fps||0;
+      /* carrying on from a run that stopped part-way: the frames it finished come back as they were */
+      let R=opt.resume&&opt.resume.fps&&opt.resume.n&&opt.resume.recs?opt.resume:null;
+      let fps=opt.fps||(R&&R.fps)||root.RB_TEST_FPS||0;
       if(!fps&&hasRVFC){const ts=[];await new Promise(res=>{let k=0;const cb=(now,m)=>{ts.push(m.mediaTime);if(++k<12)v.requestVideoFrameCallback(cb);else res()};v.requestVideoFrameCallback(cb);v.play().catch(res);setTimeout(res,1500)});v.pause();
         /* a busy phone skips frame callbacks, which makes gaps of 2 or 3 frames: the smallest gap is the real frame time */
         const d=[];for(let i=1;i<ts.length;i++)if(ts[i]-ts[i-1]>0.008)d.push(ts[i]-ts[i-1]);d.sort((a,b)=>a-b);const md=d.length?d[0]:1/30;
         let f0=1/md;for(const c of [24,25,30,48,50,60])if(Math.abs(f0-c)/c<0.08)f0=c;fps=Math.min(60,Math.max(15,Math.round(f0)))}
-      const seekTo=t=>new Promise(res=>{let done=false;const fin=m=>{if(done)return;done=true;res(m)};
+      /* a seek that never answers (seen on iPhone: the video stops decoding and neither the frame clock nor 'seeked' ever
+         fires, so tracking froze for good part-way) gives up after a few seconds and is counted; two in a row and the
+         video is loaded afresh in a new player */
+      let seekFails=0;
+      const seekTo=t=>new Promise(res=>{let done=false,to=0;const el=v;const fin=m=>{if(done)return;done=true;clearTimeout(to);if(el===v){if(m===undefined)seekFails++;else seekFails=0}res(m)};
         if(hasRVFC)v.requestVideoFrameCallback((now,m)=>fin(m.mediaTime));
         v.addEventListener('seeked',()=>setTimeout(()=>fin(null),hasRVFC?120:30),{once:true});
+        to=setTimeout(()=>fin(undefined),CFG.seekWait);
         v.currentTime=t;});
       /* check the frame time by stepping: from a frame, nudge forward until the next frame shows; that gap is one frame.
          (the frame clock above can read 2 frames as one when the phone is busy) */
-      if(!opt.fps){let best=0;for(const base of [start+0.3,start+(end-start)/2]){const m0=await seekTo(base);if(m0==null)continue;
+      if(!opt.fps&&!R&&!root.RB_TEST_FPS){let best=0;for(const base of [start+0.3,start+(end-start)/2]){const m0=await seekTo(base);if(m0==null)continue;
         for(let st=1;st<=10;st++){const m=await seekTo(m0+st/120+1e-4);if(m!=null&&m>m0+1e-4){best=Math.max(best,1/(m-m0));break}}}
         if(best>0){let f1=best;for(const c of [24,25,30,48,50,60])if(Math.abs(f1-c)/c<0.08)f1=c;fps=Math.max(fps||0,Math.min(60,Math.round(f1)))}}
       fps=fps||30;
@@ -1853,20 +1895,81 @@ if(typeof module!=='undefined')module.exports=RA;
         /* still stuck after a few tries: load the video afresh once in a while (a new start often unsticks it) */
         if(stuckRun>=4&&stuckRun%25===4&&reloads<4){reloads++;try{v.removeAttribute('src');v.load();v.src=url;await new Promise(r=>{const f=()=>r();v.addEventListener('loadeddata',f,{once:true});setTimeout(f,3000)})}catch(e){}}
         try{await v.play()}catch(e){}await new Promise(r=>setTimeout(r,90));try{v.pause()}catch(e){}return seekTo(t)};
+      /* ---- keeping progress: finished frames are handed to opt.onSave in small batches (every few seconds, when the app
+         goes to the background, and when tracking stops), so a run that stops part-way (the phone froze the video, the
+         app was closed, or iOS reloaded the page) can carry on from there instead of starting again ---- */
+      const skipped=new Set(); let unsaved=[], lastSave=performance.now(), saving=Promise.resolve();
+      const lite=c=>c?{pts:c.pts,app:c.app||null,appRef:c.appRef||null,appN:c.appN||0,vel:c.vel||null}:null;
+      const recOf=k=>{if(skipped.has(k))return {k,skip:true};const s=slot[k];return s&&{k,row:s.row,wr:s.wr,mk:s.mk,wb:s.wb,h:hists.get(k)||null,pick:lite(s.pick)}};
+      saveNow=()=>{if(!opt.onSave||!unsaved.length)return saving;const recs=unsaved.map(recOf).filter(Boolean);unsaved=[];lastSave=performance.now();
+        const st={fps,start,end,n:want.length,cuts:[...cutAt],recs,done:slot.filter(Boolean).length+skipped.size};
+        saving=saving.then(()=>opt.onSave(st)).catch(()=>{});return saving};
+      onVis=()=>{if(document.hidden)saveNow()};document.addEventListener('visibilitychange',onVis);
+      if(R&&(R.n!==want.length||Math.abs((R.start||0)-start)>1e-3))R=null;   /* a different stretch of the clip: start afresh */
+      if(R){for(const q of R.recs){if(!(q.k>=0&&q.k<want.length))continue;
+          if(q.skip){skipped.add(q.k);continue}
+          slot[q.k]={row:q.row,wr:q.wr,mk:q.mk,wb:q.wb,pick:q.pick};if(q.h)hists.set(q.k,q.h)}
+        (R.cuts||[]).forEach(k=>cutAt.add(k));
+        done=slot.filter(Boolean).length+skipped.size;
+        if(opt.pick&&slot[anchor]&&slot[anchor].pick)pickPose=slot[anchor].pick;
+        if(opt.onProgress)opt.onProgress(Math.min(1,done/want.length))}
+      const resumed=R?done:0;
+      const isDone=k=>!!slot[k]||skipped.has(k);
+      const nextTodo=oi=>{for(let j=oi+1;j<order.length;j++)if(!isDone(order[j]))return order[j];return -1};
+      const stall=m=>Object.assign(new Error(m),{stall:true});
+      /* the RTMPose step can't hang the run: if it doesn't answer within CFG.rtmWait seconds of the app being on screen,
+         tracking stops (progress kept) so it can be started again */
+      const visWait=(p,sec,msg)=>new Promise((res,rej)=>{let c=0,ok=false;const iv=setInterval(()=>{if(ok)return;if(!document.hidden)c++;if(c>=sec){ok=true;clearInterval(iv);rej(stall(msg))}},1000);
+        p.then(x=>{if(ok)return;ok=true;clearInterval(iv);res(x)},e=>{if(ok)return;ok=true;clearInterval(iv);rej(e)})});
+      let revives=0, revived=0;
+      const revive=async()=>{if(++revives>CFG.maxRevives)throw stall('The video stopped giving frames');revived++;
+        try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove();v=makeVid();
+        await new Promise(r=>{const f=()=>r();v.addEventListener('loadeddata',f,{once:true});setTimeout(f,6000)});seekFails=0;lastSig=null};
+      /* the result from the frames finished so far: at the end (final), and while tracking for the live preview (no masks) */
+      const assemble=final=>{
+      /* frames in time order; drop repeats (a seek that landed on the same frame) */
+      const rows=[], worlds=[], masks=[], exts=[]; let last=-1;
+      for(const sl of slot.filter(Boolean).sort((x,y)=>x.row[0]-y.row[0])){const t=sl.row[0];if(t<=last+1e-4)continue;last=t;rows.push(sl.row);worlds.push(sl.wr);masks.push(sl.mk);exts.push(sl.wb)}
+      const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
+      const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
+      const seen=rows.filter(r=>!isNaN(r[1])).length;
+      /* RTMPose's extra points: both feet (heel, big toe, small toe) and all 21 points of each hand, per frame */
+      let ext=null;if(exts.some(Boolean)){ext=new Float32Array(rows.length*EXTN*3).fill(NaN);exts.forEach((w,i)=>{if(!w)return;EXTI.forEach((k,u)=>{const o=(i*EXTN+u)*3;if(w[k*3+2]>=0.3){ext[o]=w[k*3];ext[o+1]=w[k*3+1];ext[o+2]=w[k*3+2]}})})}
+      if(final&&root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
+      const cutTimes=[...cutAt].filter(k=>k>0&&k<want.length).map(k=>want[k]-0.5/fps).sort((a,b)=>a-b);
+      const cutRows=new Set();for(const ct of cutTimes){const i=rows.findIndex(r=>r[0]>=ct-0.25/fps);if(i>0)cutRows.add(i)}
+      const C=clean(data,world,rows.length,asp,{cuts:cutRows});
+      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
+      let mask=null; const withMask=final?masks.filter(Boolean).length:0;
+      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
+      return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
+        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null,resumed,revived,partial:!final};
+      };
+      let lastPartial=R?-1e9:performance.now();   /* carrying on: show what was kept straight away */
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
-        if(opt.signal&&opt.signal.aborted)break;
+        if(opt.signal&&opt.signal.aborted){await saveNow();throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})}
         if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false}   /* going backwards: start again from the tap */
+        if(isDone(k)){if(slot[k]){if(slot[k].pick){prev=slot[k].pick;lost=0}else lost++}continue}   /* finished in an earlier run */
+        /* the app is in the background: iPhone stops the video and the tracker, so keep what's done and wait to come back */
+        if(document.hidden){await saveNow();pending=null;await new Promise(r=>{const f=()=>{if(!document.hidden){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)});await new Promise(r=>setTimeout(r,400));seekFails=Math.max(seekFails,2)}
+        if(seekFails>=2){pending=null;await revive()}
+        if(performance.now()-lastSave>CFG.saveEvery)saveNow();
+        if(root.RB_TEST_HOOK)await root.RB_TEST_HOOK({k,done,v});
         /* the frame clock must agree with where we asked to go; after a long jump (going backwards) it can report a
            stale frame, so ask once more, then fall back to the requested time */
         const P0=performance.now();
         const tol=Math.max(1.5/fps,0.06);
-        let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null; if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
+        let mt=pending&&pending.k===k?await pending.p:await seekTo(want[k]); pending=null;
+        /* the seek never answered: whatever picture is showing isn't this frame. Load the video afresh and try this frame again
+           (after CFG.maxRevives fresh players in a row, the run stops with progress kept) */
+        if(mt===undefined){await revive();oi--;continue}
+        if(mt!=null&&Math.abs(mt-want[k])>tol){mt=await seekTo(want[k]+1e-3);if(mt!=null&&Math.abs(mt-want[k])>tol)mt=null}
         /* no new frame showed (a variable-rate clip has fewer frames than the steps): nothing new to track here */
         /* (iPhone can stop reporting frames for a hidden video part-way through: skipping then dropped the rest of the
            clip, so the skeleton vanished after a few seconds. Now the frame is tracked at the asked time unless the frame
            clock is clearly working and says this step showed no new frame.) */
-        if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
+        if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){skipped.add(k);unsaved.push(k);if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
         else if(mt!=null){clockMiss=0;clockHits++}
         let P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
         let sig=sigOf();
@@ -1876,15 +1979,15 @@ if(typeof module!=='undefined')module.exports=RA;
            if(pending){try{await pending.p}catch(e){}pending=null}
             const m2=a<1?(await new Promise(r=>setTimeout(r,80)),await seekTo(want[k]+0.002)):await wake(want[k]+0.001*(a+1));
             cx.drawImage(v,0,0,cv.width,cv.height);sig=sigOf();if(m2!=null&&Math.abs(m2-want[k])<=tol)mt=m2}
-          if(same(sig,lastSig)){stale++;stuckRun++;if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
+          if(same(sig,lastSig)){stale++;stuckRun++;skipped.add(k);unsaved.push(k);if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}
           P1=performance.now()}
-        stuckRun=0;lastSig=sig;
+        stuckRun=0;lastSig=sig;revives=0;
         {const h=histOf(sig);hists.set(k,h);sigs.set(k,sig);const nb=hists.has(k-1)?k-1:hists.has(k+1)?k+1:-1;
           if(nb>=0&&cutBetween(h,hists.get(nb),sig,sigs.get(nb))){cutAt.add(nb<k?k:nb);prev=null;lost=0;crossed=true}
           if(sigs.size>4){for(const q of sigs.keys())if(Math.abs(q-k)>2)sigs.delete(q)}}
         const t=mt!=null?mt:want[k]-0.5/fps;
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
-        if(oi+1<order.length&&!(opt.signal&&opt.signal.aborted)){const nk=order[oi+1];pending={k:nk,p:seekTo(want[nk])}}
+        {const nk=nextTodo(oi);if(nk>=0&&!(opt.signal&&opt.signal.aborted))pending={k:nk,p:seekTo(want[nk])}}
         const s=performance.now(); let cands=[], mk=null;
         const PR={};const D0=performance.now();rt.task.detect(cv,r=>{const D1=performance.now();PR.det=D1-D0;
           const L=r.landmarks||[], Wl=r.worldLandmarks||[];
@@ -1909,32 +2012,20 @@ if(typeof module!=='undefined')module.exports=RA;
         if(ch){if(prev&&!ch.vel){const a=geom(prev.pts,asp),b2=geom(ch.pts,asp),k2=1+lost,nv=[(b2.hp[0]-a.hp[0])/k2,(b2.hp[1]-a.hp[1])/k2],ov=prev.vel||nv;ch.vel=[0.6*ov[0]+0.4*nv[0],0.6*ov[1]+0.4*nv[1]]}
           learnLooks(prev,ch);
           prev=ch;lost=0;if(opt.pick&&!pickPose)pickPose=ch}else lost++;
-        let wb=null;if(ch&&rt.rtm){try{const R=await rtmRefine(rt.rtm,cv,ch.pts);if(R){wb=R.wb;ch.pts=R.pts}}catch(e){rt.rtm.errors=(rt.rtm.errors||0)+1}}
+        let wb=null;if(ch&&rt.rtm){try{const Rr=await visWait(rtmRefine(rt.rtm,cv,ch.pts),CFG.rtmWait,'RTMPose stopped answering');if(Rr){wb=Rr.wb;ch.pts=Rr.pts}}catch(e){if(e&&e.stall)throw e;rt.rtm.errors=(rt.rtm.errors||0)+1}}
         const row=new Float32Array(STRIDE); row[0]=t; const wr=new Float32Array(WS).fill(NaN);
         if(ch){for(let j=0;j<N;j++){row[1+j*3]=ch.pts[j][0];row[2+j*3]=ch.pts[j][1];row[3+j*3]=ch.pts[j][2]}
           if(ch.w)WJ.forEach((j,u)=>{wr[u*3]=ch.w[j][0];wr[u*3+1]=ch.w[j][1];wr[u*3+2]=ch.w[j][2]})}
         else row.fill(NaN,1);
-        slot[k]={row,wr,mk,pick:ch,wb:ch?wb:null};
+        slot[k]={row,wr,mk,pick:ch,wb:ch?wb:null};unsaved.push(k);
+        if(opt.onPartial&&performance.now()-lastPartial>CFG.partialEvery){lastPartial=performance.now();try{opt.onPartial(assemble(false))}catch(e){}}
         if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));
       }
-      /* frames in time order; drop repeats (a seek that landed on the same frame) */
-      const rows=[], worlds=[], masks=[], exts=[]; let last=-1;
-      for(const sl of slot.filter(Boolean).sort((x,y)=>x.row[0]-y.row[0])){const t=sl.row[0];if(t<=last+1e-4)continue;last=t;rows.push(sl.row);worlds.push(sl.wr);masks.push(sl.mk);exts.push(sl.wb)}
-      const data=new Float32Array(rows.length*STRIDE); rows.forEach((r,i)=>data.set(r,i*STRIDE));
-      const world=new Float32Array(rows.length*WS); worlds.forEach((r,i)=>world.set(r,i*WS));
-      const seen=rows.filter(r=>!isNaN(r[1])).length;
-      /* RTMPose's extra points: both feet (heel, big toe, small toe) and all 21 points of each hand, per frame */
-      let ext=null;if(exts.some(Boolean)){ext=new Float32Array(rows.length*EXTN*3).fill(NaN);exts.forEach((w,i)=>{if(!w)return;EXTI.forEach((k,u)=>{const o=(i*EXTN+u)*3;if(w[k*3+2]>=0.3){ext[o]=w[k*3];ext[o+1]=w[k*3+1];ext[o+2]=w[k*3+2]}})})}
-      if(root.RB_RAW)root.RB_RAW.push({data:data.slice(),n:rows.length});   /* tests: the tracker's own output, before cleaning */
-      const cutTimes=[...cutAt].filter(k=>k>0&&k<want.length).map(k=>want[k]-0.5/fps).sort((a,b)=>a-b);
-      const cutRows=new Set();for(const ct of cutTimes){const i=rows.findIndex(r=>r[0]>=ct-0.25/fps);if(i>0)cutRows.add(i)}
-      const C=clean(data,world,rows.length,asp,{cuts:cutRows});
-      /* masks packed in frame order; frames without a person get an empty (all-zero) mask */
-      let mask=null; const withMask=masks.filter(Boolean).length;
-      if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
-      return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null};
-    }finally{cleanup()}
+      /* let a save that's still being written finish first, so it can't land after the app clears kept progress */
+      unsaved=[];await saving;
+      return assemble(true);
+    }catch(e){if(saveNow)try{await saveNow()}catch(_){}throw e}
+    finally{cleanup()}
   }
 
   /* ---------- following one dancer ----------
@@ -2767,7 +2858,7 @@ function enable(){
   ['#scrub','#inRange','#setOut','#clearOut','#repeat','#markIn','#markOut'].forEach(id=>$(id).disabled=!hv);
   $$('[data-in]').forEach(b=>b.disabled=!hv);
   $('#recBtn').disabled=!(hv&&S.hasA&&buf);
-  {const bn=srcById(S.cur);$('#bodyTrack').disabled=!(bn&&!bn.missing&&bn.url)||!!S.bodyBusy;$('#bodyTrack').textContent=bn&&bodyOf(bn)?'Track again':'Track body'}
+  {const bn=srcById(S.cur);$('#bodyTrack').disabled=!(bn&&!bn.missing&&bn.url)||!!S.bodyBusy;$('#bodyTrack').textContent=bn&&cpOf(bn)&&!S.bodyBusy?'Carry on tracking':bn&&bodyOf(bn)?'Track again':'Track body';$('#bodyFresh').hidden=!(bn&&cpOf(bn))||!!S.bodyBusy}
   const cn=srcById(S.cur); $('#danceAnalyze').disabled=!(cn&&!cn.missing)||!!S.analyzing; renderDance();
   updateCutter();
 }
@@ -3966,11 +4057,12 @@ async function mediaKeep(){
   (await projAll()).forEach(p=>{try{const d=JSON.parse(p.data);(d.sources||[]).forEach(m=>m&&m.key&&keep.add(m.key));[d.mainSong,d.rtSong].forEach(m=>m&&m.key&&keep.add(m.key))}catch(e){}});
   return keep;
 }
-const isKept=(keep,k)=>keep.has(k)||(String(k).startsWith('body:')&&keep.has(String(k).slice(5)));
+const isKept=(keep,k)=>keep.has(k)||(String(k).startsWith('body:')&&keep.has(String(k).slice(5)))||(String(k).startsWith('bodypart:')&&keep.has(String(k).slice(9).replace(/#\d+$/,'')));
 function sizeOf(v){
   if(!v)return 0; if(typeof Blob!=='undefined'&&v instanceof Blob)return v.size;
   if(v.data&&v.data.byteLength!=null){let s=2048;for(const f of ['data','world','hips'])if(v[f]&&v[f].byteLength)s+=v[f].byteLength;return s}
   if(v.byteLength!=null)return v.byteLength;
+  if(Array.isArray(v)){let s=0;for(const q of v)if(q&&typeof q==='object')for(const f in q)if(q[f]&&q[f].byteLength)s+=q[f].byteLength;return s+v.length*64}
   try{return JSON.stringify(v).length}catch(e){return 0}
 }
 /* walk the media store with a cursor so nothing is read twice; blobs stay on disk, only their size is asked */
@@ -3978,7 +4070,7 @@ async function storageScan(){
   const keep=await mediaKeep(), out={media:0,body:0,unused:0,unusedN:0,projects:0,projectsN:0,total:null,quota:null,persisted:null};
   await idb().then(d=>new Promise((res,rej)=>{const t=d.transaction('media','readonly'),r=t.objectStore('media').openCursor();
     r.onsuccess=()=>{const c=r.result;if(!c)return;const k=String(c.key),sz=sizeOf(c.value);
-      if(!isKept(keep,k)){out.unused+=sz;out.unusedN++}else if(k.startsWith('body:'))out.body+=sz;else out.media+=sz;c.continue()};
+      if(!isKept(keep,k)){out.unused+=sz;out.unusedN++}else if(k.startsWith('body:')||k.startsWith('bodypart:'))out.body+=sz;else out.media+=sz;c.continue()};
     t.oncomplete=res;t.onerror=()=>rej(t.error)})).catch(()=>{});
   (await projAll()).forEach(p=>{out.projectsN++;out.projects+=(p.data||'').length*2});
   try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();out.total=e.usage;out.quota=e.quota}}catch(e){}
@@ -4300,9 +4392,12 @@ function shownT(el){if(!el)return 0;
   if(!el.__rvfc&&typeof el.requestVideoFrameCallback==='function'){el.__rvfc=true;const cb=(now,m)=>{el.__mt=m.mediaTime;el.__mtAt=performance.now();el.requestVideoFrameCallback(cb)};el.requestVideoFrameCallback(cb)}
   return S.playing&&!el.paused&&!el.seeking&&el.__mt!=null&&performance.now()-el.__mtAt<120&&Math.abs(el.__mt-el.currentTime)<0.25?el.__mt:el.currentTime}
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.liveBody?S.liveBody.B.n:0,S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
-  const el=curVid(), n=el&&srcOfEl(el), B=n&&bodyOf(n), on=($('#bodyShow').checked||S.cutOn)&&!!B;
+  const el=curVid(), n=el&&srcOfEl(el), B0=n&&bodyOf(n), L=!B0&&n&&S.liveBody&&S.liveBody.src===n.id?S.liveBody:null, B=B0||(L&&L.B);
+  /* while it tracks: the skeleton so far, only over the part that's tracked */
+  const inLive=!L||(el&&shownT(el)>=L.from-0.05&&shownT(el)<=L.to+0.05);
+  const on=($('#bodyShow').checked||S.cutOn)&&!!B&&inLive;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
   /* while the video is seeking (a loop restarting, a jump) it still shows the old frame: drawing the new pose over it
      puts the skeleton on the wrong picture (e.g. the end screen), so draw nothing until the frame arrives */
@@ -4330,23 +4425,208 @@ function hitsFromBody(n){
   n.motion=Object.assign(m,{beats:m.beats.concat(mine).sort((a,b)=>a.t-b.t),edited:mine.length>0,source:'pose',confirmed:false});
   return true;
 }
-$('#bodyTrack').addEventListener('click',async()=>{
+/* ---------- tracking that carries on ----------
+   Progress is kept as it goes (bodypart:<key>, plus numbered pieces of finished frames). If tracking gets stuck it starts
+   itself again from where it was (twice); if it still stops, or the app was closed, Carry on tracking picks up from there.
+   The screen is kept on while it tracks, since a locked phone stops it. */
+const cpKey=n=>'bodypart:'+n.key;
+function cpTag(n){const pk=S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null;return RB.modelName()+'|'+(pk?[pk.t,pk.x,pk.y].map(x=>(+x||0).toFixed(3)).join(','):'')}
+function cpOf(n){if(!n||!n.key)return null;if(n.cp===undefined){n.cp=null;mediaGet(cpKey(n)).then(h=>{if(h&&h.chunks&&n.cp===null){n.cp=h;enable();dockUpdate()}}).catch(()=>{})}return n.cp}
+async function cpClear(n){const h=n.cp||await mediaGet(cpKey(n));n.cp=null;await mediaDel(cpKey(n));if(h&&h.chunks)for(let i=0;i<h.chunks;i++)await mediaDel(cpKey(n)+'#'+i)}
+async function cpLoad(n){const h=await mediaGet(cpKey(n));if(!h||!h.chunks)return null;n.cp=h;if(h.tag!==cpTag(n))return null;
+  const recs=[];for(let i=0;i<h.chunks;i++){const c=await mediaGet(cpKey(n)+'#'+i);if(!c)return null;for(const q of c)recs.push(q)}
+  return {fps:h.fps,n:h.n,start:h.start,cuts:h.cuts,recs}}
+function cpSaver(n){const tag=cpTag(n);return async st=>{let h=n.cp&&n.cp.tag===tag?n.cp:null;if(!h){await cpClear(n);h={tag,chunks:0}}
+  await mediaPut(cpKey(n)+'#'+h.chunks,st.recs);
+  h={...h,fps:st.fps,n:st.n,start:st.start,cuts:st.cuts,chunks:h.chunks+1,done:st.done,pct:Math.min(99,Math.floor(st.done/st.n*100)),at:Date.now()};
+  await mediaPut(cpKey(n),h);n.cp=h}}
+const TRACK_STALL_MS=45000;   /* no progress for this long, with the app on screen: stop and start again from where it was */
+async function runTrack(fresh){
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
-  S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyStartAt=performance.now(); S.bodyLeft=''; $('#bodyTrack').disabled=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
+  S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyStartAt=performance.now(); S.bodyLeft=''; S.bodyPct=0; $('#bodyTrack').disabled=true; $('#bodyFresh').hidden=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   const dlIv=setInterval(()=>{if(!S.bodyBusy||S.bodyT0){clearInterval(dlIv);return}const st=RB.rtmStatus();if(st.state==='loading'&&st.got>0&&!S.rtmCached){$('#bodyInfo').textContent='Downloading the RTMPose model (first time only)… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB':' MB');if(st.total)bar.style.width=Math.min(100,Math.round(st.got/st.total*100))+'%'}},300);
+  let wl=null;const lock=async()=>{try{if(navigator.wakeLock&&!document.hidden&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}}catch(e){}};
+  const onVis=()=>{if(!document.hidden&&S.bodyBusy)lock()};document.addEventListener('visibilitychange',onVis);lock();
+  const pick=S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null;
+  let resume=null, tries=0;
+  waitStart(n);
   try{
-    const B=await RB.track(n.url,{pick:S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null,onProgress:p=>{if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);$('#bodyInfo').textContent='Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate()}});
-    try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n);if(el2>5)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
-    if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
-    n.body=B; if(n.key)mediaPut('body:'+n.key,B).catch(()=>{});
-    RB.rtmCached().then(c=>{if(c)S.rtmCached=true}).catch(()=>{});
-    const got=hitsFromBody(n);
-    $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
-    if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
-  }catch(e){S.bodyErr='Body tracking didn’t run: '+((e&&e.message)||e);$('#bodyInfo').textContent=S.bodyErr}
-  finally{S.bodyBusy=false;$('#bodyProg').hidden=true;enable();renderDance();renderMoves();updateMatch();scheduleFit();drawHitStrip()}
+    if(fresh)await cpClear(n).catch(()=>{});
+    else{try{resume=await cpLoad(n)}catch(e){resume=null}}
+    for(;;){
+      const ac=new AbortController(); let lastP=performance.now(), from=null; const carry=!!resume;
+      const wd=setInterval(()=>{if(document.hidden||!S.bodyT0){lastP=performance.now();return}if(performance.now()-lastP>TRACK_STALL_MS)ac.abort()},2000);
+      S.trackRun={ac};
+      try{
+        const B=await RB.track(n.url,{pick,resume,signal:ac.signal,onSave:cpSaver(n),onPartial:B=>waitPartial(n,B),onProgress:p=>{lastP=performance.now();if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);
+          if(carry&&from==null)from=S.bodyPct;$('#bodyInfo').textContent=(from!=null&&from<100?'Carrying on from '+from+'% · ':'')+'Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate();waitUI()}});
+        clearInterval(wd);
+        try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n-(B.resumed||0));if(el2>5&&!B.resumed)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
+        if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
+        n.body=B; if(n.key)await mediaPut('body:'+n.key,B).catch(()=>{});
+        await cpClear(n).catch(()=>{});
+        RB.rtmCached().then(c=>{if(c)S.rtmCached=true}).catch(()=>{});
+        const got=hitsFromBody(n);
+        $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
+        if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
+        waitDone(n,true);
+        break;
+      }catch(e){clearInterval(wd);
+        const stuck=!!(e&&(e.stall||e.name==='AbortError'))&&!(S.trackRun&&S.trackRun.user);
+        if(stuck&&++tries<=2){
+          $('#bodyInfo').textContent='Tracking got stuck at '+(S.bodyPct||0)+'%. Starting it again from there…';
+          S.bodyT0=null; waitUI(); await new Promise(r=>setTimeout(r,800)); resume=await cpLoad(n).catch(()=>null); continue}
+        throw e}
+    }
+  }catch(e){
+    const why=(e&&e.message)||String(e), cp=n.cp;
+    S.bodyErr=S.trackRun&&S.trackRun.user?(cp?`Tracking paused at ${cp.pct}%. Carry on tracking picks up from there.`:'Tracking stopped.')
+      :cp?`Tracking stopped at ${cp.pct}% (${why.replace(/\.$/,'')}). Tap Carry on tracking to pick up from there.`:'Body tracking didn’t run: '+why;
+    $('#bodyInfo').textContent=S.bodyErr;waitDone(n,false)}
+  finally{S.trackRun=null;S.liveBody=null;bodyKey='';clearInterval(dlIv);document.removeEventListener('visibilitychange',onVis);try{wl&&wl.release()}catch(e){}
+    S.bodyBusy=false;$('#bodyProg').hidden=true;enable();renderDance();renderMoves();updateMatch();scheduleFit();drawHitStrip();dockUpdate()}
+}
+$('#bodyTrack').addEventListener('click',()=>runTrack(false));
+$('#bodyFresh').addEventListener('click',()=>runTrack(true));
+/* ---------- while the body tracks ----------
+   A bar under the player while tracking runs: progress, Practise the tracked part (the clip plays and loops over the part
+   already tracked, with the skeleton on it, growing as tracking goes), Tap the beat (a short game to the song) and a chime
+   when it's ready. */
+S.liveBody=null; S.waitPrac=false;
+try{if(localStorage.getItem('rs-wait-chime')==='0')$('#waitChime').checked=false}catch(e){}
+$('#waitChime').addEventListener('change',e=>{try{localStorage.setItem('rs-wait-chime',e.target.checked?'1':'0')}catch(err){}});
+let waitHideT=0;
+function waitStart(n){
+  clearTimeout(waitHideT); const W=$('#waitBar'); W.hidden=false; W.classList.remove('ready');
+  $('#waitHead').textContent='Tracking the body'; $('#waitClose').hidden=true; $('#waitBtns').hidden=false; $('#waitCarry').hidden=true; $('#waitChime').parentElement.hidden=false;
+  /* the chime needs the sound engine started inside a tap (iPhone): this is that tap */
+  if($('#waitChime').checked)try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}catch(e){}
+  waitUI();
+  /* Track is tapped further down the page: bring the bar into view so the games are seen */
+  requestAnimationFrame(()=>{try{W.scrollIntoView({block:'nearest',behavior:'smooth'})}catch(e){}});
+}
+function waitPartial(n,B){
+  if(!B||B.n<6)return; const st=RB.STRIDE;
+  S.liveBody={src:n.id,B,from:B.data[0],to:B.data[(B.n-1)*st]}; bodyKey=''; waitUI();
+}
+function waitUI(){
+  const W=$('#waitBar'); if(W.hidden||W.classList.contains('ready'))return;
+  const p=S.bodyPct||0, L=S.liveBody;
+  $('#waitPct').textContent=S.bodyT0?p+'%'+(S.bodyLeft?' · '+S.bodyLeft:''):'';
+  $('#waitProg').style.width=(S.bodyT0?p:0)+'%';
+  $('#waitPractise').setAttribute('aria-pressed',String(S.waitPrac)); $('#waitPractise').textContent=S.waitPrac?'Stop practising':'Practise the tracked part';
+  $('#waitPractise').disabled=!L;
+  if(TAP.on)return;
+  $('#waitMsg').textContent=!S.bodyT0?'Getting the tracker ready…'
+    :S.waitPrac&&L?`Practising the first ${fmt(Math.max(0,L.to-S.cIn))} (tracked so far), on repeat. It grows as tracking goes.`
+    :L?`The skeleton is ready up to ${fmt(L.to)}. Practise that part now, or warm up with Tap the beat. Stay in the app: iPhone pauses tracking when you leave it.`
+    :'Stay in the app while it tracks: iPhone pauses tracking when you leave it. The first seconds of skeleton show up shortly.';
+}
+function waitDone(n,ok){
+  const W=$('#waitBar'); if(TAP.on)tapStop(false); waitPracOff();
+  if(!ok){W.hidden=false;W.classList.remove('ready');$('#waitHead').textContent='Tracking stopped';$('#waitPct').textContent='';$('#waitMsg').textContent=S.bodyErr||'';$('#waitBtns').hidden=true;$('#waitCarry').hidden=!(n.cp);$('#waitClose').hidden=false;$('#waitChime').parentElement.hidden=true;return}
+  W.classList.add('ready'); $('#waitHead').textContent='Ready'; $('#waitPct').textContent='100%'; $('#waitProg').style.width='100%';
+  $('#waitMsg').textContent='The skeleton is on the whole clip. Press play to see it.'; $('#waitBtns').hidden=true; $('#waitClose').hidden=false; $('#waitCarry').hidden=true; $('#waitChime').parentElement.hidden=true;
+  if($('#waitChime').checked)waitChime();
+  S.waitChimed=(S.waitChimed||0)+1;
+  waitHideT=setTimeout(()=>{W.hidden=true;W.classList.remove('ready')},12000);
+}
+/* a bright three-note chime on the sound engine */
+function waitChime(){try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{});const t=c.currentTime+0.05;
+  [[784,0],[1175,0.13],[1568,0.26]].forEach(([f,d])=>{const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+d);g.gain.exponentialRampToValueAtTime(0.35,t+d+0.01);g.gain.exponentialRampToValueAtTime(0.001,t+d+0.6);o.connect(g);g.connect(c.destination);o.start(t+d);o.stop(t+d+0.65)})}catch(e){}}
+$('#waitClose').addEventListener('click',()=>{clearTimeout(waitHideT);$('#waitBar').hidden=true;$('#waitBar').classList.remove('ready')});
+$('#waitCarry').addEventListener('click',()=>{$('#waitBar').hidden=true;runTrack(false)});
+/* practise the tracked part: play from the clip's start and loop back before the end of what's tracked */
+function waitPracOff(){if(!S.waitPrac)return;S.waitPrac=false;if(S.playing)pause();waitUI()}
+$('#waitPractise').addEventListener('click',()=>{
+  if(S.waitPrac){waitPracOff();return}
+  const L=S.liveBody; if(!L)return; if(TAP.on)tapStop(false);
+  if(L.to-Math.max(S.cIn||0,L.from)<1){$('#waitMsg').textContent='Only a moment is tracked so far. Try again in a few seconds.';return}
+  if(routineOn())setMode(false);
+  S.waitPrac=true; toStart(); syncSong(true); if(!S.playing)play(); waitUI();
 });
+/* tracking keeps the page busy, so these checks can come late: loop back early by the largest recent gap between them */
+let pracLast=0,pracGaps=[];
+setInterval(()=>{if(!S.waitPrac){pracGaps=[];pracLast=0;return}const L=S.liveBody;if(!L||!S.bodyBusy){if(!S.bodyBusy)S.waitPrac=false;return}
+  const now=performance.now();if(pracLast){pracGaps.push((now-pracLast)/1000);if(pracGaps.length>40)pracGaps.shift()}pracLast=now;
+  const early=Math.min(1.5,(L.to-Math.max(S.cIn||0,L.from))/2,Math.max(0.08,(Math.max(0,...pracGaps)+0.05)*(v.playbackRate||1)));
+  if(S.playing&&v.currentTime>=L.to-early){toStart();syncSong(true)}},50);
+
+/* ---------- Tap the beat: 32 beats of the song (or a click), tap along, get a score ----------
+   Each tap is timed on the sound engine's clock. Your taps' usual lateness (the median) is how late you hear the sound
+   plus your touch; on time = within 50 ms of that. If it's much more than the Sound delay setting, it's offered as a new
+   Sound delay (Bluetooth headphones usually show up as 150-250 ms late). */
+const TAP={on:false};
+function tapStop(done){
+  const T=TAP; if(!T.on)return; TAP.on=false; clearInterval(T.iv);
+  try{T.src&&T.src.stop()}catch(e){} T.nodes.forEach(o=>{try{o.stop()}catch(e){}});
+  $('#waitTap').setAttribute('aria-pressed','false'); $('#waitTap').textContent='Tap the beat';
+  if(!done){$('#tapGame').hidden=true;waitUI();return}
+  const r=tapResult(T); T.result=r; window.__tapLast=r;
+  let best=0;try{best=+localStorage.getItem('rs-tap-best')||0;if(r.hits>best)localStorage.setItem('rs-tap-best',String(r.hits))}catch(e){}
+  $('#tapBig').textContent=`${r.hits} / ${r.of}`; $('#tapSmall').textContent=r.hits>best&&best?'New best!':best?'Best: '+Math.max(best,r.hits)+' / '+r.of:'on the beat';
+  $('#tapPad').className='tappad '+(r.hits>=r.of*0.8?'perfect':r.hits>=r.of*0.5?'good':'off');
+  $('#tapScore').textContent=r.taps<4?'Too few taps to score. Tap the beat to play again.':`${r.hits} of ${r.of} beats on time · steady to ±${r.spread} ms · best run ${r.streak} in a row. Tap the beat to play again.`;
+  const cur=Math.round(CUE.delay*1000);
+  if(r.taps>=12&&r.sugg!=null&&Math.abs(r.sugg-cur)>=80){$('#tapUseRow').hidden=false;$('#tapUse').textContent=`Use ${r.sugg} ms`;
+    $('#tapScore').textContent+=` Your taps land about ${r.late} ms after the beat. If you're on Bluetooth headphones, that's most likely their delay: set Sound delay to ${r.sugg} ms so the balls and video match what you hear?`;$('#tapUse').dataset.ms=r.sugg}
+  else $('#tapUseRow').hidden=true;
+  $('#waitMsg').textContent='';
+}
+function tapResult(T){
+  const off=T.taps.map(t=>{let b=T.beats[0],d=1e9;for(const x of T.beats){const q=Math.abs(t-x);if(q<d){d=q;b=x}}return {t,b,o:t-b}});
+  const med=off.length?off.map(q=>q.o).sort((a,b)=>a-b)[off.length>>1]:0;
+  const per=T.per, onTime=new Set(); let streak=0,run=0,spread=0;
+  off.forEach(q=>{const e=q.o-med;spread+=Math.abs(e);if(Math.abs(e)<=0.05)onTime.add(Math.round(q.b*1000))});
+  T.beats.forEach(b=>{if(onTime.has(Math.round(b*1000))){run++;streak=Math.max(streak,run)}else run=0});
+  const late=Math.round(med*1000);
+  return {of:T.beats.length,taps:off.length,hits:onTime.size,streak,spread:off.length?Math.round(spread/off.length*1000):0,late,
+    sugg:Math.max(0,Math.min(400,Math.round((late-30)/5)*5)),per};
+}
+$('#waitTap').addEventListener('click',()=>{
+  if(TAP.on){tapStop(false);return}
+  if(S.waitPrac)waitPracOff(); if(S.playing)pause();
+  const c=getCtx(); if(c.state!=='running')c.resume().catch(()=>{});
+  const so=S.mainSong, G=so&&so.buf&&so.an&&so.an.grid, sb=so&&so.buf;
+  const t0=c.currentTime+1.2, T={on:true,taps:[],beats:[],nodes:[],src:null,per:0.6,c};
+  if(G&&G.length>=40){
+    let i=0;const off=(S.main&&S.main.offset)||0;while(i<G.length-1&&G[i]<off)i++;if(i+33>G.length)i=Math.max(0,G.length-33);
+    const s0=Math.max(0,G[i]-0.6), lead=G[i]-s0;
+    const src=c.createBufferSource();src.buffer=sb;const g=c.createGain();g.gain.value=0.9;src.connect(g);g.connect(c.destination);
+    src.start(t0-lead,s0,(G[i+31]-s0)+0.8);T.src=src;
+    T.beats=G.slice(i,i+32).map(b=>t0+(b-G[i]));T.per=(G[i+31]-G[i])/31;
+  }else{
+    /* no song yet: a click at 100 BPM */
+    T.per=0.6;for(let k=0;k<32;k++){const when=t0+k*T.per,o=c.createOscillator(),g=c.createGain();o.frequency.value=k%4===0?1600:1000;
+      g.gain.setValueAtTime(0.0001,when);g.gain.exponentialRampToValueAtTime(0.4,when+0.002);g.gain.exponentialRampToValueAtTime(0.001,when+0.06);o.connect(g);g.connect(c.destination);o.start(when);o.stop(when+0.08);T.nodes.push(o);T.beats.push(when)}
+  }
+  T.end=T.beats[T.beats.length-1]+T.per*0.6;
+  /* the sound clock moves in steps of ~10 ms against the page clock: keep samples of the gap between them and use the median */
+  T.offs=[];T.offAt=()=>{T.offs.push(c.currentTime-performance.now()/1000);if(T.offs.length>80)T.offs.shift()};T.offAt();
+  Object.assign(TAP,T); TAP.on=true;
+  $('#tapGame').hidden=false; $('#tapUseRow').hidden=true; $('#tapPad').className='tappad'; $('#tapBig').textContent='Get ready…'; $('#tapSmall').textContent=G?'tap along to the song':'tap along to the click';
+  $('#tapScore').textContent='Tap the pad on every beat for 32 beats.'; $('#waitMsg').textContent='';
+  $('#waitTap').setAttribute('aria-pressed','true'); $('#waitTap').textContent='Stop the game';
+  TAP.iv=setInterval(()=>{if(!TAP.on)return;const now=c.currentTime;TAP.offAt();
+    if(now>=TAP.end){tapStop(true);return}
+    if(now<TAP.beats[0]-0.05){const k=Math.ceil((TAP.beats[0]-now)/TAP.per);$('#tapBig').textContent=k<=4?String(k):'Get ready…'}
+    else if(!TAP.taps.length)$('#tapBig').textContent='Tap!';
+    const left=TAP.beats.filter(b=>b>now).length;if(now>=TAP.beats[0]-0.05)$('#tapSmall').textContent=left+' beats to go'},60);
+});
+$('#tapPad').addEventListener('pointerdown',e=>{
+  if(!TAP.on)return; e.preventDefault(); const c=TAP.c;
+  /* when the finger landed (the event's own time, so a busy page doesn't make taps late), on the sound clock */
+  TAP.offAt();const o=TAP.offs.slice().sort((x,y)=>x-y)[TAP.offs.length>>1];
+  const t=Math.min(e.timeStamp,performance.now())/1000+o;
+  if(t<TAP.beats[0]-TAP.per/2)return; TAP.taps.push(t);
+  /* how this tap sits, judged against your own usual lateness once there are a few taps */
+  const r=tapResult(TAP), base=TAP.taps.length>=4?r.late/1000:(CUE.delay+0.03);
+  let b=TAP.beats[0],d=1e9;for(const x of TAP.beats){const q=Math.abs(t-x);if(q<d){d=q;b=x}}const err=t-b-base;
+  const k=Math.abs(err)<=0.035?'perfect':Math.abs(err)<=0.07?'good':'off';
+  $('#tapPad').className='tappad '+k; $('#tapBig').textContent=k==='perfect'?'Perfect':k==='good'?'Good':err<0?'Early':'Late';
+});
+$('#tapUse').addEventListener('click',()=>{const ms=+$('#tapUse').dataset.ms;if(isFinite(ms)){setDelay(ms,true);$('#tapUseRow').hidden=true;$('#tapScore').textContent+=` Sound delay set to ${ms} ms (change it under Tempo → More options).`}});
 
 /* ---------- quick controls on the video ---------- */
 S.cutOn=false; S.cutBg='dark'; try{S.everPlayed=localStorage.getItem('rs-played')==='1'}catch(e){}
@@ -4357,7 +4637,7 @@ function dockUpdate(){
   $('#dock').hidden=!show; if(!show)return;
   const bb=$('#dkBody');
   if(S.bodyBusy){bb.querySelector('span').textContent='Tracking '+(S.bodyPct||0)+'%'+(S.bodyLeft?' · '+S.bodyLeft.replace('about ','').replace(' left',''):'');bb.setAttribute('aria-pressed','false');bb.disabled=true}
-  else{bb.disabled=false;bb.querySelector('span').textContent=B?'Body':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
+  else{bb.disabled=false;bb.querySelector('span').textContent=B&&!cpOf(n)?'Body':cpOf(n)?'Carry on':'Track body';bb.setAttribute('aria-pressed',String(!!B&&$('#bodyShow').checked))}
   $('#dkHips').hidden=!B; $('#dkHips').setAttribute('aria-pressed',String($('#hipShow').checked));
   const canCut=!!(B&&RB.hasCutout(B)), staleCut=!!(B&&B.mask&&B.mask.frames&&!canCut);
   $('#dkCut').hidden=!canCut&&!staleCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn)); $('#dkCut').dataset.stale=staleCut?'1':'';
@@ -4366,7 +4646,7 @@ function dockUpdate(){
   $('#cutBar').hidden=!(canCut&&S.cutOn);
 }
 $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
-  if(!bodyOf(n)){$('#bodyTrack').click();return}
+  if(!bodyOf(n)||cpOf(n)){$('#bodyTrack').click();return}
   $('#bodyShow').checked=!$('#bodyShow').checked;$('#bodyShow').dispatchEvent(new Event('change'));dockUpdate()});
 $('#dkHips').addEventListener('click',()=>{$('#hipShow').checked=!$('#hipShow').checked;$('#hipShow').dispatchEvent(new Event('change'));dockUpdate()});
 $('#dkCut').addEventListener('click',()=>{
@@ -4493,7 +4773,7 @@ $('#danceAnalyze').addEventListener('click',()=>findHits(srcById(S.cur)));
 function renderDance(){
   const n=srcById(S.cur), info=$('#danceInfo'), w=$('#danceWarn');
   if(S.analyzing)return; w.textContent='';
-  {const B=n&&bodyOf(n);if(!S.bodyBusy)$('#bodyInfo').textContent=!B&&S.bodyErr?S.bodyErr:B?bodyInfoText(n,B)+(n.motion&&n.motion.source==='pose'?' Hits come from the body.':''):'Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.'}
+  {const B=n&&bodyOf(n),cp=n&&cpOf(n);if(!S.bodyBusy)$('#bodyInfo').textContent=S.bodyErr&&cp?S.bodyErr:cp?`Tracking stopped at ${cp.pct}% last time. Carry on tracking picks up from there (Start over tracks the whole clip again).`:!B&&S.bodyErr?S.bodyErr:B?bodyInfoText(n,B)+(n.motion&&n.motion.source==='pose'?' Hits come from the body.':''):'Track body follows the dancer on every frame (pelvis, hips, feet and hands) and draws it over the video. It plays the clip through once, silently.'}
   $('#hitRow').hidden=true; $('#hitLevelRow').hidden=true;
   if(!n){info.textContent='Add a dance video first.';return}
   $('#danceAnalyze').textContent=n.motion?'Find again':'Find hits';
@@ -6342,7 +6622,7 @@ $$('#snipUnit button').forEach(b=>b.addEventListener('click',()=>{SNIP.unit=+b.d
 /* Learn and Study take over the player: leave Snip first */
 ['#learnBtn','#studyBtn','#recBtn'].forEach(id=>$(id).addEventListener('click',()=>{if(S.snip)snipOff()},true));
 setInterval(()=>{try{snipUI()}catch(e){}},700);
-if(/debug/.test(location.hash))window.__rs={liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;

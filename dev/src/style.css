@@ -532,3 +532,17 @@ details.more .field{margin-top:8px}
 
 /* RTMPose: get the model ready ahead of time */
 .rtmget{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}.rtmget[hidden]{display:none}
+
+/* while the body tracks: progress, practise the tracked part, tap-the-beat, ready chime */
+.waitbar .hint{margin:0}
+.waitbar .lnhead .btn{margin-left:8px}
+.waitprog{margin:0}
+.waitbar.ready{border-color:var(--accent,#3ddc84)}
+.tapgame{display:grid;gap:8px}
+.tapgame[hidden]{display:none}
+.tappad{appearance:none;border:2px solid var(--line);border-radius:18px;background:var(--surface-2,rgba(255,255,255,.04));color:var(--ink);min-height:132px;display:grid;place-content:center;gap:4px;font:800 26px var(--f-body);touch-action:manipulation;user-select:none;-webkit-user-select:none;transition:transform .06s,border-color .1s,background .1s}
+.tappad small{font:600 14px var(--f-body);color:var(--muted)}
+.tappad:active{transform:scale(.98)}
+.tappad.perfect{border-color:#3ddc84;background:rgba(61,220,132,.14)}
+.tappad.good{border-color:#7DF9FF;background:rgba(125,249,255,.10)}
+.tappad.off{border-color:#FFB347;background:rgba(255,179,71,.10)}

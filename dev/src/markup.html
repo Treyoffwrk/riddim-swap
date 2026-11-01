@@ -189,6 +189,19 @@
         </details>
         <p class="hint" id="learnHow" hidden></p>
       </div>
+      <div class="learnbar waitbar" id="waitBar" hidden aria-label="While the body tracks">
+        <div class="lnhead"><b id="waitHead">Tracking the body</b><span class="lnloop" id="waitPct"></span><button type="button" class="btn sm" id="waitClose" hidden>Close</button></div>
+        <div class="prog waitprog"><i id="waitProg"></i></div>
+        <p class="hint" id="waitMsg"></p>
+        <div class="lnbtns" id="waitBtns" style="grid-template-columns:1fr 1fr"><button class="btn" id="waitPractise" type="button" aria-pressed="false">Practise the tracked part</button><button class="btn" id="waitTap" type="button" aria-pressed="false">Tap the beat</button></div>
+        <div class="tapgame" id="tapGame" hidden>
+          <button type="button" class="tappad" id="tapPad"><span id="tapBig">Get ready…</span><small id="tapSmall"></small></button>
+          <p class="hint" id="tapScore"></p>
+          <div class="row" id="tapUseRow" hidden><button class="btn sm" id="tapUse" type="button">Use it</button></div>
+        </div>
+        <label class="check"><input type="checkbox" id="waitChime" checked> Chime when it’s ready</label>
+        <button class="btn primary" id="waitCarry" type="button" hidden>Carry on tracking</button>
+      </div>
       <div class="learnbar snipbar" id="snipBar" hidden aria-label="Snip a routine">
         <div class="lnhead"><b>Snip a routine</b><span class="lnloop" id="snipCount"></span></div>
         <p class="hint" id="snipMsg"></p>
@@ -237,6 +250,7 @@
           <div class="subhead"><h3>Dancer’s body</h3></div>
           <div class="bodyrow mv-only" id="bodyRow">
             <button class="btn sm primary" id="bodyTrack" disabled>Track body</button>
+            <button class="btn sm" id="bodyFresh" hidden>Start over</button>
             <label class="check"><input type="checkbox" id="bodyShow" checked> Skeleton</label>
             <label class="check"><input type="checkbox" id="hipShow" checked> Hip path</label>
           </div>
