@@ -22,6 +22,12 @@
     edge:640,         /* longest side of the image given to the tracker (the person crop is resized from this) */
     maskW:120,        /* stored person-mask width (height follows the video's shape); ~25 KB a frame */
     numPoses:3,       /* people looked for per frame; the followed dancer is chosen by continuity */
+    /* who to follow when nobody was chosen (1 Nov, after a school compilation where the skeleton sat on a small kid at the
+       back, or on nobody for ~2 s, while the main dancer was in front): the person most forward (biggest, clearly seen,
+       a little for being central). front: someone this many times more prominent than the followed dancer for hold
+       seconds takes over; lostSwitch: the followed dancer missing this long with someone else there, follow them instead;
+       lostMax: give up looking for the followed dancer where they were after this long. Choose the dancer turns these off. */
+    follow:{front:1.35,hold:0.5,lostSwitch:0.25,lostMax:1.5,hide:1.5,alongside:0.6},
     /* RTMPose (Tracking: RTMPose): the dancer is still found and followed by the tracker above (regular model),
        then RTMPose's whole-body model (133 points: body, feet, hands, face) reads a close crop of them. Apache-2.0. */
     /* ONNX Runtime Web 1.22.0, served with the app (its worker threads must come from the app's own address) */
@@ -136,7 +142,7 @@
       if(opt.pick&&isFinite(opt.pick.t)){anchor=0;let bd=1e9;want.forEach((w,k)=>{const d=Math.abs(w-opt.pick.t);if(d<bd){bd=d;anchor=k}});
         order=[];for(let k=anchor;k<want.length;k++)order.push(k);for(let k=anchor-1;k>=0;k--)order.push(k)}
       const slot=new Array(want.length).fill(null); let ms=0, n=0, done=0, multi=0;
-      let prev=null, lost=0, pickPose=null, clockMiss=0, clockHits=0;
+      let prev=null, lost=0, pickPose=null, clockMiss=0, clockHits=0, switches=0; const FS={fps:0,lost:0,chal:0};
       /* stuck-picture guard: a tiny copy of each frame; if the picture hasn't changed although we moved to a new frame, the
          video is stuck: wait and ask again, then wake it with a short play; if it still won't move, leave a gap (no pose)
          rather than tracking the old picture again */
@@ -205,13 +211,14 @@
       let mask=null; const withMask=final?masks.filter(Boolean).length:0;
       if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
       return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null,resumed,revived,partial:!final};
+        clean:C.report,multi,switches,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null,resumed,revived,partial:!final};
       };
       let lastPartial=R?-1e9:performance.now();   /* carrying on: show what was kept straight away */
+      FS.fps=fps;
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(opt.signal&&opt.signal.aborted){await saveNow();throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})}
-        if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false}   /* going backwards: start again from the tap */
+        if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false;FS.chal=0}   /* going backwards: start again from the tap */
         if(isDone(k)){if(slot[k]){if(slot[k].pick){prev=slot[k].pick;lost=0}else lost++}continue}   /* finished in an earlier run */
         /* the app is in the background: iPhone stops the video and the tracker, so keep what's done and wait to come back */
         if(document.hidden){await saveNow();pending=null;await new Promise(r=>{const f=()=>{if(!document.hidden){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)});await new Promise(r=>setTimeout(r,400));seekFails=Math.max(seekFails,2)}
@@ -256,8 +263,9 @@
           cands=L.map((pts,i)=>({pts:pts.map(q=>[q.x,q.y,q.visibility??0]),w:Wl[i]?Wl[i].map(q=>[q.x,q.y,q.z]):null,i}));
           if(cands.length>1||(prev&&prev.app)||root.RB_DEBUG_ALL)cands.forEach(c=>{c.app=looks(cx,cv.width,cv.height,c.pts)});
           PR.look=performance.now()-D1;
-          if(root.RB_DEBUG_ALL)root.RB_DEBUG_ALL.push({k,cands:cands.map(c=>({pts:c.pts,app:c.app}))});
-          const ch=choose(cands,prev,opt.pick&&!pickPose?opt.pick:null,asp,lost,!!opt.pick&&!crossed);
+          const DBG=root.RB_DEBUG_ALL?{k,t:want[k],cands:cands.map(c=>({pts:c.pts,app:c.app}))}:null;if(DBG)root.RB_DEBUG_ALL.push(DBG);
+          FS.lost=lost;FS.sticky=!!opt.pick&&!crossed;FS.pick=opt.pick&&!pickPose?opt.pick:null;
+          const fo=follow(cands,prev,FS,asp),ch=fo.ch;cands.sw=fo.sw;if(DBG)DBG.sw=fo.sw;
           const M0=performance.now();if(ch){const m=r.segmentationMasks&&r.segmentationMasks[ch.i];
             /* the mask belongs to the callback: shrink it to mw×mh bytes (area average) before returning */
             if(m&&rt.delegate==='GPU'){mk=gpuMask(rt,m,mw,mh)}
@@ -266,13 +274,15 @@
                 for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
                   for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}}
           (r.segmentationMasks||[]).forEach(m=>{if(m&&m.close)try{m.close()}catch(e){}});PR.mask=performance.now()-M0;
-          cands.chosen=ch;
+          cands.chosen=ch;if(DBG)DBG.ch=ch?ch.i:-1;
         });
         ms+=performance.now()-s; n++; if(cands.length>1)multi++;
         if(root.RB_PROF)root.RB_PROF.push({seek:P1-P0,draw:s-P1,total:performance.now()-s,n:cands.length,...PR});
         const ch=cands.chosen;
+        /* now following someone else: a fresh start for their drift and looks, and no blending with the last person */
+        if(ch&&cands.sw){cutAt.add(k<anchor?k+1:k);prev=null;switches++}
         if(ch){if(prev&&!ch.vel){const a=geom(prev.pts,asp),b2=geom(ch.pts,asp),k2=1+lost,nv=[(b2.hp[0]-a.hp[0])/k2,(b2.hp[1]-a.hp[1])/k2],ov=prev.vel||nv;ch.vel=[0.6*ov[0]+0.4*nv[0],0.6*ov[1]+0.4*nv[1]]}
-          learnLooks(prev,ch);
+          ch.before=prev?{pts:prev.pts,vel:prev.vel||null}:null;learnLooks(prev,ch);
           prev=ch;lost=0;if(opt.pick&&!pickPose)pickPose=ch}else lost++;
         let wb=null;if(ch&&rt.rtm){try{const Rr=await visWait(rtmRefine(rt.rtm,cv,ch.pts),CFG.rtmWait,'RTMPose stopped answering');if(Rr){wb=Rr.wb;ch.pts=Rr.pts}}catch(e){if(e&&e.stall)throw e;rt.rtm.errors=(rt.rtm.errors||0)+1}}
         const row=new Float32Array(STRIDE); row[0]=t; const wr=new Float32Array(WS).fill(NaN);
@@ -313,14 +323,57 @@
     if(!r0){ch.appRef=ch.app;ch.appN=1;return}
     if(looksDiff(r0,ch.app)<0.15){ch.appRef=ch.app.map((q,i)=>q&&r0[i]?q.map((v,j)=>0.9*r0[i][j]+0.1*v):(q||r0[i]));ch.appN++}else ch.appRef=r0;
   }
-  function choose(cands,prev,pick,asp,lost,sticky){
-    if(!cands.length)return null;
+  /* how much someone stands out as the dancer: size (nearer the camera is bigger), how clearly the body is seen, and a
+     little for being central */
+  function promOf(c,asp){const g=geom(c.pts,asp),vis=(c.pts[11][2]+c.pts[12][2]+c.pts[23][2]+c.pts[24][2])/4,centre=1-Math.min(1,Math.abs(g.hp[0]-0.5)*1.2);return g.T*vis*(0.8+0.2*centre)}
+  function frontmost(cands,asp){let b=null,bs=-1;for(const c of cands){const p=promOf(c,asp);if(p>bs){bs=p;b=c}}return b}
+  /* one frame's decision. F carries {fps, lost, chal (frames someone further forward has stood out), sticky, pick}.
+     Returns {ch, sw}: sw = now following someone else (the skeleton must not blend the two) */
+  function follow(cands,prev,F,asp){
+    const FC=CFG.follow,fr=s=>Math.max(1,Math.round(s*(F.fps||30))),lostMax=fr(FC.lostMax);
+    if(F.pick){F.chal=0;return {ch:choose(cands,prev,F.pick,asp,F.lost,F.sticky,lostMax),sw:false}}
+    if(prev&&(F.lost<lostMax||F.sticky)){
+      const m=choose(cands,prev,null,asp,F.lost,F.sticky,lostMax);
+      if(F.sticky)return {ch:m,sw:false};
+      if(m){
+        F.others=cands.filter(c=>c!==m).map(c=>{const g=geom(c.pts,asp);return [g.hp[0],g.hp[1],g.T]});{const g=geom(m.pts,asp);F.others.at=[g.hp[0],g.hp[1],g.T]}
+        /* someone clearly further forward (not just their own body found twice) for a while takes over */
+        const gm=geom(m.pts,asp),pm=promOf(m,asp);let o=null,po=0;
+        for(const c of cands){if(c===m)continue;const g=geom(c.pts,asp);if(Math.hypot(g.hp[0]-gm.hp[0],g.hp[1]-gm.hp[1])<0.5*gm.T)continue;const p=promOf(c,asp);if(p>po){po=p;o=c}}
+        /* (the count is in time: frames where they weren't found count too, unless they're gone for longer than hold) */
+        if(o&&po>FC.front*pm){F.chalMiss=0;if(++F.chal>=fr(FC.hold)){F.chal=0;return {ch:o,sw:true}}}
+        else if(o)F.chal=0;else if(F.chal&&(F.chalMiss=(F.chalMiss||0)+1)<=fr(FC.hold))F.chal++;else F.chal=0;
+        return {ch:m,sw:false}}
+      F.chal=0;
+      /* the followed dancer has gone (left the shot, or a cut that wasn't spotted): if someone else is dancing, follow them;
+         at once if they're clearly further forward than the dancer was */
+      if(!cands.length)return {ch:null,sw:false};
+      const b=frontmost(cands,asp),gb=geom(b.pts,asp);
+      /* the one who was next to the dancer when they went is most likely just passing in front of them: wait for the dancer */
+      const near=(F.others||[]).some(o=>Math.hypot(gb.hp[0]-o[0],gb.hp[1]-o[1])<Math.min(2,0.6+0.1*F.lost)*o[2]);
+      if(near&&Math.hypot(gb.hp[0]-F.others.at[0],gb.hp[1]-F.others.at[1])<FC.hide*F.others.at[2])return {ch:null,sw:false};
+      /* someone who was already dancing alongside only takes over if they're clearly further forward, or the dancer stays gone a little longer
+         (a dancer missed for a moment comes back; one who left doesn't);
+         new people (a cut that wasn't spotted) take over quickly */
+      const further=promOf(b,asp)>FC.front*promOf(prev,asp);
+      if(near&&!further&&F.lost+1<fr(FC.alongside))return {ch:null,sw:false};
+      if(F.lost+1<fr(FC.lostSwitch)&&!further)return {ch:null,sw:false};
+      return {ch:b,sw:true}}
+    F.chal=0;return {ch:frontmost(cands,asp),sw:false};
+  }
+  function choose(cands,prev,pick,asp,lost,sticky,lostMax){
+    if(!cands.length)return null;lostMax=lostMax||45;
     if(pick){let b=null,bd=1e9;for(const c of cands){const g=geom(c.pts,asp),d=Math.hypot(g.hp[0]-pick.x,g.hp[1]-pick.y*asp)+0.5*Math.hypot(g.sh[0]-pick.x,g.sh[1]-pick.y*asp);if(d<bd){bd=d;b=c}}return b}
     /* sticky (you chose the dancer): never swap to someone far from where they were last seen; they may have left */
     /* where they should be now (last position plus their recent drift) and how big they are: someone crossing in front
        is nearer the camera, so bigger, and moving the other way */
-    if(prev&&(lost<45||sticky)){const g0=geom(prev.pts,asp),vel=prev.vel||[0,0],k=Math.min(3,1+lost),px=g0.hp[0]+vel[0]*k,py=g0.hp[1]+vel[1]*k;let b=null,bd=1e9;
-      for(const c of cands){const g=geom(c.pts,asp),d=(Math.hypot(g.hp[0]-px,g.hp[1]-py)+Math.hypot(g.sh[0]-g0.sh[0]-vel[0]*k,g.sh[1]-g0.sh[1]-vel[1]*k))/g0.T+2*Math.max(0,Math.abs(Math.log(g.T/g0.T))-0.2)+8*Math.max(0,looksDiff(prev.appRef,c.app)-0.12);c._ld=looksDiff(prev.appRef,c.app);c._pos=d-8*Math.max(0,c._ld-0.12);
+    if(prev&&(lost<lostMax||sticky)){let b=null,bd=1e9;
+      /* compared with the last frame they were found in, and the one before it: one odd detection (part of them, or a
+         shape beside them) taken as them doesn't then make the real them look too far away to be them */
+      const refs=[[prev,0]];if(prev.before)refs.push([prev.before,1]);
+      const posD=(c,g)=>{let m=1e9;for(const [r,e] of refs){const g0=geom(r.pts,asp),vel=r.vel||[0,0],k=Math.min(3,1+lost+e),px=g0.hp[0]+vel[0]*k,py=g0.hp[1]+vel[1]*k;
+        m=Math.min(m,(Math.hypot(g.hp[0]-px,g.hp[1]-py)+Math.hypot(g.sh[0]-g0.sh[0]-vel[0]*k,g.sh[1]-g0.sh[1]-vel[1]*k))/g0.T+2*Math.max(0,Math.abs(Math.log(g.T/g0.T))-0.2))}return m};
+      for(const c of cands){const g=geom(c.pts,asp),d=posD(c,g)+8*Math.max(0,looksDiff(prev.appRef,c.app)-0.12);c._ld=looksDiff(prev.appRef,c.app);c._pos=d-8*Math.max(0,c._ld-0.12);
         if((prev.appN||0)>=10&&c._ld>0.28)continue;   /* clearly different clothes: not them, however close */
         if(d<bd){bd=d;b=c}}
       if(root.RB_DEBUG)root.RB_DEBUG.push(cands.map(c=>[+(c._pos||0).toFixed(2),+(c._ld||0).toFixed(3),+geom(c.pts,asp).hp[0].toFixed(2)]));
@@ -772,6 +825,6 @@
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
