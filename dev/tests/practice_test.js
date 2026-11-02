@@ -40,6 +40,15 @@ const [,,HOST,CLIP,CAM,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpp
  await p.waitForTimeout(7000);
  const res=await p.evaluate(()=>({pass:window.__rsPR.pass,results:(window.__rsPR.results||[]).slice(0,8),msg:document.getElementById('pracMsg').textContent}));
  rec('Each hit is scored as it passes, and the pass is tallied',res.pass.n>=2&&res.results.some(r=>r.score!=null)&&/This pass/.test(res.msg)?'passed':'failed',JSON.stringify(res));
+ const km=await p.evaluate(()=>{const PR=window.__rsPR,R=window.__rs;const key=window.__rsPrHits().slice();PR.all=true;PR.hk='';const all=window.__rsPrHits().slice();PR.all=false;PR.hk='';window.__rsPrHits();
+   const bp=60/((R.liveGrid&&R.liveGrid()&&R.liveGrid().bpm)||125);let minGap=1e9;for(let i=1;i<key.length;i++)minGap=Math.min(minGap,key[i]-key[i-1]);return {key:key.length,all:all.length,minGap:+minGap.toFixed(2)}});
+ rec('Key moves: fewer targets than every hit, spaced out (about 2 beats or more)',km.key>=2&&km.key<km.all&&km.minGap>=0.85?'passed':'failed',JSON.stringify(km));
+ /* the cards strip: upcoming moves along the bottom */
+ const cards=await p.evaluate(()=>{const c=document.getElementById('camCanvas'),x=c.getContext('2d'),H=c.height,W=c.width,d=x.getImageData(0,Math.round(H*0.6),W,Math.round(H*0.4)).data;let white=0,amber=0;for(let i=0;i<d.length;i+=4){const r=d[i],g=d[i+1],b=d[i+2];if(r>230&&g>225&&b>215)white++;if(r>230&&g>150&&g<200&&b<110)amber++}return {white,amber}});
+ rec('Move cards: the next moves show along the bottom of Ghost',cards.white>200&&cards.amber>50?'passed':'failed',JSON.stringify(cards));
+ const lead=await p.evaluate(()=>{const t=[];const b=document.getElementById('pracLead');for(let i=0;i<3;i++){t.push(b.textContent);b.click()}return t});
+ rec('Warning: 2 beats, then 1 bar, then 1 beat',lead[0]==='Warning: 2 beats'&&lead[1]==='Warning: 1 bar'&&lead[2]==='Warning: 1 beat'?'passed':'failed',JSON.stringify(lead));
+ await p.evaluate(()=>document.getElementById('pracLead').click());   /* back to 2 beats */
  await p.click('#play');
  const sc=await p.evaluate(()=>{const f=window.__rsPrScore;const P=Array.from({length:33},(_,j)=>[100+(j%7)*20,100+Math.floor(j/7)*40,1]);
    const Q=P.map(q=>[q[0]*2+50,q[1]*2+30,1]);   /* same pose, moved and bigger */
@@ -52,6 +61,22 @@ const [,,HOST,CLIP,CAM,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpp
  await p.click('#play');const trace=[];for(let i=0;i<18;i++){await p.waitForTimeout(500);trace.push(await p.evaluate(()=>{const v=document.querySelector('#stage video:not(.off)');return [+v.currentTime.toFixed(2),window.__rs.S.playing?'P':'-',window.__rsPR.pass.n,window.__rsPR.done.size,+window.__rsPR.lastVt.toFixed(2),window.__rsPR.win.size,!!window.__rsPR.P].join(',')}))}console.log(trace.join(' | '));await p.click('#play');
  const good=await p.evaluate(()=>({pass:window.__rsPR.pass,res:(window.__rsPR.results||[]).slice(-6)}));
  rec('Matching the dancer scores Hits',good.pass.n>=2&&good.pass.hit>=good.pass.n-1?'passed':'failed',JSON.stringify(good));
+ /* Worldline: the dancer through time, no camera needed */
+ await p.click('#pracStop');await p.waitForTimeout(300);
+ await p.evaluate(()=>{const PR=window.__rsPR;PR.mode='world';localStorage.setItem('rs-prac',JSON.stringify({mode:'world'}))});
+ await p.evaluate(()=>{const PR=window.__rsPR;PR.mode='world'});await p.click('#t-body');await p.waitForTimeout(1500);
+ const wl=await p.evaluate(()=>{const c=document.getElementById('camCanvas'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let lit=0,am=0;for(let i=0;i<d.length;i+=16){if(d[i]+d[i+1]+d[i+2]>300)lit++;if(d[i]>230&&d[i+1]>150&&d[i+1]<200&&d[i+2]<110)am++}
+   return {lit,am,cam:!!document.getElementById('camVid').srcObject,mode:window.__rsPR.mode,on:window.__rsPR.on,msg:document.getElementById('pracMsg').textContent}});
+ if(SHOT)await p.screenshot({path:SHOT+'-world.png'});
+ rec('Worldline of the dancer shows in the player right away (from the tracking, no Build, no camera)',wl.on&&wl.mode==='world'&&!wl.cam&&wl.lit>300?'passed':'failed',JSON.stringify(wl));
+ const box=await p.locator('#camCanvas').boundingBox();const y0=await p.evaluate(()=>window.__rsPR.wv.yaw);
+ await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();await p.mouse.move(box.x+box.width/2+80,box.y+box.height/2,{steps:6});await p.mouse.up();
+ const y1=await p.evaluate(()=>window.__rsPR.wv.yaw);await p.click('#pracReset');const y2=await p.evaluate(()=>window.__rsPR.wv.yaw);
+ rec('Drag turns the Worldline; Reset view puts it back',Math.abs(y1-y0)>0.3&&Math.abs(y2-y0)<1e-6?'passed':'failed',JSON.stringify({y0,y1,y2}));
+ await p.click('#play');await p.waitForTimeout(1200);const wa=await p.evaluate(()=>{const c=document.getElementById('camCanvas');return c.toDataURL().length});await p.waitForTimeout(800);const wb=await p.evaluate(()=>document.getElementById('camCanvas').toDataURL().length);await p.click('#play');
+ rec('It moves with the clip as it plays',wa!==wb?'passed':'failed',JSON.stringify({wa,wb}));
+ /* back to Side by side: the camera starts again */
+ await p.click('#pracMode button[data-pm="split"]');for(let i=0;i<30;i++){await p.waitForTimeout(300);if(await p.evaluate(()=>!!document.getElementById('camVid').videoWidth))break}
  /* Stop, and leaving the app, turn the camera off */
  await p.click('#pracStop');await p.waitForTimeout(300);
  const off=await p.evaluate(()=>({src:!!document.getElementById('camVid').srcObject,on:window.__rsPR.on,bar:document.getElementById('pracBar').hidden,stage:document.getElementById('stage').classList.contains('practice')}));

@@ -140,6 +140,7 @@
             <div class="seg" id="pracMode" role="group" aria-label="View">
               <button type="button" data-pm="split" aria-pressed="true"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>Side by side</button>
               <button type="button" data-pm="ghost" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 8v6M12 14l-3.5 6M12 14l3.5 6M6 10l6-2 6 2" stroke-dasharray="3 2.5"/></svg>Ghost</button>
+              <button type="button" data-pm="world" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l6-4 10 4M10 14V4M4 18V8l6-4 10 4v10"/></svg>Worldline</button>
             </div>
             <button type="button" class="pchip" id="pracStop" aria-label="Stop the camera" title="Stop the camera"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h11v10H3zM14 10l7-4v12l-7-4"/><path d="M2 2l20 20"/></svg></button>
           </div>
@@ -148,6 +149,10 @@
             <button type="button" class="pchip" id="pracMine" aria-pressed="true" title="Draw your skeleton on your camera">My skeleton</button>
             <button type="button" class="pchip" id="pracTargets" aria-pressed="true" title="Ghost: show each hit coming, then how well you hit it">Hit targets</button>
             <button type="button" class="pchip" id="pracFlip" aria-pressed="false" title="Ghost: same side as the dancer instead of mirror image">Flip ghost</button>
+            <button type="button" class="pchip" id="pracAll" aria-pressed="false" title="Targets on every hit instead of only the key moves">All hits</button>
+            <button type="button" class="pchip lead" id="pracLead" title="How far ahead each move shows up">Warning: 2 beats</button>
+            <button type="button" class="pchip" id="pracReset" title="Turn the Worldline back to the start">Reset view</button>
+            <button type="button" class="pchip" id="pracCam" title="Turn your camera on to see yourself on the now pose">Add my camera</button>
           </div>
           <p class="pracmsg" id="pracMsg" aria-live="polite"></p>
           <button type="button" class="linkbtn" id="pracMore">Worldline and more: open in Body ↗</button>

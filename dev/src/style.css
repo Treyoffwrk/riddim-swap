@@ -648,3 +648,7 @@ details.more .field{margin-top:8px}
 .pracbar .linkbtn{justify-self:start;font-size:12px;color:var(--muted)}
 #t-body.on{color:var(--ink);font-weight:700}
 #t-body.on::before{background:var(--hips)!important}
+.pracbar .seg{grid-template-columns:repeat(3,1fr)}
+.pracbar .seg button{font-size:12px;gap:4px;padding:0 4px}
+.pchip.lead{color:var(--ink)}
+.stage.pr-world .camcv{touch-action:none;cursor:grab}

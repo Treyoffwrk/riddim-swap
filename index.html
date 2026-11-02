@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-56ca4fcfba'</script>
+<script>window.RS_BUILD='rs-70f1b9b420'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -670,6 +670,10 @@ details.more .field{margin-top:8px}
 .pracbar .linkbtn{justify-self:start;font-size:12px;color:var(--muted)}
 #t-body.on{color:var(--ink);font-weight:700}
 #t-body.on::before{background:var(--hips)!important}
+.pracbar .seg{grid-template-columns:repeat(3,1fr)}
+.pracbar .seg button{font-size:12px;gap:4px;padding:0 4px}
+.pchip.lead{color:var(--ink)}
+.stage.pr-world .camcv{touch-action:none;cursor:grab}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -826,6 +830,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <div class="seg" id="pracMode" role="group" aria-label="View">
               <button type="button" data-pm="split" aria-pressed="true"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>Side by side</button>
               <button type="button" data-pm="ghost" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 8v6M12 14l-3.5 6M12 14l3.5 6M6 10l6-2 6 2" stroke-dasharray="3 2.5"/></svg>Ghost</button>
+              <button type="button" data-pm="world" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l6-4 10 4M10 14V4M4 18V8l6-4 10 4v10"/></svg>Worldline</button>
             </div>
             <button type="button" class="pchip" id="pracStop" aria-label="Stop the camera" title="Stop the camera"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h11v10H3zM14 10l7-4v12l-7-4"/><path d="M2 2l20 20"/></svg></button>
           </div>
@@ -834,6 +839,10 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <button type="button" class="pchip" id="pracMine" aria-pressed="true" title="Draw your skeleton on your camera">My skeleton</button>
             <button type="button" class="pchip" id="pracTargets" aria-pressed="true" title="Ghost: show each hit coming, then how well you hit it">Hit targets</button>
             <button type="button" class="pchip" id="pracFlip" aria-pressed="false" title="Ghost: same side as the dancer instead of mirror image">Flip ghost</button>
+            <button type="button" class="pchip" id="pracAll" aria-pressed="false" title="Targets on every hit instead of only the key moves">All hits</button>
+            <button type="button" class="pchip lead" id="pracLead" title="How far ahead each move shows up">Warning: 2 beats</button>
+            <button type="button" class="pchip" id="pracReset" title="Turn the Worldline back to the start">Reset view</button>
+            <button type="button" class="pchip" id="pracCam" title="Turn your camera on to see yourself on the now pose">Add my camera</button>
           </div>
           <p class="pracmsg" id="pracMsg" aria-live="polite"></p>
           <button type="button" class="linkbtn" id="pracMore">Worldline and more: open in Body ↗</button>
@@ -4663,7 +4672,7 @@ function drawBody(){
   /* Show Upper / Legs (with the cut-out): only that half of the skeleton too */
   const part=S.cutOn&&RB.hasCutout(B)?S.cutPart:'all';
   if(cmpB&&S.cmpShow==='prev')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,part});
-  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{part,hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA)&&!(PR.on&&PR.mode==='ghost'),tiltGuide:$('#hipShow').checked&&!(PR.on&&PR.mode==='ghost'),reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{part,hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA)&&!(PR.on&&PR.mode!=='split'),tiltGuide:$('#hipShow').checked&&!(PR.on&&PR.mode!=='split'),reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
   /* Both: the previous skeleton thinner and on top, so the two can be seen where they differ */
   if(cmpB&&S.cmpShow==='both')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,lwScale:0.5,ends:false,part});
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
@@ -5026,64 +5035,81 @@ startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
 /* ---------- Practice: your camera inside the player (what Body did, now with the same clip and every edit) ----------
    Side by side: the clip (as it plays here: trim, cuts, speed, song, cut-out, group) on the left, your camera on the
    right with your skeleton. Ghost: your camera fills the player with the dancer's skeleton laid over you (moved and
-   sized to your body), the clip small in the corner. Hit targets (Ghost): each of the dancer's hits shows up ahead of
-   time as the pose to be in, with shrinking rings on the hands/feet that make the hit; on the hit your pose is scored
+   sized to your body), the clip small in the corner. Worldline: the dancer's moves through time in 3D (past poses
+   solid, next ones dashed, hands and feet as trails), built from the tracking already done, no camera needed; drag to
+   turn it, pinch or scroll to zoom, double-tap to reset.
+   Ghost targets (Just Dance style): by default only the key moves (the strongest hit in each 2 beats) are targets; each
+   shows up as a card sliding along the bottom towards the "now" line, and as the dashed pose to be in, a warning of
+   1 beat, 2 beats or a bar ahead, with rings shrinking onto the hand/foot that makes it; on the move your pose is scored
    (limb directions compared, 0-100) and the result flashes; each pass through the clip is tallied. The camera only
    starts from a tap and stops when you leave practice or the app. */
-var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),done:new Set(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[]};
-try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=g.mode==='ghost'?'ghost':'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip}}catch(e){}
-const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip}))}catch(e){}};
+var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1}};
+try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2}}catch(e){}
+const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead}))}catch(e){}};
 const camV=$('#camVid'),camCv=$('#camCanvas');
 const PR_BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32],[15,19],[16,20]];
 const PR_LIMBS=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,12],[23,24]];
+const prNeedsCam=()=>PR.mode!=='world';
 function prMsg(t){$('#pracMsg').textContent=t||''}
 function pracUI(){
   $('#pracBar').hidden=!PR.on; camCv.hidden=!PR.on;
-  const st=$('#stage');st.classList.toggle('practice',PR.on);st.classList.toggle('pr-split',PR.on&&PR.mode==='split');st.classList.toggle('pr-ghost',PR.on&&PR.mode==='ghost');
+  const st=$('#stage');st.classList.toggle('practice',PR.on);st.classList.toggle('pr-split',PR.on&&PR.mode==='split');st.classList.toggle('pr-ghost',PR.on&&PR.mode!=='split');st.classList.toggle('pr-world',PR.on&&PR.mode==='world');
   $$('#pracMode button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pm===PR.mode)));
   $('#pracMirror').setAttribute('aria-pressed',String(PR.mirror));$('#pracMine').setAttribute('aria-pressed',String(PR.mine));
   $('#pracTargets').setAttribute('aria-pressed',String(PR.targets));$('#pracFlip').setAttribute('aria-pressed',String(PR.flip));
-  $('#pracTargets').hidden=$('#pracFlip').hidden=PR.mode!=='ghost';
+  $('#pracAll').setAttribute('aria-pressed',String(PR.all));$('#pracLead').textContent='Warning: '+(PR.lead===4?'1 bar':PR.lead+' beat'+(PR.lead>1?'s':''));
+  const g=PR.mode==='ghost',wl=PR.mode==='world';
+  $('#pracTargets').hidden=$('#pracFlip').hidden=!g;$('#pracAll').hidden=$('#pracLead').hidden=!g||!PR.targets;
+  $('#pracMirror').hidden=wl;$('#pracReset').hidden=!wl;$('#pracCam').hidden=!wl||!!PR.stream;
+  $('#pracMine').textContent=wl?'Me on now':'My skeleton';
   const tb=$('#t-body');if(tb){tb.setAttribute('aria-pressed',String(PR.on));tb.classList.toggle('on',PR.on)}
   bodyKey='';
 }
-async function pracOn(){
-  if(PR.on)return; if(!S.hasV){recMsg('Add a dance video first, then practise it here with your camera.',true);return}
-  PR.on=true;PR.pass={n:0,hit:0,close:0};PR.done.clear();PR.win.clear();PR.flash=null;pracUI();
-  window.scrollTo({top:0,behavior:'smooth'});
-  prMsg('Starting your camera…');
+async function camStart(){
+  if(PR.stream||PR.camBusy)return;PR.camBusy=true;prMsg('Starting your camera…');
   try{PR.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720},height:{ideal:960}},audio:false})}
-  catch(e){PR.on=false;pracUI();recMsg(e&&e.name==='NotAllowedError'?'Camera blocked: allow the camera for this app in your phone\'s settings, then tap Body again.':'Couldn\'t start the camera ('+(e&&e.message||e)+').',true);return}
+  catch(e){PR.camBusy=false;recMsg(e&&e.name==='NotAllowedError'?'Camera blocked: allow the camera for this app in your phone\'s settings, then try again.':'Couldn\'t start the camera ('+(e&&e.message||e)+').',true);if(prNeedsCam()){PR.on=false;pracUI()}return}
+  PR.camBusy=false;
   if(!PR.on){PR.stream.getTracks().forEach(t=>t.stop());PR.stream=null;return}
   camV.srcObject=PR.stream;try{await camV.play()}catch(e){}
   prMsg('Loading the body tracker for your camera…');
   RB.live().then(rt=>{PR.rt=rt;pracStatus()}).catch(e=>prMsg('The body tracker didn\'t load ('+(e&&e.message||e)+'). Your camera still shows.'));
+  pracUI();
+}
+function camStop(){if(PR.stream){PR.stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});PR.stream=null}camV.srcObject=null;PR.Praw=null;PR.P=null}
+async function pracOn(){
+  if(PR.on)return; if(!S.hasV){recMsg('Add a dance video first, then practise it here with your camera.',true);return}
+  PR.on=true;prReset();PR.flash=null;pracUI();
+  window.scrollTo({top:0,behavior:'smooth'});
   cancelAnimationFrame(PR.raf);PR.raf=requestAnimationFrame(pracLoop);
+  if(prNeedsCam())await camStart();else pracStatus();
 }
-function pracOff(){
-  PR.on=false;cancelAnimationFrame(PR.raf);
-  if(PR.stream){PR.stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});PR.stream=null}
-  camV.srcObject=null;PR.P=null;pracUI();
-}
+function pracOff(){PR.on=false;cancelAnimationFrame(PR.raf);camStop();pracUI()}
+function prReset(){PR.pass={n:0,hit:0,close:0};PR.done.clear();PR.win.clear();PR.res.clear()}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&PR.on)pracOff()});   /* never keep the camera on in the background */
 function pracStatus(){
   if(!PR.on)return;const n=srcById(S.cur),B=n&&bodyOf(n);
-  if(PR.mode==='ghost'&&!B){prMsg('Track the body first (Body on the video) to get the ghost and hit targets.');return}
+  if(PR.mode!=='split'&&!B){prMsg('Track the body first (Body on the video) to see the '+(PR.mode==='world'?'Worldline':'ghost and targets')+'.');return}
+  if(PR.mode==='world'){prMsg('The dancer through time: past poses solid, next ones dashed. Drag to turn, pinch to zoom, double-tap to reset.');return}
   if(!PR.rt){return}
   if(!PR.P){prMsg('Step back until your whole body is in the camera.');return}
   if(PR.mode==='ghost'&&PR.targets){const p=PR.pass;const hs=prHits(n).length;
-    prMsg(hs?`This pass: ${p.hit} hit${p.hit===1?'':'s'}${p.close?`, ${p.close} close`:''} of ${p.n}`+(PR.flash?` · last: ${PR.flash.label} ${PR.flash.score}%`:'')+(p.n?'':' · press play and match the shapes on the hits'):'No hits found in this clip yet: the ghost still shows the moves.');return}
+    prMsg(hs?`This pass: ${p.hit} hit${p.hit===1?'':'s'}${p.close?`, ${p.close} close`:''} of ${p.n}`+(PR.flash?` · last: ${PR.flash.label} ${PR.flash.score}%`:'')+(p.n?'':` · ${hs} ${PR.all?'hits':'key moves'}: press play and match the shapes as they reach the line`):'No hits found in this clip yet: the ghost still shows the moves.');return}
   prMsg(PR.mode==='ghost'?'Match the ghost. Press play.':'You on the right, the dancer on the left. Press play.');
 }
-/* the clip's hits that are inside what plays (trim and cuts) */
-function prHits(n){if(!n)return [];const k=(n.key||n.id)+':'+S.hitLevel+':'+(n.motion?n.motion.beats.length:0)+':'+S.cIn+':'+S.cOut+':'+segs().length;
-  if(PR.hk!==k){PR.hk=k;const L=segs();PR.hits=hitsOf(n).map(b=>b.t).filter(t=>L.some(g=>t>=g.s&&t<g.e))}return PR.hits}
+/* the targets: the clip's hits inside what plays (trim and cuts); Key moves keeps the strongest in each 2 beats */
+function prHits(n){if(!n)return [];const bp=beatPer();const k=(n.key||n.id)+':'+S.hitLevel+':'+(n.motion?n.motion.beats.length:0)+':'+S.cIn+':'+S.cOut+':'+segs().length+':'+PR.all+':'+bp.toFixed(3);
+  if(PR.hk!==k){PR.hk=k;const L=segs();const hs=hitsOf(n).filter(b=>L.some(g=>b.t>=g.s&&b.t<g.e));
+    if(PR.all)PR.hits=hs.map(b=>b.t);
+    else{const gap=Math.max(0.9,2*bp)*0.98,keep=[];hs.slice().sort((a,b)=>(b.w||0)-(a.w||0)).forEach(b=>{if(keep.every(t=>Math.abs(t-b.t)>=gap))keep.push(b.t)});PR.hits=keep.sort((a,b)=>a-b)}}
+  return PR.hits}
+const prLeadS=()=>PR.lead*beatPer();
 /* pose helpers: points in pixels */
 const prMid=(P,a,b)=>[(P[a][0]+P[b][0])/2,(P[a][1]+P[b][1])/2];
 const prVis=(P,j)=>P[j]&&P[j][2]>=0.45;
 function prTorso(P){const s=prMid(P,11,12),h=prMid(P,23,24);return Math.hypot(s[0]-h[0],s[1]-h[1])}
 /* the dancer's pose at clip time t, in the clip's pixels (flipped for Flip ghost) */
-function prRef(B,t){const P=RB.poseAt(B,t);if(!P)return null;const W=B.w||1,H=B.h||1;return P.map(q=>[PR.flip?(1-q[0])*W:q[0]*W,q[1]*H,q[2]])}
+function prRef(B,t,noFlip){const P=RB.poseAt(B,t);if(!P)return null;const W=B.w||1,H=B.h||1,f=PR.flip&&!noFlip;return P.map(q=>[f?(1-q[0])*W:q[0]*W,q[1]*H,q[2]])}
 /* move and size a dancer pose onto you: their hips onto your hips, their torso as long as yours */
 function prPlace(Q,w,h){
   const T=prTorso(Q)||1,hq=prMid(Q,23,24);let cx,cy,s;
@@ -5100,67 +5126,146 @@ function prScore(A,Bp){let sum=0,k=0;
   return k>=6?Math.round(sum/k*100):null}
 function prDraw(c,P,col,lw,alpha,dash){c.save();c.globalAlpha=alpha;c.strokeStyle=col;c.lineWidth=lw;c.lineCap='round';if(dash)c.setLineDash(dash);
   for(const [a,b] of PR_BONES){if(!prVis(P,a)||!prVis(P,b))continue;c.beginPath();c.moveTo(P[a][0],P[a][1]);c.lineTo(P[b][0],P[b][1]);c.stroke()}
-  if(prVis(P,0)&&prVis(P,11)&&prVis(P,12)){const r=prTorso(P)*0.22;c.setLineDash([]);c.beginPath();c.arc(P[0][0],P[0][1],Math.max(4,r),0,7);c.stroke()}
+  if(prVis(P,0)&&prVis(P,11)&&prVis(P,12)){const r=prTorso(P)*0.22;c.setLineDash([]);c.beginPath();c.arc(P[0][0],P[0][1],Math.max(3,r),0,7);c.stroke()}
   c.restore()}
+/* the hands/feet that move most into the move at H (what the rings and cards point at) */
+function prMovers(B,H,rate){const Q=prRef(B,H),Q0=prRef(B,H-0.3*rate);if(!Q)return [];return [15,16,27,28].filter(j=>prVis(Q,j)).map(j=>({j,d:Q0&&prVis(Q0,j)?Math.hypot(Q[j][0]-Q0[j][0],Q[j][1]-Q0[j][1]):0})).sort((a,b)=>b.d-a.d).slice(0,2).map(m=>m.j)}
 function pracLoop(){
   if(!PR.on)return;PR.raf=requestAnimationFrame(pracLoop);
   const now=performance.now();
-  if(PR.rt&&camV.readyState>=2&&now-PR.detAt>=30){PR.detAt=now;try{PR.Praw=PR.rt.detect(camV)}catch(e){PR.Praw=null}}
+  if(PR.rt&&PR.stream&&camV.readyState>=2&&now-PR.detAt>=30){PR.detAt=now;try{PR.Praw=PR.rt.detect(camV)}catch(e){PR.Praw=null}}
   const r=camCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(!w||!h)return;
   if(camCv.width!==w||camCv.height!==h){camCv.width=w;camCv.height=h}
-  const c=camCv.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,w,h);
+  const c=camCv.getContext('2d');c.fillStyle=PR.mode==='world'?'#0B0D11':'#000';c.fillRect(0,0,w,h);
+  const n=srcById(S.cur),B=n&&bodyOf(n),el=curVid(),vt=el?shownT(el):0,rate=(el&&el.playbackRate)||1;
+  if(PR.mode==='world'){if(B)prWorld(c,w,h,dpr,B,vt);if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}return}
   const vw=camV.videoWidth,vh=camV.videoHeight;
   /* the camera fills its pane (cropped at the edges) */
   let R={x:0,y:0,w,h};if(vw&&vh){const s=Math.max(w/vw,h/vh);R={x:(w-vw*s)/2,y:(h-vh*s)/2,w:vw*s,h:vh*s};
     c.save();if(PR.mirror){c.translate(w,0);c.scale(-1,1)}c.drawImage(camV,PR.mirror?w-R.x-R.w:R.x,R.y,R.w,R.h);c.restore()}
   PR.P=PR.Praw?PR.Praw.map(q=>[PR.mirror?R.x+R.w*(1-q[0]):R.x+R.w*q[0],R.y+R.h*q[1],q[2]]):null;
-  const n=srcById(S.cur),B=n&&bodyOf(n),el=curVid(),vt=el?shownT(el):0,rate=(el&&el.playbackRate)||1;
   if(PR.mode==='ghost'&&B){
     const Q=prRef(B,vt);if(Q){const G=prPlace(Q,w,h);prDraw(c,G,'#9FB4FF',Math.max(6,7*dpr),0.5)}
     if(PR.targets)prTargets(c,n,B,vt,rate,w,h,dpr);
   }
   if(PR.mine&&PR.P)prDraw(c,PR.P,'#2FD47A',Math.max(3,3.5*dpr),0.95);
   if(PR.flash&&now-PR.flash.at<900){const f=PR.flash,a=1-(now-f.at)/900;c.save();c.globalAlpha=Math.min(1,a*1.6);c.fillStyle=f.col;c.font=`900 ${Math.round(30*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='top';c.fillText(f.label.toUpperCase()+' '+f.score+'%',w/2,14*dpr);c.restore()}
-  if(!PR.mine&&!PR.P&&PR.rt&&!vw){}
   if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}
 }
-/* hit targets: each hit shows 1.2 s ahead as the pose to be in; rings shrink onto the hands/feet that make the hit */
-const PR_LEAD=1.2,PR_PRE=0.12,PR_POST=0.25;
+/* Ghost targets */
+const PR_PRE=0.12,PR_POST=0.25;
+const prCol=l=>l==='Hit'?'#2FD47A':l==='Close'?'#FFB347':l==='Miss'?'#F27D74':'#9AA0AA';
 function prTargets(c,n,B,vt,rate,w,h,dpr){
   const hits=prHits(n);if(!hits.length)return;
   /* a new pass (looped back or jumped): start the tally again */
-  if(vt<PR.lastVt-0.4){PR.done.clear();PR.win.clear();PR.pass={n:0,hit:0,close:0}}PR.lastVt=vt;
-  const playing=S.playing&&el0playing();
-  /* only the next hit is shown (hits can come every few tenths of a second; several at once was a mess) */
+  if(vt<PR.lastVt-0.4)prReset();PR.lastVt=vt;
+  const playing=S.playing&&el0playing(),lead=prLeadS();
+  /* the cards: upcoming moves slide along the bottom towards the now line (see a few coming, like Just Dance) */
+  prCards(c,B,hits,vt,rate,w,h,dpr,lead);
+  /* only the next move is drawn on you */
   const nextH=hits.find(H=>(H-vt)/rate>-PR_PRE);
   for(const H of hits){
     const dt=(H-vt)/rate;
-    if(dt>PR_LEAD)break;          /* (hits are in order) */
-    if(dt<-1.5)continue;          /* long gone (or jumped past): not this pass */
+    if(dt>Math.max(lead,0.3)+0.05)break;   /* (in order) */
+    if(dt<-1.5)continue;                    /* long gone (or jumped past): not this pass */
     const Q=prRef(B,H);if(!Q)continue;const G=prPlace(Q,w,h);
-    if(H===nextH&&dt>-PR_PRE){
-      /* the target: the pose at the hit, dashed, and rings on the end joints that move most into it */
-      const p=Math.max(0,Math.min(1,1-dt/PR_LEAD));
+    if(H===nextH&&dt>-PR_PRE&&dt<=lead){
+      const p=Math.max(0,Math.min(1,1-dt/lead));
       prDraw(c,G,'#FFB347',Math.max(3,3*dpr),0.35+0.5*p,[8*dpr,7*dpr]);
-      const Q0=prRef(B,H-0.3*rate);const movers=[15,16,27,28].filter(j=>prVis(Q,j)).map(j=>({j,d:Q0&&prVis(Q0,j)?Math.hypot(Q[j][0]-Q0[j][0],Q[j][1]-Q0[j][1]):0})).sort((a,b)=>b.d-a.d).slice(0,2);
       c.save();c.strokeStyle='#FFB347';c.lineWidth=Math.max(2,3*dpr);
-      for(const m of movers){const q=G[m.j],rr=(9+34*(1-p))*dpr;c.globalAlpha=0.4+0.6*p;c.beginPath();c.arc(q[0],q[1],rr,0,7);c.stroke();c.globalAlpha=0.9;c.beginPath();c.arc(q[0],q[1],7*dpr,0,7);c.stroke()}
+      for(const j of prMovers(B,H,rate)){const q=G[j],rr=(9+34*(1-p))*dpr;c.globalAlpha=0.4+0.6*p;c.beginPath();c.arc(q[0],q[1],rr,0,7);c.stroke();c.globalAlpha=0.9;c.beginPath();c.arc(q[0],q[1],7*dpr,0,7);c.stroke()}
       c.restore();
     }
-    /* scoring window around the hit: the best match counts */
+    /* scoring window around the move: the best match counts */
     if(playing&&dt<=PR_PRE&&dt>=-PR_POST&&!PR.done.has(H)&&PR.P){const sc=prScore(PR.P,G);if(sc!=null)PR.win.set(H,Math.max(PR.win.get(H)??-1,sc))}
     if(playing&&dt<-PR_POST&&!PR.done.has(H)){PR.done.add(H);const sc=PR.win.get(H);PR.pass.n++;
-      if(sc==null)PR.flash={label:'Not seen',score:0,col:'#9AA0AA',at:performance.now()};
-      else{const lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++;PR.flash={label:lab,score:sc,col:lab==='Hit'?'#2FD47A':lab==='Close'?'#FFB347':'#F27D74',at:performance.now()}}
+      let lab='Not seen';if(sc!=null){lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++}
+      PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now()};PR.res.set(H,lab);
       PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200)}
   }
 }
+function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
+  const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
+  const ch=Math.min(h*0.17,92*dpr),cw=ch*0.66,y1=h-resB,y0=y1-ch,x0=12*dpr+cw*0.5,span=Math.max(3,lead*2.5),X1=w-10*dpr-cw*0.5;
+  c.save();
+  /* the track and the now line */
+  c.fillStyle='rgba(8,9,12,.35)';c.fillRect(0,y0-4*dpr,w,ch+8*dpr);
+  c.strokeStyle='rgba(255,255,255,.75)';c.lineWidth=2*dpr;c.beginPath();c.moveTo(x0,y0-6*dpr);c.lineTo(x0,y1+6*dpr);c.stroke();
+  /* the warning zone: from here the move is drawn on you */
+  const xl=x0+Math.min(1,lead/span)*(X1-x0);c.fillStyle='rgba(255,179,71,.10)';c.fillRect(x0,y0-4*dpr,xl-x0,ch+8*dpr);
+  for(const H of hits){const dt=(H-vt)/rate;if(dt>span||dt<-0.6)continue;
+    const x=x0+Math.max(-0.2,dt)/span*(X1-x0);const res=PR.res.get(H),inLead=dt<=lead;
+    const fade=dt<0?Math.max(0,1+dt/0.6):1;c.globalAlpha=fade;
+    c.fillStyle='rgba(14,16,20,.82)';c.strokeStyle=res?prCol(res):inLead?'#FFB347':'rgba(255,255,255,.35)';c.lineWidth=(res||inLead?2.5:1.2)*dpr;
+    const bx=x-cw/2;c.beginPath();if(c.roundRect)c.roundRect(bx,y0,cw,ch,8*dpr);else c.rect(bx,y0,cw,ch);c.fill();c.stroke();
+    /* the move's shape, fitted into the card */
+    const Q=prRef(B,H);if(Q){const vis=Q.filter(q=>q[2]>=0.45);if(vis.length>6){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of vis){a0=Math.min(a0,q[0]);a1=Math.max(a1,q[0]);b0=Math.min(b0,q[1]);b1=Math.max(b1,q[1])}
+      const pad=5*dpr,s=Math.min((cw-2*pad)/Math.max(1,a1-a0),(ch-2*pad)/Math.max(1,b1-b0)),ox=bx+(cw-(a1-a0)*s)/2-a0*s,oy=y0+(ch-(b1-b0)*s)/2-b0*s;
+      const M=Q.map(q=>[ox+q[0]*s,oy+q[1]*s,q[2]]);prDraw(c,M,res?prCol(res):'#F3F1EC',Math.max(1.5,2*dpr),0.95);
+      c.fillStyle='#FFB347';for(const j of prMovers(B,H,rate)){if(!prVis(M,j))continue;c.beginPath();c.arc(M[j][0],M[j][1],3.2*dpr,0,7);c.fill()}}}
+    if(res){c.fillStyle=prCol(res);c.font=`800 ${Math.round(10*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='bottom';c.fillText(res.toUpperCase(),x,y0-2*dpr)}
+  }
+  c.restore();
+}
+/* ---- Worldline: the dancer through time in 3D (x, y from the pose; depth = time) ---- */
+const WL_PAST=1.6,WL_NEXT=0.8,WL_STEP=0.2;
+function prWorld(c,w,h,dpr,B,vt){
+  const W=B.w||1,H=B.h||1,asp=W/H,V=PR.wv,cy=Math.cos(V.yaw),sy=Math.sin(V.yaw),cp=Math.cos(V.pitch),sp=Math.sin(V.pitch);
+  const f=Math.min(w,h)*1.55*V.zoom,D=3.1,tz=t=>(vt-t)/(WL_PAST)*1.7;   /* past goes back into the screen */
+  const proj=(x,y,z)=>{const x1=x*cy-z*sy,z1=x*sy+z*cy,y2=y*cp-z1*sp,z2=y*sp+z1*cp,k=f/(D+z2);return [w/2+x1*k,h*0.5-y2*k,z2]};
+  /* pose point (pixels) -> 3D: x right, y up, both in frame heights, centred on the frame */
+  const P3=(q,t)=>proj((q[0]-W/2)/H,-(q[1]-H/2)/H,tz(t));
+  const line=(a,b,col,lw,al,dash)=>{c.save();c.globalAlpha=al;c.strokeStyle=col;c.lineWidth=lw;c.lineCap='round';if(dash)c.setLineDash(dash);c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke();c.restore()};
+  /* floor grid */
+  for(let x=-1.4;x<=1.41;x+=0.35)line(proj(x,-0.56,tz(vt-WL_PAST-0.2)),proj(x,-0.56,tz(vt+WL_NEXT+0.2)),'#4a5372',1,0.35);
+  for(let t=Math.ceil((vt-WL_PAST)/0.4)*0.4;t<=vt+WL_NEXT;t+=0.4)line(proj(-1.4,-0.56,tz(t)),proj(1.4,-0.56,tz(t)),'#4a5372',1,0.25);
+  const n=srcById(S.cur),keys=n?prHits(n):[];
+  /* slices: on a fixed grid (so they slide smoothly), plus now, plus key moves in the window */
+  const ts=[];for(let t=Math.ceil((vt-WL_PAST)/WL_STEP)*WL_STEP;t<=vt+WL_NEXT+1e-6;t+=WL_STEP)if(Math.abs(t-vt)>0.04)ts.push({t,kind:'s'});
+  ts.push({t:vt,kind:'now'});for(const k of keys)if(k>=vt-WL_PAST&&k<=vt+WL_NEXT)ts.push({t:k,kind:'key'});
+  ts.forEach(s=>s.z=proj(0,0,tz(s.t))[2]);ts.sort((a,b)=>b.z-a.z);
+  for(const s of ts){const Q=prRef(B,s.t,true);if(!Q)continue;const d=s.t-vt,age=Math.abs(d)/(d<0?WL_PAST:WL_NEXT);
+    const now=s.kind==='now',key=s.kind==='key';
+    /* the frame's outline (the video's shape) at this moment */
+    const corn=[[-asp/2,0.5],[asp/2,0.5],[asp/2,-0.5],[-asp/2,-0.5]].map(([x,y])=>proj(x,y,tz(s.t)));
+    c.save();c.globalAlpha=now?0.55:0.16*(1-age)+0.04;c.strokeStyle=now?'#8D9FE4':'#676F83';c.lineWidth=(now?1.4:0.8)*dpr;if(d>0.04)c.setLineDash([3*dpr,4*dpr]);c.beginPath();corn.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.stroke();c.restore();
+    const col=now?'#E9EDFF':key?'#FFB347':d<0?'#7F95F5':'#C9B27A',al=now?1:key?0.9:Math.max(0.12,0.7*(1-age)),lw=(now?3.6:key?2.6:1.6)*dpr*(f/(D+s.z))/(f/D);
+    for(const [a,b] of PR_BONES){if(!prVis(Q,a)||!prVis(Q,b))continue;line(P3(Q[a],s.t),P3(Q[b],s.t),col,Math.max(1,lw),al,d>0.04&&!key?[5*dpr,5*dpr]:null)}
+    if(prVis(Q,0)){const p=P3(Q[0],s.t);c.save();c.globalAlpha=al;c.strokeStyle=col;c.lineWidth=Math.max(1,lw);c.beginPath();c.arc(p[0],p[1],Math.max(2,(now?7:4)*dpr),0,7);c.stroke();c.restore()}
+    if(now&&PR.mine&&PR.Praw){const M=prOnRef(PR.Praw,Q);if(M)for(const [a,b] of PR_BONES){if(!prVis(M,a)||!prVis(M,b))continue;line(P3(M[a],s.t),P3(M[b],s.t),'#2FD47A',2.6*dpr,0.95)}}
+  }
+  /* trails: hands and feet through the whole window */
+  const TR=[[15,'#7FD3FF'],[16,'#7FD3FF'],[27,'#FF7FB2'],[28,'#FF7FB2']];
+  for(const [j,col] of TR){let prev=null;for(let t=vt-WL_PAST;t<=vt+WL_NEXT;t+=1/30){const Q=RB.poseAt(B,t);if(!Q||Q[j][2]<0.5){prev=null;continue}const p=P3([Q[j][0]*W,Q[j][1]*H],t);if(prev)line(prev,p,col,1.8*dpr,t<vt?0.75:0.4,t>vt?[3*dpr,4*dpr]:null);prev=p}}
+  c.save();c.fillStyle='rgba(243,241,236,.55)';c.font=`700 ${Math.round(10*dpr)}px Figtree,sans-serif`;c.textAlign='right';c.textBaseline='bottom';
+  const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
+  c.fillText('PAST SOLID · NEXT DASHED · KEY MOVES AMBER',w-10*dpr,h-resB);c.restore();
+}
+/* your live pose (camera) put on the dancer's now pose: hips on hips, same torso length */
+function prOnRef(Pn,Q){if(!(prVis(Q,23)&&prVis(Q,24)&&prVis(Q,11)&&prVis(Q,12)))return null;const n=srcById(S.cur),B=n&&bodyOf(n);if(!B)return null;
+  const camW=camV.videoWidth||1,camH=camV.videoHeight||1,U=Pn.map(q=>[(PR.mirror?1-q[0]:q[0])*camW,q[1]*camH,q[2]]);
+  if(!(prVis(U,23)&&prVis(U,24)&&prVis(U,11)&&prVis(U,12)))return null;
+  const hu=prMid(U,23,24),hq=prMid(Q,23,24),s=(prTorso(Q)||1)/(prTorso(U)||1);return U.map(q=>[hq[0]+(q[0]-hu[0])*s,hq[1]+(q[1]-hu[1])*s,q[2]])}
+/* turn / zoom the Worldline */
+{const pts=new Map();let last=0,base=null;
+  camCv.addEventListener('pointerdown',e=>{if(PR.mode!=='world')return;camCv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+    const now=performance.now();if(pts.size===1&&now-last<300){PR.wv={yaw:-0.62,pitch:0.28,zoom:1}}last=now;
+    if(pts.size===2){const [a,b]=[...pts.values()];base={d:Math.hypot(a[0]-b[0],a[1]-b[1]),z:PR.wv.zoom}}});
+  camCv.addEventListener('pointermove',e=>{if(PR.mode!=='world'||!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
+    if(pts.size===1){PR.wv.yaw+=(e.clientX-p[0])*0.008;PR.wv.pitch=Math.max(-0.2,Math.min(1.2,PR.wv.pitch+(e.clientY-p[1])*0.006))}
+    pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pts.size===2&&base){const [a,b]=[...pts.values()];PR.wv.zoom=Math.max(0.5,Math.min(3,base.z*Math.hypot(a[0]-b[0],a[1]-b[1])/(base.d||1)))}});
+  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)base=null};camCv.addEventListener('pointerup',up);camCv.addEventListener('pointercancel',up);
+  camCv.addEventListener('wheel',e=>{if(PR.mode!=='world')return;e.preventDefault();PR.wv.zoom=Math.max(0.5,Math.min(3,PR.wv.zoom*Math.exp(-e.deltaY*0.0015)))},{passive:false});}
 function el0playing(){const e=curVid();return !!e&&!e.paused}
-$$('#pracMode button').forEach(b=>b.addEventListener('click',()=>{PR.mode=b.dataset.pm;PR.xf=null;prSave();pracUI();pracStatus()}));
-[['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;prSave();pracUI();pracStatus()}));
+$$('#pracMode button').forEach(b=>b.addEventListener('click',()=>{PR.mode=b.dataset.pm;PR.xf=null;prSave();pracUI();if(prNeedsCam()&&!PR.stream)camStart();pracStatus()}));
+[['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();prSave();pracUI();pracStatus()}));
+$('#pracLead').addEventListener('click',()=>{PR.lead=PR.lead===1?2:PR.lead===2?4:1;prSave();pracUI()});
+$('#pracReset').addEventListener('click',()=>{PR.wv={yaw:-0.62,pitch:0.28,zoom:1}});
+$('#pracCam').addEventListener('click',camStart);
 $('#pracStop').addEventListener('click',pracOff);
 $('#pracMore').addEventListener('click',()=>{pracOff();sendClip()});
-window.__rsPR=PR;window.__rsPrScore=prScore;
+window.__rsPR=PR;window.__rsPrScore=prScore;window.__rsPrHits=()=>prHits(srcById(S.cur));
 
 /* ---------- MirrorView hand-off ----------
    MirrorView lives at ./mirrorview/ in the same installed app (same origin and storage). A clip or take is left in
