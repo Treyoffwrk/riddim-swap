@@ -1934,6 +1934,36 @@ function drawBody(){
 S.group={on:false,n:3,sp:null,mirror:false};
 try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(8,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
 const GR_M=0.5;   /* metres per torso length (rough, adult) */
+/* Formations: where each dancer stands, as a floor plan (x across and z back from the front, in spacings), with changes
+   at chosen beats of the clip. Each change keeps a shape (Line, V, Two rows, Wedge, Circle, or your own after dragging
+   the dancers on the floor plan); dancers walk to the new spots over the 2 beats from the change. Kept per clip;
+   shapes you save are kept for every clip. */
+S.group.forms={};S.group.edit=false;let GR_SAVED=[],grLastFi=-1,GR_LAST=[];
+try{const f=JSON.parse(localStorage.getItem('rs-group-forms')||'null');if(f&&typeof f==='object')S.group.forms=f}catch(e){}
+try{const g=JSON.parse(localStorage.getItem('rs-group-shapes')||'null');if(Array.isArray(g))GR_SAVED=g.filter(x=>x&&Array.isArray(x.pos)).slice(0,12)}catch(e){}
+const grFormSave=()=>{try{localStorage.setItem('rs-group-forms',JSON.stringify(S.group.forms))}catch(e){}};
+const grShapesSave=()=>{try{localStorage.setItem('rs-group-shapes',JSON.stringify(GR_SAVED))}catch(e){}};
+const GR_SHAPES={line:'Line',v:'V',rows:'Two rows',wedge:'Wedge',circle:'Circle'};
+function grShape(kind,n){const P=[];
+  if(kind==='v'){for(let k=0;k<n;k++){const x=k-(n-1)/2;P.push([x,Math.abs(x)*0.7])}}
+  else if(kind==='rows'){const f=Math.ceil(n/2),b=n-f,sh=(f-b)%2===0?0.5:0;for(let k=0;k<f;k++)P.push([k-(f-1)/2,0]);for(let k=0;k<b;k++)P.push([k-(b-1)/2+sh,1])}   /* the back row in the gaps (staggered) */
+  else if(kind==='wedge'){let i=0;while(P.length<n){for(let j=0;j<=i&&P.length<n;j++)P.push([j-i/2,i*0.9]);i++}}
+  else if(kind==='circle'){if(n<3)return grShape('line',n);const r=Math.max(0.9,n/(2*Math.PI)*1.15);for(let k=0;k<n;k++){const a=2*Math.PI*k/n;P.push([+(r*Math.sin(a)).toFixed(3),+(r*(1-Math.cos(a))).toFixed(3)])}}
+  else for(let k=0;k<n;k++)P.push([k-(n-1)/2,0]);
+  return P}
+const grKey=()=>{const n=srcById(S.cur);return n?String(n.key||n.id):''};
+function grForms(){const k=grKey();let F=S.group.forms[k];if(!Array.isArray(F)||!F.length)F=[{t:0,shape:'line'}];return F}
+function grSetForms(F){const k=grKey();if(!k)return;F.sort((a,b)=>a.t-b.t);F[0].t=Math.min(F[0].t,0);S.group.forms[k]=F;grFormSave()}
+/* a change's spots for n dancers (a custom shape keeps its dancers; extra ones join the end of the front row) */
+function grPosOf(f,n){if(f.shape!=='custom'||!Array.isArray(f.pos))return grShape(f.shape,n);const P=f.pos.slice(0,n).map(q=>[+q[0]||0,Math.max(0,+q[1]||0)]);
+  while(P.length<n){const mx=P.reduce((m,q)=>q[1]<0.3?Math.max(m,q[0]):m,-1e9);P.push([mx>-1e8?mx+1:P.length,0])}return P}
+function grFormAt(t){const F=grForms();let i=0;for(let j=0;j<F.length;j++)if(F[j].t<=t+1e-3)i=j;return i}
+function grPositions(t){const F=grForms(),n=S.group.n,i=grFormAt(t),P=grPosOf(F[i],n);if(i===0)return P;
+  const tr=2*beatPer(),p=Math.max(0,Math.min(1,(t-F[i].t)/tr));if(p>=1)return P;const e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2,Q=grPosOf(F[i-1],n);
+  return P.map((q,k)=>[Q[k][0]+(q[0]-Q[k][0])*e,Q[k][1]+(q[1]-Q[k][1])*e])}
+/* the closest two dancers in the same row (side by side), in spacings, over every change */
+function grMinSep(){const F=grForms(),n=S.group.n;let m=1e9;for(const f of F){const P=grPosOf(f,n);for(let a=0;a<n;a++)for(let b=a+1;b<n;b++)if(Math.abs(P[a][1]-P[b][1])<0.5)m=Math.min(m,Math.abs(P[a][0]-P[b][0]))}return m}
+function grName(f){return f.shape==='custom'?(f.name||'Your shape'):GR_SHAPES[f.shape]||'Line'}
 const grSave=()=>{try{localStorage.setItem('rs-group',JSON.stringify({n:S.group.n,sp:S.group.sp,mirror:S.group.mirror}))}catch(e){}};
 const GR_J=[0,11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32], GR_BONES=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,23],[12,24]];
 function groupRoom(B){
@@ -1977,43 +2007,108 @@ function drawGroup(c,B,t,w,h,dpr,el){
   const ex=cut?0.3*R.T:0;let [bx0,bx1,by0,by1]=[R.box[0]-ex,R.box[1]+ex,R.box[2]-(cut?0.5*R.T:0),R.box[3]+(cut?0.1*R.T:0)];
   /* Legs / Upper only: frame that half, so it fills the space */
   if(cut&&S.cutPart==='legs'&&R.hy)by0=R.hy-0.35*R.T; if(cut&&S.cutPart==='upper'&&R.hy)by1=R.hy+0.35*R.T;
-  const mx0=2*R.cx-bx1,mx1=2*R.cx-bx0;
-  const offs=[...Array(n)].map((_,k)=>(k-(n-1)/2)*d), mirOf=k=>S.group.mirror&&k%2===1;
-  let gx0=1e9,gx1=-1e9;offs.forEach((o,k)=>{const a=mirOf(k)?mx0:bx0,b=mirOf(k)?mx1:bx1;gx0=Math.min(gx0,a+o);gx1=Math.max(gx1,b+o)});
+  const mirOf=k=>S.group.mirror&&k%2===1;
+  /* each dancer at their spot in the formation: further back is smaller and higher (simple perspective) */
+  const Pos=grPositions(t),fy=R.box[3],L=0.8*(R.box[3]-R.box[2]),Fd=3.5*d;
+  const D=Pos.map(([x,z],k)=>{const X=x*d,Z=Math.max(0,z)*d;return {k,x,z,X,Z,kk:Fd/(Fd+Z),m:mirOf(k)}});
+  const G=(q,px,py)=>[(q.X+(q.m?R.cx-px:px-R.cx))*q.kk,fy-(fy-py)*q.kk-(1-q.kk)*L];
+  let gx0=1e9,gx1=-1e9,gy0=1e9,gy1=-1e9;for(const q of D)for(const px of [bx0,bx1])for(const py of [by0,by1]){const g=G(q,px,py);gx0=Math.min(gx0,g[0]);gx1=Math.max(gx1,g[0]);gy0=Math.min(gy0,g[1]);gy1=Math.max(gy1,g[1])}
   const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+16:0)*dpr,pad=14*dpr,top=26*dpr,side=52*dpr;   /* clear of the full-screen button */
-  const s=Math.min((w-2*side)/(gx1-gx0),(h-top-resB-pad)/(by1-by0));
-  const ox=(w-(gx1-gx0)*s)/2-gx0*s,oy=top-by0*s+Math.max(0,(h-top-resB-pad-(by1-by0)*s)/2);
-  /* floor */
-  c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();if(by1>=R.box[3]){c.moveTo(pad,oy+R.box[3]*s+4*dpr);c.lineTo(w-pad,oy+R.box[3]*s+4*dpr)}c.stroke();
-  const nd=groupNeedAt(R,t),touch=nd!=null&&nd>d/R.T;
-  if(touch){c.save();c.strokeStyle='rgba(242,125,116,.85)';c.setLineDash([6*dpr,6*dpr]);c.lineWidth=2*dpr;
-    for(let k=0;k<n-1;k++){const x=ox+((offs[k]+offs[k+1])/2+R.cx)*s;c.beginPath();c.moveTo(x,oy+by0*s);c.lineTo(x,oy+by1*s);c.stroke()}c.restore()}
+  const s=Math.min((w-2*side)/(gx1-gx0),(h-top-resB-pad)/(gy1-gy0));
+  const ox=(w-(gx1-gx0)*s)/2-gx0*s,oy=top-gy0*s+Math.max(0,(h-top-resB-pad-(gy1-gy0)*s)/2);
+  /* floor: the front line, and the back when there are rows */
+  const zmax=Math.max(...D.map(q=>q.Z));c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();
+  if(by1>=R.box[3]){c.moveTo(pad,oy+fy*s+4*dpr);c.lineTo(w-pad,oy+fy*s+4*dpr);if(zmax>0){const kb=Fd/(Fd+zmax),yb=oy+(fy-(1-kb)*L)*s+4*dpr;c.moveTo(w*0.18,yb);c.lineTo(w*0.82,yb)}}c.stroke();
+  /* touching: two dancers in the same row closer than the moves need right now */
+  const nd=groupNeedAt(R,t);let touch=false;
+  if(nd!=null){c.save();c.strokeStyle='rgba(242,125,116,.85)';c.setLineDash([6*dpr,6*dpr]);c.lineWidth=2*dpr;
+    for(let a=0;a<n;a++)for(let b=a+1;b<n;b++){const A=D[a],Bq=D[b];if(Math.abs(A.z-Bq.z)>=0.5)continue;if(Math.abs(A.x-Bq.x)*d/R.T>=nd)continue;
+      /* only neighbours: nobody standing between them in that row */
+      if(D.some(q=>q!==A&&q!==Bq&&Math.abs(q.z-A.z)<0.5&&q.x>Math.min(A.x,Bq.x)&&q.x<Math.max(A.x,Bq.x)))continue;
+      touch=true;const kk=(A.kk+Bq.kk)/2,xm=ox+((A.X+Bq.X)/2*kk)*s,ya=oy+(fy-(fy-by0)*kk-(1-kk)*L)*s,yb=oy+(fy-(1-kk)*L)*s;c.beginPath();c.moveTo(xm,ya);c.lineTo(xm,yb);c.stroke()}
+    c.restore()}
   const part=cut?S.cutPart:'all',skel=!cut||$('#bodyShow').checked;
   const img=cut?RB.cutDancer(B,t,el,W*s,H*s,part):null;
-  for(let k=0;k<n;k++){const m=mirOf(k),rect=m?{x:ox+(2*R.cx+offs[k])*s,y:oy,w:-W*s,h:H*s}:{x:ox+offs[k]*s,y:oy,w:W*s,h:H*s};
-    if(img){c.save();c.translate(rect.x,0);if(m)c.scale(-1,1);c.drawImage(img,0,rect.y,W*s,H*s);c.restore()}
-    if(skel)LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false,part},dpr)}
+  GR_LAST=D.map(q=>({x:q.x,z:q.z,kk:q.kk}));
+  for(const q of D.slice().sort((a,b)=>b.Z-a.Z)){const g=G(q,0,0),rect={x:ox+g[0]*s,y:oy+g[1]*s,w:(q.m?-1:1)*W*q.kk*s,h:H*q.kk*s};
+    c.save();c.globalAlpha=Math.max(0.5,1-(1-q.kk)*1.8);   /* further back: a little fainter */
+    if(img){c.save();c.translate(rect.x,0);if(q.m)c.scale(-1,1);c.drawImage(img,0,rect.y,W*q.kk*s,H*q.kk*s);c.restore()}
+    if(skel)LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false,part},dpr);c.restore()}
   c.font=`700 ${Math.round(12*dpr)}px Figtree,sans-serif`;c.textAlign='left';c.textBaseline='top';
   c.fillStyle=touch?'#F27D74':'rgba(243,241,236,.7)';
-  c.fillText(`${n} dancers · ${(d/R.T*GR_M).toFixed(1)} m apart`+(touch?' · touching here':''),pad,8*dpr);
+  const F=grForms(),fi=grFormAt(t);if(fi!==grLastFi){grLastFi=fi;setTimeout(grFormUI,0)}
+  c.fillText(`${n} dancers · ${grName(F[fi])}`+(F.length>1?` (${fi+1}/${F.length})`:'')+` · ${(d/R.T*GR_M).toFixed(1)} m apart`+(touch?' · touching here':''),pad,8*dpr);
 }
 function groupUpdate(){
   const n=srcById(S.cur),B=n&&bodyOf(n),on=!!(S.group.on&&B);
   $('#dkGroup').hidden=!B;$('#dkGroup').setAttribute('aria-pressed',String(on));
   $('#groupBar').hidden=!on;if(!on)return;
   const R=groupRoom(B);if(R.none){$('#grVerdict').textContent='No skeleton to copy yet.';return}
-  const rec=S.group.mirror?R.recM:R.recU,d=groupSpacing(R),chk=groupCheck(R,d),m=x=>(x*GR_M).toFixed(1)+' m';
+  const rec=S.group.mirror?R.recM:R.recU,d=groupSpacing(R),ms=grMinSep(),chk=ms<1e8?groupCheck(R,d*ms):{frac:0,at:null},m=x=>(x*GR_M).toFixed(1)+' m';
   $('#grN').textContent=S.group.n;$('#grLess').disabled=S.group.n<=2;$('#grMore').disabled=S.group.n>=8;
   const sp=$('#grSp');if(document.activeElement!==sp)sp.value=d;$('#grSpOut').textContent=m(d)+(S.group.sp?'':' (auto)');
   $('#grMirror').checked=S.group.mirror;
-  const width=(S.group.n-1)*rec+(R.box[1]-R.box[0])/R.T;
+  let ex=[1e9,-1e9],zz=0;for(const f of grForms())for(const q of grPosOf(f,S.group.n)){ex[0]=Math.min(ex[0],q[0]);ex[1]=Math.max(ex[1],q[0]);zz=Math.max(zz,q[1])}
+  const width=(ex[1]-ex[0])*d+(R.box[1]-R.box[0])/R.T,deep=zz>0?` · ~${m(zz*d+0.8)} deep`:'';
   /* short, so it fits on one or two lines under the video (the full sentence is in the title) */
   const tch=chk.frac>0?`touch ${Math.max(1,Math.round(chk.frac*100))}% of the time (most at ${fmt(chk.at)})`:`no touching`;
-  $('#grVerdict').textContent=`Each needs ~${m(rec)} · ${S.group.n} need ~${m(width)} across · ${tch}`;
-  $('#grVerdict').title=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across. At ${m(d)} apart: ${tch}.`;
+  $('#grVerdict').textContent=`Each needs ~${m(rec)} · ${S.group.n} need ~${m(width)} across${deep} · ${tch}`;
+  $('#grVerdict').title=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across${deep?' and '+deep.slice(4):''}. At ${m(d)} apart: ${tch}.`;
   $('#grVerdict').classList.toggle('bad',chk.frac>0);
   $('#grFit').hidden=!(chk.frac>0);
+  grFormUI();
 }
+/* the formation row: shapes, the changes through the clip, and the floor plan to drag dancers on */
+function grNowT(){const el=curVid();return el?shownT(el):0}
+function grFormUI(){
+  const F=grForms(),t=grNowT(),i=grFormAt(t),f=F[i],box=$('#grShapes');box.textContent='';
+  const add=(label,on,fn,x)=>{const b=document.createElement('button');b.type='button';b.className='pchip';b.textContent=label;b.setAttribute('aria-pressed',String(!!on));b.addEventListener('click',fn);
+    if(x){const k=document.createElement('span');k.className='grx';k.textContent='×';k.setAttribute('role','button');k.setAttribute('aria-label','Delete '+label);k.addEventListener('click',e=>{e.stopPropagation();x()});b.appendChild(k)}box.appendChild(b)};
+  for(const [k,name] of Object.entries(GR_SHAPES))add(name,f.shape===k,()=>grPick({shape:k}));
+  GR_SAVED.forEach((g,j)=>add(g.name,f.shape==='custom'&&f.name===g.name,()=>grPick({shape:'custom',pos:g.pos.map(q=>q.slice()),name:g.name}),()=>{GR_SAVED.splice(j,1);grShapesSave();grFormUI()}));
+  const ch=$('#grChanges');ch.textContent='';
+  F.forEach((g,j)=>{const b=document.createElement('button');b.type='button';b.className='grch';b.setAttribute('aria-pressed',String(j===i));
+    b.innerHTML=`<b>${fmtClock(Math.max(0,g.t))}</b><span></span>`;b.querySelector('span').textContent=grName(g);b.title='Go to this change';
+    b.addEventListener('click',()=>grGo(Math.max(S.cIn||0,g.t)+0.001));
+    if(j>0){const k=document.createElement('span');k.className='grx';k.textContent='×';k.setAttribute('role','button');k.setAttribute('aria-label','Remove the change at '+fmtClock(g.t));
+      k.addEventListener('click',e=>{e.stopPropagation();const G=grForms().slice();G.splice(j,1);grSetForms(G);groupUpdate();bodyKey='';drawBody()});b.appendChild(k)}
+    ch.appendChild(b)});
+  $('#grEdit').setAttribute('aria-pressed',String(S.group.edit));$('#grPlan').toggleAttribute('hidden',!S.group.edit);   /* an SVG has no .hidden */
+  grPlanDraw();
+}
+function grGo(t){pause();const el=curVid();try{el.currentTime=t}catch(e){}bodyKey='';setTimeout(()=>{groupUpdate();drawBody()},120)}
+/* pick a shape for the change playing now */
+function grPick(g){const F=grForms().map(x=>({...x})),i=grFormAt(grNowT());F[i]={...F[i],...g};if(g.shape!=='custom'){delete F[i].pos;delete F[i].name}grSetForms(F);groupUpdate();bodyKey='';drawBody()}
+/* a new change at the beat nearest to now, starting from the current spots */
+function grAddChange(){const t=grNowT(),bt=clipBeatTimes();let T=t;if(bt){let b=bt[0];for(const x of bt)if(Math.abs(x-t)<Math.abs(b-t))b=x;T=b}else{const p=beatPer(),c0=S.cIn||0;T=c0+Math.round((t-c0)/p)*p}
+  T=+T.toFixed(3);const F=grForms().map(x=>({...x}));if(F.some(x=>Math.abs(x.t-T)<0.05)){recMsg('There\'s already a change on this beat. Move on a beat or more, then add one.');return}
+  /* a new change starts as the next shape along, so it's visibly a change; pick another or drag to make it yours */
+  const cur=F[grFormAt(T)],ks=Object.keys(GR_SHAPES),nx=ks[(Math.max(0,ks.indexOf(cur.shape))+1)%ks.length];F.push({t:T,shape:nx});
+  grSetForms(F);grGo(T+0.001);recMsg(`Formation change added at ${fmtClock(T)} (on the beat): ${GR_SHAPES[nx]}. Pick a shape or drag the dancers on the floor plan.`)}
+/* the floor plan: the stage from above, the audience at the bottom; drag a dancer to move them (snaps to quarter spacings) */
+let grDrag=null;
+function grPlanGeom(){const svg=$('#grPlan'),r=svg.getBoundingClientRect(),n=S.group.n,P=grPosOf(grForms()[grFormAt(grNowT())],n);
+  const xs=Math.max(n/2+0.6,...P.map(q=>Math.abs(q[0])+0.8)),zs=Math.max(2.4,...P.map(q=>q[1]+0.8));const W=r.width||300,H=r.height||130;
+  const u=Math.min((W-16)/(2*xs),(H-44)/zs);return {W,H,u,P,X:x=>W/2+x*u,Z:z=>H-32-z*u,ix:X=>(X-W/2)/u,iz:Y=>(H-32-Y)/u}}
+function grPlanDraw(){const svg=$('#grPlan');if(svg.hasAttribute('hidden'))return;const g=grPlanGeom(),{W,H,u,P}=g;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  let out=`<rect x="0" y="0" width="${W}" height="${H}" rx="10" fill="rgba(255,255,255,.03)"/>`;
+  for(let x=-10;x<=10;x++){const X=g.X(x);if(X<4||X>W-4)continue;out+=`<line x1="${X}" y1="6" x2="${X}" y2="${H-32}" stroke="rgba(255,255,255,.06)"/>`}
+  for(let z=0;z<=10;z++){const Y=g.Z(z);if(Y<6)break;out+=`<line x1="6" y1="${Y}" x2="${W-6}" y2="${Y}" stroke="rgba(255,255,255,${z?0.06:0.25})"/>`}
+  out+=`<text x="${W/2}" y="${H-4}" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(243,241,236,.5)">FRONT · AUDIENCE</text>`;
+  P.forEach((q,k)=>{const cx=g.X(q[0]),cy=g.Z(q[1]),r=Math.max(9,Math.min(14,u*0.32));out+=`<g class="grdot" data-k="${k}"><circle cx="${cx}" cy="${cy}" r="${r+8}" fill="transparent"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="${S.group.mirror&&k%2?'#FF5FA2':'#8D9FE4'}" stroke="#0E1014" stroke-width="2"/><text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="11" font-weight="800" fill="#0E1014">${k+1}</text></g>`});
+  svg.innerHTML=out}
+{const svg=$('#grPlan');
+  svg.addEventListener('pointerdown',e=>{const d=e.target.closest('.grdot');if(!d)return;e.preventDefault();svg.setPointerCapture(e.pointerId);grDrag={k:+d.dataset.k,id:e.pointerId}});
+  svg.addEventListener('pointermove',e=>{if(!grDrag||e.pointerId!==grDrag.id)return;const g=grPlanGeom(),r=svg.getBoundingClientRect();
+    const x=Math.round(g.ix(e.clientX-r.left)*4)/4,z=Math.max(0,Math.round(g.iz(e.clientY-r.top)*4)/4);
+    const F=grForms().map(f=>({...f})),i=grFormAt(grNowT()),P=grPosOf(F[i],S.group.n);if(P[grDrag.k][0]===x&&P[grDrag.k][1]===z)return;P[grDrag.k]=[x,z];
+    F[i]={t:F[i].t,shape:'custom',pos:P,name:F[i].shape==='custom'&&F[i].name&&GR_SAVED.some(s=>s.name===F[i].name)?undefined:F[i].name};grSetForms(F);bodyKey='';drawBody();grPlanDraw()});
+  const up=e=>{if(grDrag&&e.pointerId===grDrag.id){grDrag=null;groupUpdate()}};svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',up);}
+window.__rsGr={last:()=>GR_LAST,pos:t=>grPositions(t),forms:()=>grForms(),at:t=>grFormAt(t)};
+$('#grEdit').addEventListener('click',()=>{S.group.edit=!S.group.edit;grFormUI()});
+$('#grAdd').addEventListener('click',grAddChange);
+$('#grSave').addEventListener('click',()=>{const f=grForms()[grFormAt(grNowT())],P=grPosOf(f,S.group.n);let k=GR_SAVED.length+1;while(GR_SAVED.some(g=>g.name==='Shape '+k))k++;
+  const name='Shape '+k;GR_SAVED.push({name,pos:P});if(GR_SAVED.length>12)GR_SAVED.shift();grShapesSave();grPick({shape:'custom',pos:P.map(q=>q.slice()),name});recMsg(`Saved as "${name}": it's in the shapes for every clip.`)});
 $('#dkGroup').addEventListener('click',()=>{S.group.on=!S.group.on;groupUpdate();dockUpdate();bodyKey='';drawBody()});
 $('#grLess').addEventListener('click',()=>{S.group.n=Math.max(2,S.group.n-1);grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grMore').addEventListener('click',()=>{S.group.n=Math.min(8,S.group.n+1);grSave();groupUpdate();bodyKey='';drawBody()});
@@ -2291,10 +2386,10 @@ startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
    1 beat, 2 beats or a bar ahead, with rings shrinking onto the hand/foot that makes it; on the move your pose is scored
    (limb directions compared, 0-100) and the result flashes; each pass through the clip is tallied. The camera only
    starts from a tap and stops when you leave practice or the app. */
-var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1}};
-try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2}}catch(e){}
-const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead}))}catch(e){}};
-const camV=$('#camVid'),camCv=$('#camCanvas');
+var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1},step:false,hold:null,holdOk:0,holdSc:null,run:null,last:null,replay:null,myRun:true};
+try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2;PR.step=!!g.step;PR.myRun=g.myRun!==false}}catch(e){}
+const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead,step:PR.step,myRun:PR.myRun}))}catch(e){}};
+const camV=$('#camVid'),camCv=$('#camCanvas'),recV=$('#camRec');
 const PR_BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32],[15,19],[16,20]];
 const PR_LIMBS=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,12],[23,24]];
 const prNeedsCam=()=>PR.mode!=='world';
@@ -2310,6 +2405,9 @@ function pracUI(){
   $('#pracTargets').hidden=$('#pracFlip').hidden=!g;$('#pracAll').hidden=$('#pracLead').hidden=!g||!PR.targets;
   $('#pracMirror').hidden=wl;$('#pracReset').hidden=!wl;$('#pracCam').hidden=!wl||!!PR.stream;
   $('#pracMine').textContent=wl?'Me on now':'My skeleton';
+  $('#pracStep').setAttribute('aria-pressed',String(PR.step));$('#pracStep').hidden=!g||!PR.targets||!!PR.replay;
+  $('#pracMyRun').setAttribute('aria-pressed',String(PR.myRun));$('#pracMyRun').hidden=!wl||!(PR.last&&PR.last.samples.length);
+  $('#pracLive').hidden=!PR.replay;
   const tb=$('#t-body');if(tb){tb.setAttribute('aria-pressed',String(PR.on));tb.classList.toggle('on',PR.on)}
   bodyKey='';
 }
@@ -2332,14 +2430,16 @@ async function pracOn(){
   cancelAnimationFrame(PR.raf);PR.raf=requestAnimationFrame(pracLoop);
   if(prNeedsCam())await camStart();else pracStatus();
 }
-function pracOff(){PR.on=false;cancelAnimationFrame(PR.raf);camStop();pracUI()}
+function pracOff(){prReplayStop(true);prRunEnd();PR.hold=null;PR.on=false;cancelAnimationFrame(PR.raf);camStop();$('#pracRes').hidden=true;pracUI()}
 function prReset(){PR.pass={n:0,hit:0,close:0};PR.done.clear();PR.win.clear();PR.res.clear()}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&PR.on)pracOff()});   /* never keep the camera on in the background */
 function pracStatus(){
   if(!PR.on)return;const n=srcById(S.cur),B=n&&bodyOf(n);
   if(PR.mode!=='split'&&!B){prMsg('Track the body first (Body on the video) to see the '+(PR.mode==='world'?'Worldline':'ghost and targets')+'.');return}
   if(PR.mode==='world'){prMsg('The dancer through time: past poses solid, next ones dashed. Drag to turn, pinch to zoom, double-tap to reset.');return}
+  if(PR.replay){prMsg('Replay of your last run: you on the right, the dancer as you saw it. Tap Back to live to practise again.');return}
   if(!PR.rt){return}
+  if(PR.hold!=null){prMsg('Step mode: hold the amber pose to go on'+(PR.holdSc!=null?' · now '+PR.holdSc+'%':'')+' · tap play to skip it.');return}
   if(!PR.P){prMsg('Step back until your whole body is in the camera.');return}
   if(PR.mode==='ghost'&&PR.targets){const p=PR.pass;const hs=prHits(n).length;
     prMsg(hs?`This pass: ${p.hit} hit${p.hit===1?'':'s'}${p.close?`, ${p.close} close`:''} of ${p.n}`+(PR.flash?` · last: ${PR.flash.label} ${PR.flash.score}%`:'')+(p.n?'':` · ${hs} ${PR.all?'hits':'key moves'}: press play and match the shapes as they reach the line`):'No hits found in this clip yet: the ghost still shows the moves.');return}
@@ -2381,23 +2481,34 @@ function prMovers(B,H,rate){const Q=prRef(B,H),Q0=prRef(B,H-0.3*rate);if(!Q)retu
 function pracLoop(){
   if(!PR.on)return;PR.raf=requestAnimationFrame(pracLoop);
   const now=performance.now();
-  if(PR.rt&&PR.stream&&camV.readyState>=2&&now-PR.detAt>=30){PR.detAt=now;try{PR.Praw=PR.rt.detect(camV)}catch(e){PR.Praw=null}}
+  let fresh=false;
+  if(!PR.replay&&PR.rt&&PR.stream&&camV.readyState>=2&&now-PR.detAt>=30){PR.detAt=now;fresh=true;try{PR.Praw=PR.rt.detect(camV)}catch(e){PR.Praw=null}}
   const r=camCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(!w||!h)return;
   if(camCv.width!==w||camCv.height!==h){camCv.width=w;camCv.height=h}
   const c=camCv.getContext('2d');c.fillStyle=PR.mode==='world'?'#0B0D11':'#000';c.fillRect(0,0,w,h);
   const n=srcById(S.cur),B=n&&bodyOf(n),el=curVid(),vt=el?shownT(el):0,rate=(el&&el.playbackRate)||1;
-  if(PR.mode==='world'){if(B)prWorld(c,w,h,dpr,B,vt);if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}return}
-  const vw=camV.videoWidth,vh=camV.videoHeight;
+  /* the run: your camera recorded and your pose kept against the clip time, for the results and the replay */
+  if(!PR.replay&&PR.mode==='ghost'&&PR.targets&&PR.stream&&S.playing&&!PR.run&&B)prRunStart();
+  if(PR.run&&fresh){const Rn=PR.run,ls=Rn.samples[Rn.samples.length-1];if(Rn.samples.length<9000&&!(ls&&vt<ls.vt-0.4))Rn.samples.push({w:(now-Rn.t0)/1000,vt,P:PR.Praw});
+    if(Rn.rec&&Rn.rec.state==='recording'&&now-Rn.t0>240000)try{Rn.rec.stop()}catch(e){}}
+  const src=PR.replay?recV:camV;
+  if(PR.replay){const sm=prSampleAt(PR.replay.samples,vt,true);PR.Praw=sm?sm.P:null;
+    if(PR.replay.url){if(S.playing&&recV.paused)recV.play().catch(()=>{});if(!S.playing&&!recV.paused)recV.pause();
+      if(sm&&recV.readyState>=1&&Math.abs(recV.currentTime-sm.w)>0.3&&!recV.seeking)try{recV.currentTime=sm.w}catch(e){}}
+    if(S.playing)PR.replay.played=true;
+    if(vt<PR.lastVt-0.4&&PR.replay.played){PR.lastVt=vt;prReplayStop();return}}
+  if(PR.mode==='world'){if(B)prWorld(c,w,h,dpr,B,vt);if(PR.replay)PR.lastVt=vt;if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}return}
+  const vw=PR.replay?(PR.replay.url?recV.videoWidth:0)||PR.replay.cw:camV.videoWidth,vh=PR.replay?(PR.replay.url?recV.videoHeight:0)||PR.replay.ch:camV.videoHeight;
   /* the camera fills its pane (cropped at the edges) */
   let R={x:0,y:0,w,h};if(vw&&vh){const s=Math.max(w/vw,h/vh);R={x:(w-vw*s)/2,y:(h-vh*s)/2,w:vw*s,h:vh*s};
-    c.save();if(PR.mirror){c.translate(w,0);c.scale(-1,1)}c.drawImage(camV,PR.mirror?w-R.x-R.w:R.x,R.y,R.w,R.h);c.restore()}
+    c.save();if(PR.mirror){c.translate(w,0);c.scale(-1,1)}if(src.readyState>=2)c.drawImage(src,PR.mirror?w-R.x-R.w:R.x,R.y,R.w,R.h);c.restore()}
   PR.P=PR.Praw?PR.Praw.map(q=>[PR.mirror?R.x+R.w*(1-q[0]):R.x+R.w*q[0],R.y+R.h*q[1],q[2]]):null;
   if(PR.mode==='ghost'&&B){
     const Q=prRef(B,vt);if(Q){const G=prPlace(Q,w,h);prDraw(c,G,'#9FB4FF',Math.max(6,7*dpr),0.5)}
     if(PR.targets)prTargets(c,n,B,vt,rate,w,h,dpr);
   }
   if(PR.mine&&PR.P)prDraw(c,PR.P,'#2FD47A',Math.max(3,3.5*dpr),0.95);
-  if(PR.flash&&now-PR.flash.at<900){const f=PR.flash,a=1-(now-f.at)/900;c.save();c.globalAlpha=Math.min(1,a*1.6);c.fillStyle=f.col;c.font=`900 ${Math.round(30*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='top';c.fillText(f.label.toUpperCase()+' '+f.score+'%',w/2,14*dpr);c.restore()}
+  if(PR.flash&&now-PR.flash.at<900){const f=PR.flash,a=1-(now-f.at)/900;c.save();c.globalAlpha=Math.min(1,a*1.6);c.fillStyle=f.col;c.font=`900 ${Math.round(28*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='top';c.fillText(f.label.toUpperCase()+' '+f.score+'%',PR.mode==='ghost'?(w*0.3+w-44*dpr)/2:w/2,PR.hold!=null?64*dpr:14*dpr);c.restore()}
   if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}
 }
 /* Ghost targets */
@@ -2405,13 +2516,21 @@ const PR_PRE=0.12,PR_POST=0.25;
 const prCol=l=>l==='Hit'?'#2FD47A':l==='Close'?'#FFB347':l==='Miss'?'#F27D74':'#9AA0AA';
 function prTargets(c,n,B,vt,rate,w,h,dpr){
   const hits=prHits(n);if(!hits.length)return;
-  /* a new pass (looped back or jumped): start the tally again */
-  if(vt<PR.lastVt-0.4)prReset();PR.lastVt=vt;
-  const playing=S.playing&&el0playing(),lead=prLeadS();
+  /* a new pass (looped back or jumped): the run ends (results) and the tally starts again */
+  if(vt<PR.lastVt-0.4&&!PR.replay){prRunEnd();prReset();PR.hold=null}PR.lastVt=vt;
+  let playing=S.playing&&el0playing()&&!PR.replay;const lead=prLeadS();
   /* the cards: upcoming moves slide along the bottom towards the now line (see a few coming, like Just Dance) */
   prCards(c,B,hits,vt,rate,w,h,dpr,lead);
   /* only the next move is drawn on you */
   const nextH=hits.find(H=>(H-vt)/rate>-PR_PRE);
+  /* Step mode: the clip waits on each key move until you hold it (Hit for 0.4 s); tap play to skip on */
+  if(PR.step&&!PR.replay){
+    if(PR.hold!=null){const H=PR.hold;
+      if(S.playing){prFinal(H);PR.hold=null;PR.holdOk=0}
+      else{const Q=prRef(B,H);if(Q){const G=prPlace(Q,w,h),sc=PR.P?prScore(PR.P,G):null;PR.holdSc=sc;if(sc!=null)PR.win.set(H,Math.max(PR.win.get(H)??-1,sc));
+        if(sc!=null&&sc>=75){const t=performance.now();if(!PR.holdOk)PR.holdOk=t;else if(t-PR.holdOk>=400){prFinal(H);PR.hold=null;PR.holdOk=0;play()}}else PR.holdOk=0}}}
+    else if(playing&&nextH!=null&&!PR.done.has(nextH)&&(nextH-vt)/rate<=0.03){pause();playing=false;const el=curVid();try{el.currentTime=nextH}catch(e){}PR.hold=nextH;PR.holdOk=0;PR.holdSc=null;PR.win.delete(nextH)}
+  }
   for(const H of hits){
     const dt=(H-vt)/rate;
     if(dt>Math.max(lead,0.3)+0.05)break;   /* (in order) */
@@ -2426,12 +2545,61 @@ function prTargets(c,n,B,vt,rate,w,h,dpr){
     }
     /* scoring window around the move: the best match counts */
     if(playing&&dt<=PR_PRE&&dt>=-PR_POST&&!PR.done.has(H)&&PR.P){const sc=prScore(PR.P,G);if(sc!=null)PR.win.set(H,Math.max(PR.win.get(H)??-1,sc))}
-    if(playing&&dt<-PR_POST&&!PR.done.has(H)){PR.done.add(H);const sc=PR.win.get(H);PR.pass.n++;
-      let lab='Not seen';if(sc!=null){lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++}
-      PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now()};PR.res.set(H,lab);
-      PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200)}
+    if(playing&&dt<-PR_POST&&!PR.done.has(H))prFinal(H);
   }
+  /* Step mode: the hold meter */
+  if(PR.hold!=null){const sc=PR.holdSc,t=performance.now(),k=PR.holdOk?Math.min(1,(t-PR.holdOk)/400):0;c.save();
+    /* between the clip in the corner and the full-screen button */
+    const xa=w*0.3+18*dpr,xb=w-62*dpr,cx=(xa+xb)/2,aw=xb-xa,txt=sc!=null?'HOLD IT · '+sc+'%':'HOLD IT';
+    c.fillStyle='rgba(8,9,12,.6)';if(c.roundRect){c.beginPath();c.roundRect(xa,10*dpr,aw,46*dpr,12*dpr);c.fill()}else c.fillRect(xa,10*dpr,aw,46*dpr);
+    let fs=22*dpr;c.font=`900 ${Math.round(fs)}px Figtree,sans-serif`;const tw=c.measureText(txt).width;if(tw>aw-16*dpr){fs*=(aw-16*dpr)/tw;c.font=`900 ${Math.round(fs)}px Figtree,sans-serif`}
+    c.fillStyle=sc!=null&&sc>=75?'#2FD47A':'#FFB347';c.textAlign='center';c.textBaseline='middle';c.fillText(txt,cx,29*dpr);
+    c.fillStyle='rgba(255,255,255,.18)';c.fillRect(xa+10*dpr,46*dpr,aw-20*dpr,4*dpr);
+    c.fillStyle=k>0?'#2FD47A':'#FFB347';c.fillRect(xa+10*dpr,46*dpr,(aw-20*dpr)*(k>0?k:sc!=null?Math.min(1,sc/75)*0.6:0),4*dpr);c.restore()}
 }
+/* a key move is over: its best score in the window becomes Hit / Close / Miss */
+function prFinal(H){if(PR.done.has(H))return;PR.done.add(H);const sc=PR.win.get(H);PR.pass.n++;
+  let lab='Not seen';if(sc!=null&&sc>=0){lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++}
+  PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now()};PR.res.set(H,lab);
+  PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200);
+  if(PR.run)PR.run.hits.push({t:H,score:sc!=null&&sc>=0?sc:null,label:lab})}
+/* ---- the run: record your camera while you dance a pass, then show how it went and let you replay it ---- */
+function prRunStart(){const Rn={hits:[],samples:[],t0:performance.now(),cw:camV.videoWidth||720,ch:camV.videoHeight||960,chunks:[],rec:null,mime:''};
+  try{const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+    const t=window.MediaRecorder&&types.find(x=>MediaRecorder.isTypeSupported(x));
+    if(t&&PR.stream){Rn.mime=t;Rn.rec=new MediaRecorder(PR.stream,{mimeType:t,videoBitsPerSecond:1500000});Rn.rec.ondataavailable=e=>{if(e.data&&e.data.size)Rn.chunks.push(e.data)};Rn.rec.start(1000)}}
+  catch(e){Rn.rec=null}
+  PR.run=Rn;$('#pracRes').hidden=true}
+function prRunEnd(){const Rn=PR.run;PR.run=null;if(!Rn)return;
+  const keep=Rn.hits.some(x=>x.score!=null);   /* a pass where you were never seen doesn't replace the last one */if(keep&&S.playing)pause();   /* the pass is over: stop on the results (Go again starts the next) */
+  const fin=()=>{if(!keep)return;const url=Rn.chunks.length?URL.createObjectURL(new Blob(Rn.chunks,{type:(Rn.mime||'video/webm').split(';')[0]})):null;
+    const old=PR.last;if(old&&old.url&&!(PR.replay&&PR.replay.url===old.url))URL.revokeObjectURL(old.url);
+    PR.last={hits:Rn.hits,samples:Rn.samples,url,cw:Rn.cw,ch:Rn.ch,mime:Rn.mime};if(PR.on){prResShow();pracUI()}};
+  if(Rn.rec&&Rn.rec.state!=='inactive'){Rn.rec.onstop=fin;try{Rn.rec.stop()}catch(e){fin()}}else fin()}
+/* your pose at clip time t in a run (the last one kept at or before t, so a Step-mode hold shows the matched pose) */
+function prSampleAt(sm,t,last){if(!sm||!sm.length)return null;let best=null,bd=1e9;
+  for(let i=0;i<sm.length;i++){const d=t-sm[i].vt;if(d>=-0.02&&d<0.5&&(last?d<=bd+0.001:d<bd)){bd=d;best=sm[i]}}return best}
+function prResShow(){const L=PR.last;if(!L)return;const box=$('#pracRes');
+  const hit=L.hits.filter(x=>x.label==='Hit').length,close=L.hits.filter(x=>x.label==='Close').length,miss=L.hits.length-hit-close;
+  const avg=Math.round(L.hits.reduce((a,x)=>a+(x.score||0),0)/L.hits.length);
+  $('#prResScore').textContent=avg+'%';
+  $('#prResSum').textContent=`${hit} hit · ${close} close · ${miss} miss of ${L.hits.length} move${L.hits.length===1?'':'s'}`+(miss?' · tap a move to go to it':'');
+  const mv=$('#prResMoves');mv.textContent='';
+  L.hits.forEach((x,i)=>{const b=document.createElement('button');b.type='button';b.dataset.l=x.label;b.dataset.t=String(x.t);
+    b.title=`Move ${i+1} at ${fmtClock(x.t)}: ${x.label}${x.score!=null?' '+x.score+'%':''}`;
+    b.innerHTML=`<span>${x.label==='Not seen'?'—':x.label}</span><i>${x.score!=null?x.score+'%':'not seen'}</i>`;
+    b.addEventListener('click',()=>{prReplayStop(true);pause();const el=curVid();try{el.currentTime=Math.max(0,x.t-prLeadS()-0.6)}catch(e){}PR.lastVt=-1e9;prReset()});mv.appendChild(b)});
+  $('#prReplay').disabled=!(L.samples.length||L.url);
+  box.hidden=false}
+const fmtClock=t=>{t=Math.max(0,t);return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
+function prReplayStart(){const L=PR.last;if(!L)return;prRunEnd();PR.hold=null;
+  PR.replay={...L,played:false};PR.res=new Map(L.hits.map(x=>[x.t,x.label]));PR.done=new Set(L.hits.map(x=>x.t));PR.flash=null;
+  if(L.url){recV.src=L.url;recV.load()}else{recV.removeAttribute('src')}
+  $('#pracRes').hidden=true;if(PR.mode==='split')PR.mode='ghost';PR.xf=null;pracUI();
+  pause();toStart();PR.lastVt=-1e9;play();
+  if(!L.url)recMsg('This phone didn\'t record the camera, so the replay shows your skeleton only.')}
+function prReplayStop(quiet){if(!PR.replay)return;PR.replay=null;try{recV.pause()}catch(e){}PR.Praw=null;PR.P=null;prReset();PR.xf=null;
+  if(!quiet){pause();prResShow()}pracUI()}
 function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
   const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
   const ch=Math.min(h*0.17,92*dpr),cw=ch*0.66,y1=h-resB,y0=y1-ch,x0=12*dpr+cw*0.5,span=Math.max(3,lead*2.5),X1=w-10*dpr-cw*0.5;
@@ -2480,18 +2648,20 @@ function prWorld(c,w,h,dpr,B,vt){
     const col=now?'#E9EDFF':key?'#FFB347':d<0?'#7F95F5':'#C9B27A',al=now?1:key?0.9:Math.max(0.12,0.7*(1-age)),lw=(now?3.6:key?2.6:1.6)*dpr*(f/(D+s.z))/(f/D);
     for(const [a,b] of PR_BONES){if(!prVis(Q,a)||!prVis(Q,b))continue;line(P3(Q[a],s.t),P3(Q[b],s.t),col,Math.max(1,lw),al,d>0.04&&!key?[5*dpr,5*dpr]:null)}
     if(prVis(Q,0)){const p=P3(Q[0],s.t);c.save();c.globalAlpha=al;c.strokeStyle=col;c.lineWidth=Math.max(1,lw);c.beginPath();c.arc(p[0],p[1],Math.max(2,(now?7:4)*dpr),0,7);c.stroke();c.restore()}
-    if(now&&PR.mine&&PR.Praw){const M=prOnRef(PR.Praw,Q);if(M)for(const [a,b] of PR_BONES){if(!prVis(M,a)||!prVis(M,b))continue;line(P3(M[a],s.t),P3(M[b],s.t),'#2FD47A',2.6*dpr,0.95)}}
+    if(PR.myRun&&PR.last&&PR.last.samples.length&&(PR.replay||!now||!PR.Praw)){const sm=prSampleAt(PR.last.samples,s.t,true);const M=sm&&sm.P&&prOnRef(sm.P,Q,PR.last.cw,PR.last.ch);
+      if(M)for(const [a,b] of PR_BONES){if(!prVis(M,a)||!prVis(M,b))continue;line(P3(M[a],s.t),P3(M[b],s.t),'#2FD47A',Math.max(1,lw*0.8),now?0.95:Math.max(0.15,al*0.8),d>0.04?[4*dpr,5*dpr]:null)}}
+    if(now&&PR.mine&&PR.Praw&&!PR.replay){const M=prOnRef(PR.Praw,Q);if(M)for(const [a,b] of PR_BONES){if(!prVis(M,a)||!prVis(M,b))continue;line(P3(M[a],s.t),P3(M[b],s.t),'#2FD47A',2.6*dpr,0.95)}}
   }
   /* trails: hands and feet through the whole window */
   const TR=[[15,'#7FD3FF'],[16,'#7FD3FF'],[27,'#FF7FB2'],[28,'#FF7FB2']];
   for(const [j,col] of TR){let prev=null;for(let t=vt-WL_PAST;t<=vt+WL_NEXT;t+=1/30){const Q=RB.poseAt(B,t);if(!Q||Q[j][2]<0.5){prev=null;continue}const p=P3([Q[j][0]*W,Q[j][1]*H],t);if(prev)line(prev,p,col,1.8*dpr,t<vt?0.75:0.4,t>vt?[3*dpr,4*dpr]:null);prev=p}}
   c.save();c.fillStyle='rgba(243,241,236,.55)';c.font=`700 ${Math.round(10*dpr)}px Figtree,sans-serif`;c.textAlign='right';c.textBaseline='bottom';
   const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
-  c.fillText('PAST SOLID · NEXT DASHED · KEY MOVES AMBER',w-10*dpr,h-resB);c.restore();
+  c.fillText('PAST SOLID · NEXT DASHED · KEY MOVES AMBER'+(PR.myRun&&PR.last&&PR.last.samples.length?' · YOU GREEN':''),w-10*dpr,h-resB);c.restore();
 }
 /* your live pose (camera) put on the dancer's now pose: hips on hips, same torso length */
-function prOnRef(Pn,Q){if(!(prVis(Q,23)&&prVis(Q,24)&&prVis(Q,11)&&prVis(Q,12)))return null;const n=srcById(S.cur),B=n&&bodyOf(n);if(!B)return null;
-  const camW=camV.videoWidth||1,camH=camV.videoHeight||1,U=Pn.map(q=>[(PR.mirror?1-q[0]:q[0])*camW,q[1]*camH,q[2]]);
+function prOnRef(Pn,Q,cw,ch){if(!(prVis(Q,23)&&prVis(Q,24)&&prVis(Q,11)&&prVis(Q,12)))return null;const n=srcById(S.cur),B=n&&bodyOf(n);if(!B)return null;
+  const camW=cw||camV.videoWidth||1,camH=ch||camV.videoHeight||1,U=Pn.map(q=>[(PR.mirror?1-q[0]:q[0])*camW,q[1]*camH,q[2]]);
   if(!(prVis(U,23)&&prVis(U,24)&&prVis(U,11)&&prVis(U,12)))return null;
   const hu=prMid(U,23,24),hq=prMid(Q,23,24),s=(prTorso(Q)||1)/(prTorso(U)||1);return U.map(q=>[hq[0]+(q[0]-hu[0])*s,hq[1]+(q[1]-hu[1])*s,q[2]])}
 /* turn / zoom the Worldline */
@@ -2507,11 +2677,15 @@ function prOnRef(Pn,Q){if(!(prVis(Q,23)&&prVis(Q,24)&&prVis(Q,11)&&prVis(Q,12)))
   camCv.addEventListener('wheel',e=>{if(PR.mode!=='world')return;e.preventDefault();PR.wv.zoom=Math.max(0.5,Math.min(3,PR.wv.zoom*Math.exp(-e.deltaY*0.0015)))},{passive:false});}
 function el0playing(){const e=curVid();return !!e&&!e.paused}
 $$('#pracMode button').forEach(b=>b.addEventListener('click',()=>{PR.mode=b.dataset.pm;PR.xf=null;prSave();pracUI();if(prNeedsCam()&&!PR.stream)camStart();pracStatus()}));
-[['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();prSave();pracUI();pracStatus()}));
+[['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all'],['#pracStep','step'],['#pracMyRun','myRun']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();if(k==='step'&&!PR.step){PR.hold=null;PR.holdOk=0}prSave();pracUI();pracStatus()}));
 $('#pracLead').addEventListener('click',()=>{PR.lead=PR.lead===1?2:PR.lead===2?4:1;prSave();pracUI()});
 $('#pracReset').addEventListener('click',()=>{PR.wv={yaw:-0.62,pitch:0.28,zoom:1}});
 $('#pracCam').addEventListener('click',camStart);
 $('#pracStop').addEventListener('click',pracOff);
+$('#pracLive').addEventListener('click',()=>{prReplayStop(true);pause()});
+$('#prReplay').addEventListener('click',prReplayStart);
+$('#prAgain').addEventListener('click',()=>{prReplayStop(true);$('#pracRes').hidden=true;PR.hold=null;pause();toStart();PR.lastVt=-1e9;prReset();play()});
+$('#prResClose').addEventListener('click',()=>{$('#pracRes').hidden=true});
 $('#pracMore').addEventListener('click',()=>{pracOff();sendClip()});
 window.__rsPR=PR;window.__rsPrScore=prScore;window.__rsPrHits=()=>prHits(srcById(S.cur));
 
