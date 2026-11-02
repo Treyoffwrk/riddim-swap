@@ -216,7 +216,7 @@ function setRate(r){if(Math.abs(a.playbackRate-r)>0.002)a.playbackRate=r}
    check ~0.4 s later where it actually is, and learn. */
 try{const sl=localStorage.getItem('rs-seeklead');if(sl!=null)S.seekLead=+sl}catch(e){}
 function songLead(){return S.seekLead==null?0.06:S.seekLead}
-function seekSong(e){a.currentTime=Math.max(0,e+songLead()*S.ar);S.seekCheck={at:performance.now()}}
+function seekSong(e){a.currentTime=Math.max(0,e+songLead()*S.ar);S.seekCheck={at:performance.now()};S.songClk=null}
 /* Playback sync (not while recording):
    The song used to follow the video by jumping: drift over 80 ms meant a jump (at most every 1.5 s), and after every
    jump a check 0.4 s later jumped again if it was still 30 ms off. When the video ran a little slow (a warm phone, a
@@ -268,6 +268,7 @@ function syncSteady(force){
   const e=expected()+(S.rec?0:(S.sndDelay||0)*S.ar), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
   const setV=n=>{S.vNudge=n;const g=segs()[S.segIdx];if(!g||S.switchPending)return;const r=vNudged(rateAt(g,v.currentTime));if(Math.abs(v.playbackRate-r)>0.006)v.playbackRate=r};
   if(!live||e<0||e>=d){
+    S.songClk=null;S.songStuck=0;
     if(S.vNudge)setV(0);
     if(!a.paused)a.pause();
     if(!live&&e>=0&&e<d&&Math.abs(a.currentTime-e)>0.03)a.currentTime=e;
@@ -283,6 +284,17 @@ function syncSteady(force){
     S.seekCheck=null;
   }
   if(force){S.lastFix=now;S.driftEma=0;snd.jumps++;seekSong(e);setV(0);return}
+  /* is the song's clock moving? On a phone it can stop (the sound may even carry on) while the song reports it's playing.
+     Following a stuck clock dragged the video back to the same spot every second: a loop you couldn't stop. So while
+     the clock is stuck the video plays on by itself; the song is nudged to the video once, and a note says what's up. */
+  if(!a.seeking&&!busy){const c=S.songClk;
+    if(!c||now-c.t>2000){S.songClk={t:now,at:a.currentTime}}
+    else if(now-c.t>=500){const adv=(a.currentTime-c.at)/((now-c.t)/1000),stuck=adv<0.3*(a.playbackRate||1);
+      S.songStuck=stuck?(S.songStuck||0)+1:0;S.songClk={t:now,at:a.currentTime};
+      if(stuck){snd.songStuck=(snd.songStuck||0)+1;
+        if(S.songStuck===2){S.lastFix=now;S.driftEma=0;seekSong(e);if(a.paused)a.play().catch(songFail)}
+        if(S.songStuck===6&&!S.songStuckSaid){S.songStuckSaid=true;recMsg("The song stopped keeping time on this phone, so the video plays on by itself. Tap pause, then play, to line them up again.",true)}}}}
+  if(S.songStuck){if(S.vNudge)setV(0);return}
   if(S.seekCheck||busy)return;
   S.driftEma=0.8*(S.driftEma||0)+0.2*drift;
   snd.frames++;if(Math.abs(drift)<0.04)snd.within++;snd.maxLate=Math.max(snd.maxLate,Math.abs(drift));
@@ -311,11 +323,12 @@ function unlockSong(){
 }
 function setPlaying(p){
   S.playing=p;
-  $('#icoPlay').hidden=p; $('#icoPause').hidden=!p;
+  /* SVG elements have no .hidden property (setting it did nothing, so the button always showed play): use the attribute */
+  $('#icoPlay').toggleAttribute('hidden',p); $('#icoPause').toggleAttribute('hidden',!p);
   $('#play').setAttribute('aria-label',p?'Pause':'Play');
 }
 function play(){
-  S.playAt=performance.now(); if(S.snd&&S.snd.frames>10){S.snd.endAt=S.snd.endAt||performance.now();S.sndLast=S.snd} S.snd={jumps:0,maxLate:0,frames:0,within:0,started:performance.now()}; S.vNudge=0; S.vI=0;
+  S.playAt=performance.now(); S.songClk=null; S.songStuck=0; S.songStuckSaid=false; if(S.snd&&S.snd.frames>10){S.snd.endAt=S.snd.endAt||performance.now();S.sndLast=S.snd} S.snd={jumps:0,maxLate:0,frames:0,within:0,started:performance.now()}; S.vNudge=0; S.vI=0;
   /* the beat click needs the live engine, started inside the tap */
   if(S.clickOn){try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}catch(e){}}
   if(S.hasV&&broken(v)){healMedia(false);recMsg('Reloading the video… tap play again.');return}
