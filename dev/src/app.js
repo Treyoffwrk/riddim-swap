@@ -1920,7 +1920,7 @@ function drawBody(){
   /* Show Upper / Legs (with the cut-out): only that half of the skeleton too */
   const part=S.cutOn&&RB.hasCutout(B)?S.cutPart:'all';
   if(cmpB&&S.cmpShow==='prev')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,part});
-  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{part,hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{part,hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA)&&!(PR.on&&PR.mode==='ghost'),tiltGuide:$('#hipShow').checked&&!(PR.on&&PR.mode==='ghost'),reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
   /* Both: the previous skeleton thinner and on top, so the two can be seen where they differ */
   if(cmpB&&S.cmpShow==='both')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,lwScale:0.5,ends:false,part});
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
@@ -2280,6 +2280,145 @@ $('#stPlay').addEventListener('click',()=>{if(!S.playing)$('#play').click()});
 /* keep the card and the dock right even when nothing is playing (the tick only runs with media) */
 startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
 
+/* ---------- Practice: your camera inside the player (what Body did, now with the same clip and every edit) ----------
+   Side by side: the clip (as it plays here: trim, cuts, speed, song, cut-out, group) on the left, your camera on the
+   right with your skeleton. Ghost: your camera fills the player with the dancer's skeleton laid over you (moved and
+   sized to your body), the clip small in the corner. Hit targets (Ghost): each of the dancer's hits shows up ahead of
+   time as the pose to be in, with shrinking rings on the hands/feet that make the hit; on the hit your pose is scored
+   (limb directions compared, 0-100) and the result flashes; each pass through the clip is tallied. The camera only
+   starts from a tap and stops when you leave practice or the app. */
+var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),done:new Set(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[]};
+try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=g.mode==='ghost'?'ghost':'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip}}catch(e){}
+const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip}))}catch(e){}};
+const camV=$('#camVid'),camCv=$('#camCanvas');
+const PR_BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32],[15,19],[16,20]];
+const PR_LIMBS=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,12],[23,24]];
+function prMsg(t){$('#pracMsg').textContent=t||''}
+function pracUI(){
+  $('#pracBar').hidden=!PR.on; camCv.hidden=!PR.on;
+  const st=$('#stage');st.classList.toggle('practice',PR.on);st.classList.toggle('pr-split',PR.on&&PR.mode==='split');st.classList.toggle('pr-ghost',PR.on&&PR.mode==='ghost');
+  $$('#pracMode button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pm===PR.mode)));
+  $('#pracMirror').setAttribute('aria-pressed',String(PR.mirror));$('#pracMine').setAttribute('aria-pressed',String(PR.mine));
+  $('#pracTargets').setAttribute('aria-pressed',String(PR.targets));$('#pracFlip').setAttribute('aria-pressed',String(PR.flip));
+  $('#pracTargets').hidden=$('#pracFlip').hidden=PR.mode!=='ghost';
+  const tb=$('#t-body');if(tb){tb.setAttribute('aria-pressed',String(PR.on));tb.classList.toggle('on',PR.on)}
+  bodyKey='';
+}
+async function pracOn(){
+  if(PR.on)return; if(!S.hasV){recMsg('Add a dance video first, then practise it here with your camera.',true);return}
+  PR.on=true;PR.pass={n:0,hit:0,close:0};PR.done.clear();PR.win.clear();PR.flash=null;pracUI();
+  window.scrollTo({top:0,behavior:'smooth'});
+  prMsg('Starting your camera…');
+  try{PR.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720},height:{ideal:960}},audio:false})}
+  catch(e){PR.on=false;pracUI();recMsg(e&&e.name==='NotAllowedError'?'Camera blocked: allow the camera for this app in your phone\'s settings, then tap Body again.':'Couldn\'t start the camera ('+(e&&e.message||e)+').',true);return}
+  if(!PR.on){PR.stream.getTracks().forEach(t=>t.stop());PR.stream=null;return}
+  camV.srcObject=PR.stream;try{await camV.play()}catch(e){}
+  prMsg('Loading the body tracker for your camera…');
+  RB.live().then(rt=>{PR.rt=rt;pracStatus()}).catch(e=>prMsg('The body tracker didn\'t load ('+(e&&e.message||e)+'). Your camera still shows.'));
+  cancelAnimationFrame(PR.raf);PR.raf=requestAnimationFrame(pracLoop);
+}
+function pracOff(){
+  PR.on=false;cancelAnimationFrame(PR.raf);
+  if(PR.stream){PR.stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});PR.stream=null}
+  camV.srcObject=null;PR.P=null;pracUI();
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&PR.on)pracOff()});   /* never keep the camera on in the background */
+function pracStatus(){
+  if(!PR.on)return;const n=srcById(S.cur),B=n&&bodyOf(n);
+  if(PR.mode==='ghost'&&!B){prMsg('Track the body first (Body on the video) to get the ghost and hit targets.');return}
+  if(!PR.rt){return}
+  if(!PR.P){prMsg('Step back until your whole body is in the camera.');return}
+  if(PR.mode==='ghost'&&PR.targets){const p=PR.pass;const hs=prHits(n).length;
+    prMsg(hs?`This pass: ${p.hit} hit${p.hit===1?'':'s'}${p.close?`, ${p.close} close`:''} of ${p.n}`+(PR.flash?` · last: ${PR.flash.label} ${PR.flash.score}%`:'')+(p.n?'':' · press play and match the shapes on the hits'):'No hits found in this clip yet: the ghost still shows the moves.');return}
+  prMsg(PR.mode==='ghost'?'Match the ghost. Press play.':'You on the right, the dancer on the left. Press play.');
+}
+/* the clip's hits that are inside what plays (trim and cuts) */
+function prHits(n){if(!n)return [];const k=(n.key||n.id)+':'+S.hitLevel+':'+(n.motion?n.motion.beats.length:0)+':'+S.cIn+':'+S.cOut+':'+segs().length;
+  if(PR.hk!==k){PR.hk=k;const L=segs();PR.hits=hitsOf(n).map(b=>b.t).filter(t=>L.some(g=>t>=g.s&&t<g.e))}return PR.hits}
+/* pose helpers: points in pixels */
+const prMid=(P,a,b)=>[(P[a][0]+P[b][0])/2,(P[a][1]+P[b][1])/2];
+const prVis=(P,j)=>P[j]&&P[j][2]>=0.45;
+function prTorso(P){const s=prMid(P,11,12),h=prMid(P,23,24);return Math.hypot(s[0]-h[0],s[1]-h[1])}
+/* the dancer's pose at clip time t, in the clip's pixels (flipped for Flip ghost) */
+function prRef(B,t){const P=RB.poseAt(B,t);if(!P)return null;const W=B.w||1,H=B.h||1;return P.map(q=>[PR.flip?(1-q[0])*W:q[0]*W,q[1]*H,q[2]])}
+/* move and size a dancer pose onto you: their hips onto your hips, their torso as long as yours */
+function prPlace(Q,w,h){
+  const T=prTorso(Q)||1,hq=prMid(Q,23,24);let cx,cy,s;
+  const P=PR.P;if(P&&prVis(P,11)&&prVis(P,12)&&prVis(P,23)&&prVis(P,24)){const hp=prMid(P,23,24);cx=hp[0];cy=hp[1];s=(prTorso(P)||T)/T}
+  else{cx=w/2;cy=h*0.55;s=h*0.2/T}
+  const X=PR.xf;if(X&&isFinite(X.s)){X.cx+=0.3*(cx-X.cx);X.cy+=0.3*(cy-X.cy);X.s+=0.3*(s-X.s)}else PR.xf={cx,cy,s};
+  const f=PR.xf;return Q.map(q=>[f.cx+(q[0]-hq[0])*f.s,f.cy+(q[1]-hq[1])*f.s,q[2]]);
+}
+/* how close two poses are, 0-100: the direction of each limb compared (position and size don't matter) */
+function prScore(A,Bp){let sum=0,k=0;
+  for(const [i,j] of PR_LIMBS){if(!prVis(A,i)||!prVis(A,j)||!prVis(Bp,i)||!prVis(Bp,j))continue;
+    const a=Math.atan2(A[j][1]-A[i][1],A[j][0]-A[i][0]),b=Math.atan2(Bp[j][1]-Bp[i][1],Bp[j][0]-Bp[i][0]);let d=Math.abs(a-b);if(d>Math.PI)d=2*Math.PI-d;
+    sum+=Math.max(0,1-d/(Math.PI/2));k++}
+  return k>=6?Math.round(sum/k*100):null}
+function prDraw(c,P,col,lw,alpha,dash){c.save();c.globalAlpha=alpha;c.strokeStyle=col;c.lineWidth=lw;c.lineCap='round';if(dash)c.setLineDash(dash);
+  for(const [a,b] of PR_BONES){if(!prVis(P,a)||!prVis(P,b))continue;c.beginPath();c.moveTo(P[a][0],P[a][1]);c.lineTo(P[b][0],P[b][1]);c.stroke()}
+  if(prVis(P,0)&&prVis(P,11)&&prVis(P,12)){const r=prTorso(P)*0.22;c.setLineDash([]);c.beginPath();c.arc(P[0][0],P[0][1],Math.max(4,r),0,7);c.stroke()}
+  c.restore()}
+function pracLoop(){
+  if(!PR.on)return;PR.raf=requestAnimationFrame(pracLoop);
+  const now=performance.now();
+  if(PR.rt&&camV.readyState>=2&&now-PR.detAt>=30){PR.detAt=now;try{PR.Praw=PR.rt.detect(camV)}catch(e){PR.Praw=null}}
+  const r=camCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(!w||!h)return;
+  if(camCv.width!==w||camCv.height!==h){camCv.width=w;camCv.height=h}
+  const c=camCv.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,w,h);
+  const vw=camV.videoWidth,vh=camV.videoHeight;
+  /* the camera fills its pane (cropped at the edges) */
+  let R={x:0,y:0,w,h};if(vw&&vh){const s=Math.max(w/vw,h/vh);R={x:(w-vw*s)/2,y:(h-vh*s)/2,w:vw*s,h:vh*s};
+    c.save();if(PR.mirror){c.translate(w,0);c.scale(-1,1)}c.drawImage(camV,PR.mirror?w-R.x-R.w:R.x,R.y,R.w,R.h);c.restore()}
+  PR.P=PR.Praw?PR.Praw.map(q=>[PR.mirror?R.x+R.w*(1-q[0]):R.x+R.w*q[0],R.y+R.h*q[1],q[2]]):null;
+  const n=srcById(S.cur),B=n&&bodyOf(n),el=curVid(),vt=el?shownT(el):0,rate=(el&&el.playbackRate)||1;
+  if(PR.mode==='ghost'&&B){
+    const Q=prRef(B,vt);if(Q){const G=prPlace(Q,w,h);prDraw(c,G,'#9FB4FF',Math.max(6,7*dpr),0.5)}
+    if(PR.targets)prTargets(c,n,B,vt,rate,w,h,dpr);
+  }
+  if(PR.mine&&PR.P)prDraw(c,PR.P,'#2FD47A',Math.max(3,3.5*dpr),0.95);
+  if(PR.flash&&now-PR.flash.at<900){const f=PR.flash,a=1-(now-f.at)/900;c.save();c.globalAlpha=Math.min(1,a*1.6);c.fillStyle=f.col;c.font=`900 ${Math.round(30*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='top';c.fillText(f.label.toUpperCase()+' '+f.score+'%',w/2,14*dpr);c.restore()}
+  if(!PR.mine&&!PR.P&&PR.rt&&!vw){}
+  if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}
+}
+/* hit targets: each hit shows 1.2 s ahead as the pose to be in; rings shrink onto the hands/feet that make the hit */
+const PR_LEAD=1.2,PR_PRE=0.12,PR_POST=0.25;
+function prTargets(c,n,B,vt,rate,w,h,dpr){
+  const hits=prHits(n);if(!hits.length)return;
+  /* a new pass (looped back or jumped): start the tally again */
+  if(vt<PR.lastVt-0.4){PR.done.clear();PR.win.clear();PR.pass={n:0,hit:0,close:0}}PR.lastVt=vt;
+  const playing=S.playing&&el0playing();
+  /* only the next hit is shown (hits can come every few tenths of a second; several at once was a mess) */
+  const nextH=hits.find(H=>(H-vt)/rate>-PR_PRE);
+  for(const H of hits){
+    const dt=(H-vt)/rate;
+    if(dt>PR_LEAD)break;          /* (hits are in order) */
+    if(dt<-1.5)continue;          /* long gone (or jumped past): not this pass */
+    const Q=prRef(B,H);if(!Q)continue;const G=prPlace(Q,w,h);
+    if(H===nextH&&dt>-PR_PRE){
+      /* the target: the pose at the hit, dashed, and rings on the end joints that move most into it */
+      const p=Math.max(0,Math.min(1,1-dt/PR_LEAD));
+      prDraw(c,G,'#FFB347',Math.max(3,3*dpr),0.35+0.5*p,[8*dpr,7*dpr]);
+      const Q0=prRef(B,H-0.3*rate);const movers=[15,16,27,28].filter(j=>prVis(Q,j)).map(j=>({j,d:Q0&&prVis(Q0,j)?Math.hypot(Q[j][0]-Q0[j][0],Q[j][1]-Q0[j][1]):0})).sort((a,b)=>b.d-a.d).slice(0,2);
+      c.save();c.strokeStyle='#FFB347';c.lineWidth=Math.max(2,3*dpr);
+      for(const m of movers){const q=G[m.j],rr=(9+34*(1-p))*dpr;c.globalAlpha=0.4+0.6*p;c.beginPath();c.arc(q[0],q[1],rr,0,7);c.stroke();c.globalAlpha=0.9;c.beginPath();c.arc(q[0],q[1],7*dpr,0,7);c.stroke()}
+      c.restore();
+    }
+    /* scoring window around the hit: the best match counts */
+    if(playing&&dt<=PR_PRE&&dt>=-PR_POST&&!PR.done.has(H)&&PR.P){const sc=prScore(PR.P,G);if(sc!=null)PR.win.set(H,Math.max(PR.win.get(H)??-1,sc))}
+    if(playing&&dt<-PR_POST&&!PR.done.has(H)){PR.done.add(H);const sc=PR.win.get(H);PR.pass.n++;
+      if(sc==null)PR.flash={label:'Not seen',score:0,col:'#9AA0AA',at:performance.now()};
+      else{const lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++;PR.flash={label:lab,score:sc,col:lab==='Hit'?'#2FD47A':lab==='Close'?'#FFB347':'#F27D74',at:performance.now()}}
+      PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200)}
+  }
+}
+function el0playing(){const e=curVid();return !!e&&!e.paused}
+$$('#pracMode button').forEach(b=>b.addEventListener('click',()=>{PR.mode=b.dataset.pm;PR.xf=null;prSave();pracUI();pracStatus()}));
+[['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;prSave();pracUI();pracStatus()}));
+$('#pracStop').addEventListener('click',pracOff);
+$('#pracMore').addEventListener('click',()=>{pracOff();sendClip()});
+window.__rsPR=PR;window.__rsPrScore=prScore;
+
 /* ---------- MirrorView hand-off ----------
    MirrorView lives at ./mirrorview/ in the same installed app (same origin and storage). A clip or take is left in
    IndexedDB 'riddim-bridge' and MirrorView opens it through its own Load video path, then deletes it. */
@@ -2323,7 +2462,8 @@ $('#mvClip').addEventListener('click',sendClip);
 function takeTabReq(){let r=null,pj=null;try{r=localStorage.getItem('rs-tab-req');localStorage.removeItem('rs-tab-req');pj=localStorage.getItem('rs-open-proj');localStorage.removeItem('rs-open-proj')}catch(e){}const t=r&&document.getElementById(r);if(t&&t.getAttribute('role')==='tab')t.click();
   if(pj)setTimeout(()=>$('#projBtn').click(),200)}   /* Projects tapped in Body */
 window.addEventListener('pageshow',takeTabReq); setTimeout(takeTabReq,0);
-$('#t-body').addEventListener('click',()=>{const n=srcById(S.cur);if(n&&!n.missing&&n.blob)sendClip();else goMirror(null)});   /* in a routine, the clip under the playhead */
+/* Body: practise with your camera right here, on the same clip with every edit (Worldline still opens the separate Body page) */
+$('#t-body').addEventListener('click',()=>{PR.on?pracOff():pracOn()});
 $('#mvTake').addEventListener('click',async()=>{
   if(!take)return;
   const G=routineOn()?songGrid(routineSong()):liveGrid();

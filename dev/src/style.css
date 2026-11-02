@@ -623,3 +623,28 @@ details.more .field{margin-top:8px}
 @media (max-width:860px){.tab{gap:3px;min-height:56px}.tab::before{margin-bottom:1px}}
 /* the update bar sits just under the header so Projects / Look stay tappable */
 .updbar{top:calc(env(safe-area-inset-top,0px) + 56px)}
+/* ---- Practice (Body inside the player) ---- */
+.camsrc{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1}
+.camcv{position:absolute;inset:0;width:100%;height:100%;z-index:2;background:#000}
+.stage.practice{aspect-ratio:auto;height:min(120vw,58vh)}
+@media (max-width:860px){.stage.practice{height:min(122vw,56vh)}}
+.stage.pr-split video,.stage.pr-split .bodycv{right:auto;width:50%}
+.stage.pr-split .camcv{left:50%;width:50%}
+.stage.pr-split::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:var(--bg);z-index:3}
+.stage.pr-ghost video,.stage.pr-ghost .bodycv{inset:8px auto auto 8px;width:30%;height:34%;border-radius:10px;z-index:4;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.stage.pr-ghost video.off{z-index:0}
+.stage.pr-ghost .bodycv{z-index:5}
+.pracbar{display:grid;gap:6px;margin:6px 0 2px}
+.pracbar[hidden]{display:none}
+.pracrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pracbar .seg{flex:1 1 auto}
+.pracbar .seg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.pracbar .seg .bi{width:18px;height:18px}
+.pchip{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:600 12px var(--f-body);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.pchip[aria-pressed="true"]{background:var(--dance);border-color:var(--dance);color:#0E1014}
+.pchip .bi{width:18px;height:18px}
+#pracStop{padding:0 10px;color:#F27D74;border-color:rgba(242,125,116,.4)}
+.pracmsg{margin:0;font-size:12px;color:var(--muted);min-height:1.2em}
+.pracbar .linkbtn{justify-self:start;font-size:12px;color:var(--muted)}
+#t-body.on{color:var(--ink);font-weight:700}
+#t-body.on::before{background:var(--hips)!important}
