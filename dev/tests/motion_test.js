@@ -38,8 +38,8 @@ const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
   rec('Past the last mode nothing breaks',await tab()==='t-routine'?'passed':'failed','still '+await tab());
   /* video bar flush to the top while scrolling */
   await p.click('#t-routine');await p.evaluate(()=>window.scrollTo(0,600));await p.waitForTimeout(500);
-  const top=await p.evaluate(()=>{const pin=document.querySelector('.pin'),r=pin.getBoundingClientRect();const hits=[2,20,40].map(y=>{const e=document.elementFromPoint(195,y);return e?(pin.contains(e)?'bar':(e.id||e.className||e.tagName)):'none'});return {top:Math.round(r.top),hits,stuck:pin.classList.contains('stuck')}});
-  rec('Video bar sits flush at the top, nothing shows above it',top.top===0&&top.hits.every(h=>h==='bar')&&top.stuck?'passed':'failed',JSON.stringify(top));
+  const top=await p.evaluate(()=>{const pin=document.querySelector('.pin'),r=pin.getBoundingClientRect(),hb=Math.round(document.querySelector('header').getBoundingClientRect().bottom);const at=y=>{const e=document.elementFromPoint(195,y);return e?(pin.contains(e)?'bar':e.closest('header')?'header':(e.id||e.className||e.tagName)):'none'};return {top:Math.round(r.top),hdrBottom:hb,hits:[at(2),at(hb+2),at(hb+20)],stuck:pin.classList.contains('stuck')}});
+  rec('Video bar sits right under the header (Projects and Look stay on top), nothing shows between',Math.abs(top.top-top.hdrBottom)<=1&&top.hits[0]==='header'&&top.hits[1]==='bar'&&top.hits[2]==='bar'&&top.stuck?'passed':'failed',JSON.stringify(top));
   await p.screenshot({path:shot+'-scrolled.png'});
   await p.evaluate(()=>window.scrollTo(0,0));await p.waitForTimeout(300);
   /* full screen */

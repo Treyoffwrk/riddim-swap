@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-764920c4c4'</script>
+<script>window.RS_BUILD='rs-47f6d35228'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -1356,6 +1356,8 @@ main{padding-bottom:12px}
     o=o||{}; if(B&&B.v<2&&!B._up)upgrade(B); const P=poseAt(B,t); if(!P)return false;
     const X=p=>[rect.x+p[0]*rect.w,rect.y+p[1]*rect.h], vis=j=>P[j][2]>=0.35;
     const q=P.map(X), sh=mid(q[11],q[12]), hp=mid(q[23],q[24]), torso=Math.hypot(sh[0]-hp[0],sh[1]-hp[1])||40;
+    /* part: 'upper' draws the head, arms and torso, 'legs' the legs and feet (the hips are drawn for both) */
+    const UP=o.part!=='legs', LO=o.part!=='upper';
     const blue=o.dance||'#6E8BFF', pink=o.hips||'#FF5FA2', lw=Math.max(o.lwScale?2:3,torso*0.11*(o.lwScale||1));   /* lwScale: thinner, for a second skeleton drawn on top to compare */
     ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round';
     /* hips' path relative to the chest over the last second, drawn around the hips now (scaled so a whine reads) */
@@ -1367,15 +1369,15 @@ main{padding-bottom:12px}
       ctx.globalAlpha=1;
     }
     /* foot trails (last 0.6 s), dotted */
-    if(o.feet!==false){
+    if(o.feet!==false&&LO){
       ctx.setLineDash([2,lw*0.7]);ctx.strokeStyle=blue;ctx.lineWidth=Math.max(2,lw*0.3);
       for(const j of [27,28]){ctx.beginPath();let on=false;for(let s=-0.6;s<=0.0001;s+=1/30){const Q=poseAt(B,t+s);if(!Q||Q[j][2]<0.35){on=false;continue}const p=X(Q[j]);if(!on){ctx.moveTo(...p);on=true}else ctx.lineTo(...p)}ctx.globalAlpha=0.7;ctx.stroke()}
       ctx.setLineDash([]);ctx.globalAlpha=1;
     }
     /* torso */
     ctx.fillStyle=blue;ctx.strokeStyle=blue;ctx.lineWidth=Math.max(2,lw*0.3);
-    ctx.globalAlpha=0.22;ctx.beginPath();[11,12,24,23].forEach((j,i)=>i?ctx.lineTo(...q[j]):ctx.moveTo(...q[j]));ctx.closePath();ctx.fill();
-    ctx.globalAlpha=1;ctx.stroke();
+    if(UP){ctx.globalAlpha=0.22;ctx.beginPath();[11,12,24,23].forEach((j,i)=>i?ctx.lineTo(...q[j]):ctx.moveTo(...q[j]));ctx.closePath();ctx.fill();
+    ctx.globalAlpha=1;ctx.stroke()}
     /* pelvis: a hip bowl that tilts with the hips and opens up as they turn, plus a level guide when tilted */
     drawPelvis(ctx,q,hipsAt(B,t),{pink,lw,torso,tiltGuide:o.tiltGuide!==false});
     /* limbs */
@@ -1383,7 +1385,7 @@ main{padding-bottom:12px}
        right, so the sides can be told apart when mirroring; a dot on each hand and foot, where most of a move happens */
     const lite=tint(blue,0.42);
     const path=(ids)=>{ctx.beginPath();let on=false;for(const j of ids){if(!vis(j)){on=false;continue}if(!on){ctx.moveTo(...q[j]);on=true}else ctx.lineTo(...q[j])}};
-    const limbs=[[[11,13,15],0.9,1],[[12,14,16],0.9,0],[[23,25,27,31],1,1],[[24,26,28,32],1,0]];
+    const limbs=[[[11,13,15],0.9,1],[[12,14,16],0.9,0],[[23,25,27,31],1,1],[[24,26,28,32],1,0]].filter((_,i)=>i<2?UP:LO);
     if(o.outline!==false){ctx.save();ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.strokeStyle='rgba(8,9,12,.55)';for(const [ids,k] of limbs){ctx.lineWidth=lw*k+Math.max(3,lw*0.55);path(ids);ctx.stroke()}ctx.restore()}
     for(const [ids,k,left] of limbs){ctx.strokeStyle=left&&o.sides!==false?lite:blue;ctx.lineWidth=lw*k;path(ids);ctx.stroke()}
     ctx.strokeStyle=blue;
@@ -1394,16 +1396,16 @@ main{padding-bottom:12px}
       const seg=(pts,w,col)=>{if(pts.some(p=>!p))return;ctx.lineWidth=w+Math.max(2,w*0.9);ctx.strokeStyle='rgba(8,9,12,.5)';ctx.beginPath();ctx.moveTo(...pts[0]);for(const p of pts.slice(1))ctx.lineTo(...p);ctx.stroke();
         ctx.lineWidth=w;ctx.strokeStyle=col;ctx.beginPath();ctx.moveTo(...pts[0]);for(const p of pts.slice(1))ctx.lineTo(...p);ctx.stroke()};
       const hw=Math.max(1.5,lw*0.28);
-      for(const [base,left] of [[6,1],[27,0]]){const col=left&&o.sides!==false?lite:blue;let any=false;
+      if(UP)for(const [base,left] of [[6,1],[27,0]]){const col=left&&o.sides!==false?lite:blue;let any=false;
         for(const ch of [[0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20]]){const pts=ch.map(i=>XE(base+i));if(pts.every(Boolean)){seg(pts,hw,col);any=true}}
         if(any){handsDrawn=true;for(const i of [4,8,12,16,20]){const p=XE(base+i);if(!p)continue;ctx.fillStyle=col;ctx.beginPath();ctx.arc(p[0],p[1],Math.max(1.8,lw*0.2),0,7);ctx.fill()}}}
-      for(const [ank,b,sm,hl,left] of [[27,0,1,2,1],[28,3,4,5,0]]){const col=left&&o.sides!==false?lite:blue,H=XE(hl),T1=XE(b),T2=XE(sm);if(!H||!T1||!T2)continue;
+      if(LO)for(const [ank,b,sm,hl,left] of [[27,0,1,2,1],[28,3,4,5,0]]){const col=left&&o.sides!==false?lite:blue,H=XE(hl),T1=XE(b),T2=XE(sm);if(!H||!T1||!T2)continue;
         if(vis(ank))seg([q[ank],H],Math.max(1.5,lw*0.4),col);seg([H,T1,T2,H],Math.max(1.5,lw*0.4),col)}}
-    if(o.ends!==false)for(const [j,left] of [[15,1],[16,0],[31,1],[32,0]]){if(handsDrawn&&j<20)continue;if(!vis(j))continue;const r=Math.max(3.5,lw*0.62);
+    if(o.ends!==false)for(const [j,left] of [[15,1],[16,0],[31,1],[32,0]]){if(handsDrawn&&j<20)continue;if(!vis(j)||(j<20?!UP:!LO))continue;const r=Math.max(3.5,lw*0.62);
       ctx.fillStyle='rgba(8,9,12,.6)';ctx.beginPath();ctx.arc(q[j][0],q[j][1],r+Math.max(1.5,lw*0.18),0,7);ctx.fill();ctx.fillStyle=left&&o.sides!==false?lite:blue;ctx.beginPath();ctx.arc(q[j][0],q[j][1],r,0,7);ctx.fill()}
     /* head */
-    const hr=Math.max(6,Math.hypot(q[7][0]-q[8][0],q[7][1]-q[8][1])*0.75);
-    ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke();
+    if(UP){const hr=Math.max(6,Math.hypot(q[7][0]-q[8][0],q[7][1]-q[8][1])*0.75);
+    ctx.globalAlpha=0.3;ctx.fillStyle=blue;ctx.beginPath();ctx.arc(q[0][0],q[0][1],hr,0,7);ctx.fill();ctx.globalAlpha=1;ctx.lineWidth=Math.max(2,lw*0.3);ctx.stroke()}
     ctx.restore();
     if(o.meter)drawMeter(ctx,B,t,rect,o);
     return true;

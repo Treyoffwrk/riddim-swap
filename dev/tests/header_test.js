@@ -13,10 +13,10 @@ const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
  await p.setInputFiles('#vidFile',video);await p.setInputFiles('#audFile',song);await p.waitForTimeout(2500);
  let c=await cover();rec('At the top of the page, nothing is drawn over the header',!c.covered&&!c.stripOn?'passed':'failed',JSON.stringify(c));
  await p.screenshot({path:shot+'-top.png'});
- await p.evaluate(()=>window.scrollTo(0,20));await p.waitForTimeout(400);c=await cover();
- rec('Scrolled a little: header still visible above the bar',!c.covered?'passed':'failed',JSON.stringify(c));
- await p.evaluate(()=>window.scrollTo(0,700));await p.waitForTimeout(400);c=await cover();
- rec('Scrolled down: bar pinned with its solid strip (header gone, as intended)',c.stripOn&&c.pinTop===0?'passed':'failed',JSON.stringify(c));
+ const reach=()=>p.evaluate(()=>{const e=document.getElementById('projBtn'),b=e.getBoundingClientRect(),h=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2),pr=document.querySelector('.pin').getBoundingClientRect(),hd=document.querySelector('header').getBoundingClientRect();return {tappable:!!h&&e.contains(h),btnTop:Math.round(b.top),pinTop:Math.round(pr.top),hdrBottom:Math.round(hd.bottom)}});
+ for(const [y,n] of [[20,'Scrolled a little'],[700,'Scrolled down']]){await p.evaluate(y=>window.scrollTo(0,y),y);await p.waitForTimeout(400);const r=await reach();
+   rec(n+': header stays on top with Projects tappable, bar pinned just below it',r.tappable&&r.btnTop>=0&&r.btnTop<60&&r.pinTop>=r.hdrBottom-1?'passed':'failed',JSON.stringify(r))}
+ await p.screenshot({path:shot+'-scrolled.png'});
  await p.evaluate(()=>window.scrollTo(0,0));await p.waitForTimeout(400);c=await cover();
  rec('Back at the top: header visible again',!c.covered&&!c.stripOn?'passed':'failed',JSON.stringify(c));
  await b.close()})();

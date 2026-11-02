@@ -546,3 +546,48 @@ details.more .field{margin-top:8px}
 .tappad.perfect{border-color:#3ddc84;background:rgba(61,220,132,.14)}
 .tappad.good{border-color:#7DF9FF;background:rgba(125,249,255,.10)}
 .tappad.off{border-color:#FFB347;background:rgba(255,179,71,.10)}
+
+/* group preview */
+.dock button.grp[aria-pressed="true"]{background:var(--ok);border-color:var(--ok)}
+.groupbar{display:grid;gap:6px;margin:8px 0 2px}
+.groupbar .grrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.groupbar .grrow>.label{font-size:11px}
+.groupbar input[type=range]{flex:1 1 120px;min-width:0}
+.groupbar .stepper{display:inline-flex;align-items:center;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px}
+.groupbar .stepper button{width:34px;height:34px;border-radius:50%;border:0;background:transparent;color:var(--ink);font:700 18px var(--f-body);cursor:pointer}
+.groupbar .stepper button:disabled{opacity:.35}
+.groupbar .stepper b{min-width:18px;text-align:center;font:700 15px var(--f-mono)}
+.groupbar .grmir{display:inline-flex;align-items:center;gap:6px;font-size:13px;margin-left:auto}
+.grverdict{margin:0;font-size:13px;color:var(--muted)}
+
+/* header icons: always within reach (the header stays at the top on phones) */
+.ibtn{display:inline-flex;align-items:center;gap:6px}
+.ibtn svg{width:18px;height:18px;flex:none}
+@media (max-width:860px){
+  header{position:sticky;top:0;z-index:31;background:var(--bg);margin:-12px -16px 0;padding:calc(env(safe-area-inset-top,0px) + 6px) 16px 6px;height:calc(env(safe-area-inset-top,0px) + 50px);align-items:center}
+  h1{font-size:19px}
+  .hdr-r{gap:4px}
+  .ibtn{width:38px;height:38px;padding:0;justify-content:center;border-radius:50%}
+  .ibtn .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .pin{top:calc(env(safe-area-inset-top,0px) + 50px)!important;padding-top:8px!important}
+}
+
+/* clip speed, always on show next to the time */
+.tcol{display:grid;justify-items:end;gap:3px;flex:none}
+.spdpill{font:700 12px var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 8px;min-height:24px;cursor:pointer}
+.spdpill[aria-expanded="true"]{background:#F3F1EC;color:#0E1014;border-color:#F3F1EC}
+.spdpill.off1{border-color:var(--song);color:var(--song)}
+.spdpill:disabled{opacity:.45}
+.spdstrip{display:flex;align-items:center;gap:6px}
+.spdstrip input[type=range]{flex:1 1 auto;min-width:0}
+.spdpre{display:inline-flex;gap:2px;padding:2px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+.spdpre button{min-height:30px;min-width:32px;padding:0 6px;border:0;border-radius:999px;background:transparent;color:#C9CDD6;font:700 13px var(--f-body);cursor:pointer}
+.spdpre button[aria-pressed="true"]{background:#F3F1EC;color:#0E1014}
+.pin.fs .spdstrip{display:none!important}
+/* four quick buttons on one line on a phone */
+@media (max-width:480px){
+  .dock{gap:5px;flex-wrap:nowrap}
+  .dock>button{padding:0 9px;gap:5px;font-size:13px;min-width:0;flex:0 1 auto}
+  .dock>button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dock button svg{width:16px;height:16px}
+}

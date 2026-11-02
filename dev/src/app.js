@@ -198,6 +198,7 @@ function showSlots(){
   $('#offset').max=Math.max(1,md); set('#offset',m.offset); $('#offOut').textContent=fmt2(m.offset);
   set('#aRate',m.ar); $('#aRateOut').textContent='×'+m.ar.toFixed(2);
   set('#vRate',m.vr); $('#vRateOut').textContent='×'+m.vr.toFixed(2);
+  spdShow();
   $('#rOffset').max=Math.max(1,rd); set('#rOffset',r.offset); $('#rOffOut').textContent=fmt2(r.offset);
   set('#rARate',r.ar); $('#rARateOut').textContent='×'+r.ar.toFixed(2);
   set('#rVRate',r.vr); $('#rVRateOut').textContent='×'+r.vr.toFixed(2);
@@ -339,6 +340,7 @@ function enable(){
   const hv=S.hasV;
   $('#play').disabled=!(hv||S.hasA);
   ['#scrub','#inRange','#setOut','#clearOut','#repeat','#markIn','#markOut'].forEach(id=>$(id).disabled=!hv);
+  spdShow(); if(!hv){$('#spdStrip').hidden=true;$('#spdBtn').setAttribute('aria-expanded','false')}
   $$('[data-in]').forEach(b=>b.disabled=!hv);
   $('#recBtn').disabled=!(hv&&S.hasA&&buf);
   {const bn=srcById(S.cur);$('#bodyTrack').disabled=!(bn&&!bn.missing&&bn.url)||!!S.bodyBusy;$('#bodyTrack').textContent=bn&&cpOf(bn)&&!S.bodyBusy?'Carry on tracking':bn&&bodyOf(bn)?'Track again':'Track body';$('#bodyFresh').hidden=!(bn&&cpOf(bn))||!!S.bodyBusy}
@@ -524,6 +526,15 @@ $$('[data-v]').forEach(b=>b.addEventListener('click',()=>{
   const d=+b.dataset.v; setP(S.main,'vr',d===0?1:clamp(+(S.main.vr*(1+d)).toFixed(3),0.25,2.5));
 }));
 $('#rVRate').addEventListener('input',e=>setP(S.rt,'vr',+e.target.value));
+/* clip speed next to the time: always shows the speed (of the clip, or the routine part when Routine plays); tap for quick changes */
+function spdShow(){const v=(slot()||S.main).vr||1,b=$('#spdBtn');b.textContent='×'+v.toFixed(2);b.classList.toggle('off1',Math.abs(v-1)>0.004);b.disabled=!S.hasV;
+  const r=$('#spdRange');if(document.activeElement!==r)r.value=v;$$('.spdpre button').forEach(x=>x.setAttribute('aria-pressed',String(Math.abs(+x.dataset.v-v)<0.004)))}
+const spdSet=v=>{v=Math.max(0.25,Math.min(2.5,Math.round(v*100)/100));setP(slot(),'vr',v)};
+$('#spdBtn').addEventListener('click',()=>{const o=$('#spdStrip').hidden;$('#spdStrip').hidden=!o;$('#spdBtn').setAttribute('aria-expanded',String(o))});
+$('#spdRange').addEventListener('input',e=>spdSet(+e.target.value));
+$('#spdLess').addEventListener('click',()=>spdSet(((slot()||S.main).vr||1)-0.05));
+$('#spdMore').addEventListener('click',()=>spdSet(((slot()||S.main).vr||1)+0.05));
+$$('.spdpre button').forEach(b=>b.addEventListener('click',()=>spdSet(+b.dataset.v)));
 $$('[data-rv]').forEach(b=>b.addEventListener('click',()=>{const d=+b.dataset.rv;setP(S.rt,'vr',d===0?1:clamp(+(S.rt.vr*(1+d)).toFixed(3),0.25,2.5))}));
 function setSpeedMode(mode){
   if(S.rt.spMode===mode)return;
@@ -1875,12 +1886,12 @@ function shownT(el){if(!el)return 0;
   if(!el.__rvfc&&typeof el.requestVideoFrameCallback==='function'){el.__rvfc=true;const cb=(now,m)=>{el.__mt=m.mediaTime;el.__mtAt=performance.now();el.requestVideoFrameCallback(cb)};el.requestVideoFrameCallback(cb)}
   return S.playing&&!el.paused&&!el.seeking&&el.__mt!=null&&performance.now()-el.__mtAt<120&&Math.abs(el.__mt-el.currentTime)<0.25?el.__mt:el.currentTime}
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.liveBody?S.liveBody.B.n:0,S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,JSON.stringify(S.group),$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.liveBody?S.liveBody.B.n:0,S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B0=n&&bodyOf(n), L=!B0&&n&&S.liveBody&&S.liveBody.src===n.id?S.liveBody:null, B=B0||(L&&L.B);
   /* while it tracks: the skeleton so far, only over the part that's tracked */
   const inLive=!L||(el&&shownT(el)>=L.from-0.05&&shownT(el)<=L.to+0.05);
-  const on=($('#bodyShow').checked||S.cutOn)&&!!B&&inLive;
+  const on=($('#bodyShow').checked||S.cutOn||S.group.on)&&!!B&&inLive;
   if(S.bodyPicking&&!on){const r=bodyCv.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(bodyCv.width!==w||bodyCv.height!==h){bodyCv.width=w;bodyCv.height=h}const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);bodyDrawn=true;return}
   /* while the video is seeking (a loop restarting, a jump) it still shows the old frame: drawing the new pose over it
      puts the skeleton on the wrong picture (e.g. the end screen), so draw nothing until the frame arrives */
@@ -1890,15 +1901,95 @@ function drawBody(){
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   const ft=shownT(el);
+  if(S.group.on){drawGroup(c,B,ft,w,h,dpr);bodyDrawn=true;return}
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,ft,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
   const cmpB=n.bodyAlt&&S.cmpShow!=='now'?n.bodyAlt:null;
-  if(cmpB&&S.cmpShow==='prev')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false});
-  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  /* Show Upper / Legs (with the cut-out): only that half of the skeleton too */
+  const part=S.cutOn&&RB.hasCutout(B)?S.cutPart:'all';
+  if(cmpB&&S.cmpShow==='prev')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,part});
+  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{part,hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA),tiltGuide:$('#hipShow').checked,reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
   /* Both: the previous skeleton thinner and on top, so the two can be seen where they differ */
-  if(cmpB&&S.cmpShow==='both')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,lwScale:0.5,ends:false});
+  if(cmpB&&S.cmpShow==='both')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,lwScale:0.5,ends:false,part});
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
 }
+/* ---------- Group preview ----------
+   Copies of the tracked dancer side by side, as a group would dance it, to see whether the moves work together and how
+   much room each dancer needs. Copies can mirror every other one. Room is measured from the skeleton: at each frame,
+   how far apart two copies must stand so no part of one comes near the other at the same height (in torso lengths,
+   shown in metres taking a torso, shoulders to hips, as about half a metre). */
+S.group={on:false,n:3,sp:null,mirror:false};
+try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(6,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
+const GR_M=0.5;   /* metres per torso length (rough, adult) */
+const grSave=()=>{try{localStorage.setItem('rs-group',JSON.stringify({n:S.group.n,sp:S.group.sp,mirror:S.group.mirror}))}catch(e){}};
+const GR_J=[0,11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32], GR_BONES=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,23],[12,24]];
+function groupRoom(B){
+  if(B._room&&B._room.n===B.n)return B._room;
+  const W=B.w||1,H=B.h||1,S0=RB.STRIDE,ts=[],fr=[],Ts=[],hx=[];
+  for(let i=0;i<B.n;i++){const t=B.data[i*S0];const P=RB.poseAt(B,t);if(!P)continue;
+    const v=j=>P[j][2]>=0.35,X=j=>[P[j][0]*W,P[j][1]*H];
+    const sh=[(P[11][0]+P[12][0])/2*W,(P[11][1]+P[12][1])/2*H],hp=[(P[23][0]+P[24][0])/2*W,(P[23][1]+P[24][1])/2*H];
+    const pts=[];for(const j of GR_J)if(v(j))pts.push(X(j));
+    for(const [a,b] of GR_BONES)if(v(a)&&v(b)){const p=X(a),q=X(b);pts.push([(p[0]+q[0])/2,(p[1]+q[1])/2])}
+    if(pts.length<6)continue;ts.push(t);fr.push(pts);Ts.push(Math.hypot(sh[0]-hp[0],sh[1]-hp[1]));hx.push(hp[0])}
+  if(!fr.length)return B._room={n:B.n,none:true};
+  const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s[s.length>>1]};
+  const T=med(Ts)||1,cx=med(hx),band=0.4*T,margin=0.2*T;
+  /* how far right of L the copy R must stand (its own position counted) so they don't meet */
+  const need=(L,R,mR)=>{let m=-1e9;for(const p of L)for(const q0 of R){if(Math.abs(p[1]-q0[1])>band)continue;const qx=mR?2*cx-q0[0]:q0[0];const d=p[0]-qx+margin;if(d>m)m=d}return m};
+  const mir=P=>P.map(p=>[2*cx-p[0],p[1]]);
+  const nU=[],nM=[];let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  for(const P of fr){nU.push(need(P,P,false)/T);nM.push(Math.max(need(P,P,true),need(mir(P),mir(P),true))/T);
+    for(const p of P){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}}
+  /* a touch counts when it lasts 3 frames or more (a single odd frame of tracking isn't a real touch) */
+  const steady=a=>a.map((v,i)=>Math.min(v,a[i-1]??v,a[i+1]??v));
+  const sU=steady(nU),sM=steady(nM),rec=a=>Math.max(1,Math.ceil(Math.max(...a)*10)/10);
+  return B._room={n:B.n,T,cx,ts,nU:sU,nM:sM,recU:rec(sU),recM:rec(sM),box:[x0,x1,y0,y1]};
+}
+function groupSpacing(R){return S.group.sp||(S.group.mirror?R.recM:R.recU)}
+function groupCheck(R,d){const a=S.group.mirror?R.nM:R.nU;let k=0,worst=-1,wi=-1;for(let i=0;i<a.length;i++){if(a[i]>d){k++;if(a[i]>worst){worst=a[i];wi=i}}}return {frac:k/a.length,at:wi>=0?R.ts[wi]:null}}
+function groupNeedAt(R,t){const a=S.group.mirror?R.nM:R.nU;let lo=0,hi=R.ts.length-1;while(lo<hi){const m=(lo+hi)>>1;if(R.ts[m]<t)lo=m+1;else hi=m}const i=lo;return Math.abs(R.ts[i]-t)<0.1?a[i]:null}
+function drawGroup(c,B,t,w,h,dpr){
+  c.fillStyle='#0B0D11';c.fillRect(0,0,w,h);
+  const R=groupRoom(B);if(R.none)return;
+  const n=S.group.n,d=groupSpacing(R)*R.T,W=B.w||1,H=B.h||1,[bx0,bx1,by0,by1]=R.box;
+  const mx0=2*R.cx-bx1,mx1=2*R.cx-bx0;
+  const offs=[...Array(n)].map((_,k)=>(k-(n-1)/2)*d), mirOf=k=>S.group.mirror&&k%2===1;
+  let gx0=1e9,gx1=-1e9;offs.forEach((o,k)=>{const a=mirOf(k)?mx0:bx0,b=mirOf(k)?mx1:bx1;gx0=Math.min(gx0,a+o);gx1=Math.max(gx1,b+o)});
+  const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+16:0)*dpr,pad=14*dpr,top=26*dpr,side=52*dpr;   /* clear of the full-screen button */
+  const s=Math.min((w-2*side)/(gx1-gx0),(h-top-resB-pad)/(by1-by0));
+  const ox=(w-(gx1-gx0)*s)/2-gx0*s,oy=top-by0*s+Math.max(0,(h-top-resB-pad-(by1-by0)*s)/2);
+  /* floor */
+  c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();c.moveTo(pad,oy+by1*s+4*dpr);c.lineTo(w-pad,oy+by1*s+4*dpr);c.stroke();
+  const nd=groupNeedAt(R,t),touch=nd!=null&&nd>d/R.T;
+  if(touch){c.save();c.strokeStyle='rgba(242,125,116,.85)';c.setLineDash([6*dpr,6*dpr]);c.lineWidth=2*dpr;
+    for(let k=0;k<n-1;k++){const x=ox+((offs[k]+offs[k+1])/2+R.cx)*s;c.beginPath();c.moveTo(x,oy+by0*s);c.lineTo(x,oy+by1*s);c.stroke()}c.restore()}
+  for(let k=0;k<n;k++){const m=mirOf(k),rect=m?{x:ox+(2*R.cx+offs[k])*s,y:oy,w:-W*s,h:H*s}:{x:ox+offs[k]*s,y:oy,w:W*s,h:H*s};
+    LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false},dpr)}
+  c.font=`700 ${Math.round(12*dpr)}px Figtree,sans-serif`;c.textAlign='left';c.textBaseline='top';
+  c.fillStyle=touch?'#F27D74':'rgba(243,241,236,.7)';
+  c.fillText(`${n} dancers · ${(d/R.T*GR_M).toFixed(1)} m apart`+(touch?' · touching here':''),pad,8*dpr);
+}
+function groupUpdate(){
+  const n=srcById(S.cur),B=n&&bodyOf(n),on=!!(S.group.on&&B);
+  $('#dkGroup').hidden=!B;$('#dkGroup').setAttribute('aria-pressed',String(on));
+  $('#groupBar').hidden=!on;if(!on)return;
+  const R=groupRoom(B);if(R.none){$('#grVerdict').textContent='No skeleton to copy yet.';return}
+  const rec=S.group.mirror?R.recM:R.recU,d=groupSpacing(R),chk=groupCheck(R,d),m=x=>(x*GR_M).toFixed(1)+' m';
+  $('#grN').textContent=S.group.n;$('#grLess').disabled=S.group.n<=2;$('#grMore').disabled=S.group.n>=6;
+  const sp=$('#grSp');if(document.activeElement!==sp)sp.value=d;$('#grSpOut').textContent=m(d)+(S.group.sp?'':' (auto)');
+  $('#grMirror').checked=S.group.mirror;
+  const width=(S.group.n-1)*rec+(R.box[1]-R.box[0])/R.T;
+  $('#grVerdict').textContent=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across. `+
+    (chk.frac>0?`At ${m(d)} apart they'd touch ${Math.max(1,Math.round(chk.frac*100))}% of the time (most at ${fmt(chk.at)}).`:`At ${m(d)} apart they don't touch.`);
+  $('#grFit').hidden=!(chk.frac>0);
+}
+$('#dkGroup').addEventListener('click',()=>{S.group.on=!S.group.on;groupUpdate();dockUpdate();bodyKey='';drawBody()});
+$('#grLess').addEventListener('click',()=>{S.group.n=Math.max(2,S.group.n-1);grSave();groupUpdate();bodyKey='';drawBody()});
+$('#grMore').addEventListener('click',()=>{S.group.n=Math.min(6,S.group.n+1);grSave();groupUpdate();bodyKey='';drawBody()});
+$('#grSp').addEventListener('input',e=>{S.group.sp=+e.target.value;grSave();groupUpdate();bodyKey='';drawBody()});
+$('#grFit').addEventListener('click',()=>{S.group.sp=null;grSave();groupUpdate();bodyKey='';drawBody()});
+$('#grMirror').addEventListener('change',e=>{S.group.mirror=e.target.checked;grSave();groupUpdate();bodyKey='';drawBody()});
 /* hits from the body: stops and turns of the limbs and hips (RA.analyzePose); your own marked hits are kept */
 function hitsFromBody(n){
   const B=bodyOf(n); if(!B)return false;
@@ -2126,7 +2217,8 @@ function dockUpdate(){
   $('#dkCut').hidden=!canCut&&!staleCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn)); $('#dkCut').dataset.stale=staleCut?'1':'';
   $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
   $('#dkPart').hidden=!(canCut&&S.cutOn); $$('#dkPart button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===S.cutPart)));
-  $('#cutBar').hidden=!(canCut&&S.cutOn);
+  $('#cutBar').hidden=!(canCut&&S.cutOn)||S.group.on;
+  groupUpdate();
 }
 $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
   if(!bodyOf(n)||cpOf(n)){$('#bodyTrack').click();return}
@@ -2826,7 +2918,10 @@ function panelIn(p,dir,from){
 })();
 /* the video bar gets a hairline and shadow once content scrolls under it */
 (function(){const pin=$('.pin');/* stuck = the bar is actually pinned at the top (the header has scrolled away), not merely scrolled a little */
-  const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4&&pin.getBoundingClientRect().top<=1);window.addEventListener('scroll',f,{passive:true});window.addEventListener('resize',f);f()})();
+  const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4&&pin.getBoundingClientRect().top<=(parseFloat(getComputedStyle(pin).top)||0)+1);window.addEventListener('scroll',f,{passive:true});window.addEventListener('resize',f);f();
+  /* things scrolled into view land below the pinned header and bar, not under them */
+  const pad=()=>{const cs=getComputedStyle(pin);document.documentElement.style.scrollPaddingTop=(cs.position==='sticky'?(parseFloat(cs.top)||0)+pin.offsetHeight+8:0)+'px'};
+  try{new ResizeObserver(pad).observe(pin)}catch(e){}window.addEventListener('resize',pad);pad()})();
 /* full screen playback: the whole video bar (video, body, play and scrub) fills the screen. Uses the browser's
    full screen where it is allowed, and fills the window where it isn't (iPhone Safari, inside other apps). */
 (function(){

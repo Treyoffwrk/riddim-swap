@@ -6,9 +6,9 @@
     <p>Put a dance clip on a different song and change its speed until the moves land on the beat.</p>
     <div class="hdr-r">
       <span class="savestate" id="saveState" aria-live="polite"></span>
-      <button class="btn sm ghost mv-only" id="mvBtn" hidden title="Body: mirror, Worldline, Pulse and practice">Body</button>
-      <button class="btn sm ghost" id="lookBtn" aria-haspopup="dialog" title="Colours, sounds and themes">Look</button>
-      <button class="btn sm ghost" id="projBtn" aria-haspopup="dialog">Projects</button>
+      <button class="btn sm ghost ibtn mv-only" id="mvBtn" hidden title="Body: mirror, Worldline, Pulse and practice" aria-label="Body"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg><span class="lbl">Body</span></button>
+      <button class="btn sm ghost ibtn" id="lookBtn" aria-haspopup="dialog" title="Colours, sounds and themes" aria-label="Look"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5a7.5 7.5 0 1 0 0 15c1.2 0 1.8-.8 1.6-1.8-.2-1.1.3-2 1.5-2h1.6a2.8 2.8 0 0 0 2.8-2.8C17.5 6 14.2 2.5 10 2.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><circle cx="6.3" cy="9" r="1.3" fill="currentColor"/><circle cx="8.8" cy="5.9" r="1.3" fill="currentColor"/><circle cx="12.6" cy="6.2" r="1.3" fill="currentColor"/></svg><span class="lbl">Look</span></button>
+      <button class="btn sm ghost ibtn" id="projBtn" aria-haspopup="dialog" title="Projects: save, open, back up" aria-label="Projects"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h3.6l1.8 2h6.6a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg><span class="lbl">Projects</span></button>
     </div>
   </header>
   <div class="missbar" id="missBar" hidden>
@@ -108,6 +108,7 @@
             <button type="button" id="dkBody" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="2.4" fill="currentColor"/><path d="M10 7v6M10 13l-3 5M10 13l3 5M5 9.5l5-1.5 5 1.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg><span>Body</span></button>
             <button type="button" class="hips" id="dkHips" aria-pressed="true"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 11c2-5 5 4 7 0s5-5 7 0" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg><span>Hips</span></button>
             <button type="button" class="cut" id="dkCut" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="15" cy="15" r="2.6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M6.8 13.2L15 3M13.2 13.2L5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Cut out</span></button>
+            <button type="button" class="grp" id="dkGroup" aria-pressed="false" hidden title="Group preview: copies of the dancer side by side"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4.5" r="2" fill="currentColor"/><circle cx="3.8" cy="6.5" r="1.7" fill="currentColor"/><circle cx="16.2" cy="6.5" r="1.7" fill="currentColor"/><path d="M10 8v5M10 13l-2.4 4.5M10 13l2.4 4.5M3.8 9.5v4l-1.8 3.5M3.8 13.5l1.8 3.5M16.2 9.5v4l-1.8 3.5M16.2 13.5l1.8 3.5" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round"/></svg><span>Group</span></button>
             <span class="bgpick" id="dkBg" hidden role="group" aria-label="Background behind the dancer">
               <button type="button" data-bg="dark" aria-label="Dark background" aria-pressed="true" style="background:#08090C"></button>
               <button type="button" data-bg="colour" aria-label="Colour background" aria-pressed="false" style="background:#2B2F6B"></button>
@@ -125,6 +126,20 @@
           <div class="studytag learntag" id="learnTag" hidden>Learn</div>
         </div>
         <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
+        <div class="groupbar mv-only" id="groupBar" hidden aria-label="Group preview">
+          <div class="grrow">
+            <span class="label">Dancers</span>
+            <span class="stepper"><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
+            <label class="grmir"><input type="checkbox" id="grMirror"> Mirror every other</label>
+          </div>
+          <div class="grrow">
+            <label class="label" for="grSp">Apart</label>
+            <input type="range" id="grSp" min="1" max="8" step="0.1" value="3">
+            <span class="val" id="grSpOut"></span>
+          </div>
+          <p class="grverdict" id="grVerdict" aria-live="polite"></p>
+          <button type="button" class="btn sm" id="grFit" hidden>Space them so they don't touch</button>
+        </div>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
             <button class="playbtn" id="play" aria-label="Play" disabled>
@@ -136,7 +151,13 @@
               <div class="trimbar" aria-hidden="true"><i id="trimFill" style="left:0;right:0"></i></div>
               <canvas class="hitstrip" id="hitStrip" aria-hidden="true"></canvas>
             </div>
-            <span class="time" id="time">0:00.0</span>
+            <div class="tcol"><span class="time" id="time">0:00.0</span><button type="button" class="spdpill" id="spdBtn" aria-expanded="false" aria-controls="spdStrip" title="Clip speed" disabled>×1.00</button></div>
+          </div>
+          <div class="spdstrip" id="spdStrip" hidden aria-label="Clip speed">
+            <button type="button" class="lsbtn" id="spdLess" aria-label="Slower">−</button>
+            <input type="range" id="spdRange" min="0.25" max="2.5" step="0.01" value="1" aria-label="Clip speed">
+            <button type="button" class="lsbtn" id="spdMore" aria-label="Faster">+</button>
+            <span class="spdpre" role="group" aria-label="Speed presets"><button type="button" data-v="0.5">½</button><button type="button" data-v="0.75">¾</button><button type="button" data-v="1">1×</button></span>
           </div>
           <div class="pulses" id="pulses" hidden>
             <div class="beats d" id="dBeats" hidden aria-hidden="true"><b>Dance</b><i>1</i><i>2</i><i>3</i><i>4</i></div>
