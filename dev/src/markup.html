@@ -116,9 +116,9 @@
               <button type="button" data-bg="dim" aria-label="Dim the rest of the frame" aria-pressed="false" style="background:linear-gradient(90deg,#08090C 50%,#4a4f5a 50%)"></button>
             </span>
             <span class="partpick" id="dkPart" hidden role="group" aria-label="Which part of the body">
-              <button type="button" data-part="all" aria-pressed="true">Whole</button>
-              <button type="button" data-part="upper" aria-pressed="false">Upper</button>
-              <button type="button" data-part="legs" aria-pressed="false">Legs</button>
+              <button type="button" data-part="all" aria-pressed="true" aria-label="Whole body" title="Whole body"><svg class="pi" viewBox="0 0 20 24" aria-hidden="true"><g stroke-width="2.4" stroke-linecap="round" fill="none"><g stroke="currentColor" opacity="1"><circle cx="10" cy="3.6" r="2.4" fill="currentColor" stroke="none"/><path d="M10 7.5v6M4 9.5l6-1.5 6 1.5M4 9.5l-1 5M16 9.5l1 5"/></g><g stroke="currentColor" opacity="1"><path d="M10 13.5l-3.5 9M10 13.5l3.5 9"/></g></g></svg><span>Whole</span></button>
+              <button type="button" data-part="upper" aria-pressed="false" aria-label="Upper body" title="Upper body"><svg class="pi" viewBox="0 0 20 24" aria-hidden="true"><g stroke-width="2.4" stroke-linecap="round" fill="none"><g stroke="currentColor" opacity="1"><circle cx="10" cy="3.6" r="2.4" fill="currentColor" stroke="none"/><path d="M10 7.5v6M4 9.5l6-1.5 6 1.5M4 9.5l-1 5M16 9.5l1 5"/></g><g stroke="currentColor" opacity="0.28"><path d="M10 13.5l-3.5 9M10 13.5l3.5 9"/></g></g></svg><span>Upper</span></button>
+              <button type="button" data-part="legs" aria-pressed="false" aria-label="Legs" title="Legs"><svg class="pi" viewBox="0 0 20 24" aria-hidden="true"><g stroke-width="2.4" stroke-linecap="round" fill="none"><g stroke="currentColor" opacity="0.28"><circle cx="10" cy="3.6" r="2.4" fill="currentColor" stroke="none"/><path d="M10 7.5v6M4 9.5l6-1.5 6 1.5M4 9.5l-1 5M16 9.5l1 5"/></g><g stroke="currentColor" opacity="1"><path d="M10 13.5l-3.5 9M10 13.5l3.5 9"/></g></g></svg><span>Legs</span></button>
             </span>
           </div>
           <div class="recdot" id="recDot" hidden>Recording</div>
@@ -128,17 +128,11 @@
         <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
         <div class="groupbar mv-only" id="groupBar" hidden aria-label="Group preview">
           <div class="grrow">
-            <span class="label">Dancers</span>
-            <span class="stepper"><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
-            <label class="grmir"><input type="checkbox" id="grMirror"> Mirror every other</label>
+            <span class="stepper" title="How many dancers"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="8" r="2"/><path d="M12 10v5M5 11.5v4M19 11.5v4"/></svg><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
+            <input type="checkbox" class="icochk" id="grMirror" aria-label="Mirror every other dancer" title="Mirror every other dancer">
+            <span class="grsp" title="How far apart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><input type="range" id="grSp" min="1" max="8" step="0.1" value="3" aria-label="How far apart"><span class="val" id="grSpOut"></span></span>
           </div>
-          <div class="grrow">
-            <label class="label" for="grSp">Apart</label>
-            <input type="range" id="grSp" min="1" max="8" step="0.1" value="3">
-            <span class="val" id="grSpOut"></span>
-          </div>
-          <p class="grverdict" id="grVerdict" aria-live="polite"></p>
-          <button type="button" class="btn sm" id="grFit" hidden>Space them so they don't touch</button>
+          <div class="grrow grinfo"><p class="grverdict" id="grVerdict" aria-live="polite"></p><button type="button" class="btn sm" id="grFit" hidden>Space them</button></div>
         </div>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
@@ -164,11 +158,11 @@
             <div class="beats s" id="sBeats" hidden aria-hidden="true"><b>Song</b><i>1</i><i>2</i><i>3</i><i>4</i></div>
           </div>
           <div class="recrow">
-            <button class="btn" id="repeat" aria-pressed="false" disabled>Repeat</button>
-            <button class="btn" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed">Study ½×</button>
-            <button class="btn" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed">Learn</button>
-            <button class="btn" id="snipBtn" aria-pressed="false" disabled title="Build a routine while you watch: tap Start from and Finish here, again and again">Snip</button>
-            <button class="btn rec" id="recBtn" disabled>Record</button>
+            <button class="btn ib" id="repeat" aria-pressed="false" disabled><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span>Repeat</span></button>
+            <button class="btn ib" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M20.5 20.5l-4.8-4.8"/><path d="M11 8v3l2 1.5"/></svg><span>Study ½×</span></button>
+            <button class="btn ib" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/></svg><span>Learn</span></button>
+            <button class="btn ib" id="snipBtn" aria-pressed="false" disabled title="Build a routine while you watch: tap Start from and Finish here, again and again"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4H4v16h3M17 4h3v16h-3"/><path d="M10 12h4"/></svg><span>Snip</span></button>
+            <button class="btn rec ib" id="recBtn" disabled><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg><span>Record</span></button>
             <div class="seg mode" id="modeSeg" role="group" aria-label="What plays" hidden>
               <button id="modeClip" aria-pressed="true">Clip</button>
               <button id="modeSeq" aria-pressed="false">Routine</button>
@@ -252,12 +246,12 @@
         </ol>
       </section>
       <div class="tabs" role="tablist" aria-label="Settings">
-        <button class="tab" role="tab" id="t-clip" aria-controls="p-clip" aria-selected="true"><span class="dot" style="background:var(--dance)"></span>Clip</button>
-        <button class="tab" role="tab" id="t-song" aria-controls="p-song" aria-selected="false" tabindex="-1"><span class="dot" style="background:var(--song-hot)"></span>Song</button>
-        <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1">Tempo</button>
-        <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1">Moves</button>
-        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
-        <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice">Body</button>
+        <button class="tab" role="tab" id="t-clip" aria-controls="p-clip" aria-selected="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span class="dot" style="background:var(--dance)"></span>Clip</button>
+        <button class="tab" role="tab" id="t-song" aria-controls="p-song" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg><span class="dot" style="background:var(--song-hot)"></span>Song</button>
+        <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8l-3-17h-2z"/><path d="M12 15l5-8"/></svg>Tempo</button>
+        <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3c2 0 3 2 3 5s-1 4-3 4-3-1-3-4 1-5 3-5zM6 15h3v3a1.5 1.5 0 0 1-3 0zM17 7c2 0 3 2 3 5s-1 4-3 4-3-1-3-4 1-5 3-5zM15 19h3v1.5a1.5 1.5 0 0 1-3 0z"/></svg>Moves</button>
+        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h3M4 12h3M4 18h3M10 6h10M10 12h10M10 18h10"/></svg>Routine</button>
+        <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2.2"/><path d="M12 8v6M12 14l-3.5 7M12 14l3.5 7M5 10l7-2 7 2"/></svg>Body</button>
       </div>
 
       <!-- CLIP: 1 your videos and the dancer's body · 2 speed, start and end, hits, compare · 3 more options -->

@@ -49,15 +49,31 @@ const [,,HOST,CLIP,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpperCa
  if(SHOT)await p.screenshot({path:SHOT+'-group3.png'});
  await p.click('#grMore');await p.waitForTimeout(500);const g4=await cols(),v4=await verdict();
  rec('Group shows copies of the dancer side by side (3, then 4)',gv&&v3.bar&&g3===3&&g4===4&&v4.n==='4'?'passed':'failed',JSON.stringify({gv,g3,g4,v3,v4}));
- rec('It says how much room each dancer needs',/needs about [\d.]+ m side to side; 3 dancers need about [\d.]+ m across/.test(v3.v)&&/don.t touch/.test(v3.v)&&/auto/.test(v3.sp)?'passed':'failed',v3.v+' | '+v3.sp);
+ rec('It says how much room each dancer needs',/Each needs ~[\d.]+ m · 3 need ~[\d.]+ m across/.test(v3.v)&&/no touching/.test(v3.v)&&/auto/.test(v3.sp)?'passed':'failed',v3.v+' | '+v3.sp);
  /* too close: it says they'd touch, and Space them fixes it */
  await p.evaluate(()=>{const r=document.getElementById('grSp');r.value=1;r.dispatchEvent(new Event('input'))});await p.waitForTimeout(300);const vc=await verdict();
  if(SHOT)await p.screenshot({path:SHOT+'-close.png'});
  await p.click('#grFit');await p.waitForTimeout(300);const vf=await verdict();
- rec('Too close: it says how often they touch, and "Space them" puts them back',/touch \d+% of the time/.test(vc.v)&&vc.fit&&/don.t touch/.test(vf.v)&&!vf.fit?'passed':'failed',JSON.stringify({vc,vf}));
+ rec('Too close: it says how often they touch, and "Space them" puts them back',/touch \d+% of the time/.test(vc.v)&&vc.fit&&/no touching/.test(vf.v)&&!vf.fit?'passed':'failed',JSON.stringify({vc,vf}));
  await p.click('#grMirror');await p.waitForTimeout(400);const vm=await verdict(),gm=await cols();
  if(SHOT)await p.screenshot({path:SHOT+'-mirror.png'});
- rec('Mirror every other one',gm===4&&/needs about/.test(vm.v)?'passed':'failed',JSON.stringify({gm,vm:vm.v}));
+ rec('Mirror every other one',gm===4&&/needs ~/.test(vm.v)?'passed':'failed',JSON.stringify({gm,vm:vm.v}));
+ /* Cut out and Group together: both sets of options show, and the copies are the real dancer (just the legs here) */
+ const both=await p.evaluate(async()=>{const n=window.__rs.srcById(window.__rs.S.cur);if(!RB.hasCutout(n.body))return 'no cut-out';
+   const got=[],o=RB.cutDancer;RB.cutDancer=(...a)=>{got.push(a[5]);return o(...a)};
+   document.getElementById('dkCut').click();await new Promise(r=>setTimeout(r,300));document.querySelector('#dkPart button[data-part="legs"]').click();
+   document.querySelector('#vid').currentTime+=0.1;await new Promise(r=>setTimeout(r,700));RB.cutDancer=o;
+   const vis=id=>{const e=document.getElementById(id);return !e.hidden&&e.getBoundingClientRect().height>0};
+   /* real picture: pixels that aren't the dark background or the blue skeleton */
+   const cv=document.getElementById('bodyCanvas'),x=cv.getContext('2d'),d=x.getImageData(0,0,cv.width,cv.height).data;let px=0;for(let i=0;i<d.length;i+=16){const r=d[i],g=d[i+1],b=d[i+2];if(r+g+b>120&&!(b>140&&b>r+30))px++}
+   return {cutBar:vis('cutBar'),groupBar:vis('groupBar'),parts:[...new Set(got)],calls:got.length,px}});
+ if(SHOT)await p.screenshot({path:SHOT+'-cutgroup.png'});
+ rec('Cut out and Group at the same time: both option rows show, copies are the cut-out dancer (Legs only)',typeof both==='string'?'not run':both.cutBar&&both.groupBar&&both.parts.includes('legs')&&both.px>200?'passed':'failed',JSON.stringify(both));
+ await p.evaluate(async()=>{document.querySelector('#dkPart button[data-part="all"]').click();if(window.__rs.S.cutOn)document.getElementById('dkCut').click()});await p.waitForTimeout(300);
+ /* up to 8 dancers */
+ for(let i=0;i<8&&!(await p.evaluate(()=>document.getElementById('grMore').disabled));i++)await p.click('#grMore');const v8=await verdict();
+ rec('Up to 8 dancers',v8.n==='8'&&await p.evaluate(()=>document.getElementById('grMore').disabled)?'passed':'failed',v8.n);
+ for(let i=0;i<4;i++)await p.click('#grLess');await p.waitForTimeout(300);   /* back to 4 */
  /* playing: the copies move */
  const h0=await p.evaluate(()=>{const c=document.getElementById('bodyCanvas');return c.toDataURL().length});
  await p.click('#play');await p.waitForTimeout(1500);const h1=await p.evaluate(()=>document.getElementById('bodyCanvas').toDataURL().length);await p.click('#play');

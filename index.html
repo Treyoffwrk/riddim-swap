@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-47f6d35228'</script>
+<script>window.RS_BUILD='rs-397e4ea191'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -613,6 +613,38 @@ details.more .field{margin-top:8px}
   .dock>button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dock button svg{width:16px;height:16px}
 }
+/* ---- icons throughout (2 Nov): compact bars under the video, icon + short label buttons, icon tabs ---- */
+.groupbar{gap:4px;margin:6px 0 2px}
+.groupbar .grrow{gap:8px;flex-wrap:nowrap}
+.groupbar .stepper{padding:2px 2px 2px 8px;flex:0 0 auto}
+.groupbar .stepper .bi{width:20px;height:20px;color:var(--muted)}
+.groupbar .stepper button{width:30px;height:30px}
+.groupbar .grsp{display:flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0}
+.groupbar .grsp .bi{width:18px;height:18px;color:var(--muted);flex:0 0 auto}
+.groupbar .grsp .val{font:600 12px var(--f-mono);white-space:nowrap}
+.groupbar .grinfo{gap:8px}
+.groupbar .grverdict{flex:1 1 auto;min-width:0;font-size:12px;line-height:1.3}
+.groupbar .grverdict.bad{color:#F27D74}
+.groupbar #grFit{flex:0 0 auto;min-height:30px;padding:0 10px;font-size:12px}
+.icochk{appearance:none;-webkit-appearance:none;margin:0;flex:0 0 auto;width:36px;height:34px;border-radius:999px;border:1px solid var(--line);background:var(--surface) center/20px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23C9CDD6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v18' stroke-dasharray='2 2.5'/%3E%3Cpath d='M9 6L3 18h6zM15 6l6 12h-6z'/%3E%3C/svg%3E");cursor:pointer}
+.icochk:checked{background-color:var(--dance);border-color:var(--dance);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230E1014' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v18' stroke-dasharray='2 2.5'/%3E%3Cpath d='M9 6L3 18h6zM15 6l6 12h-6z'/%3E%3C/svg%3E")}
+/* Upper / Legs as little figures */
+.cutbar{margin:6px 0 2px;gap:6px}
+.cutbar .partpick button,.dock .partpick button{display:inline-flex;align-items:center;gap:4px;padding:0 10px 0 8px}
+.partpick .pi{width:15px;height:18px;flex:0 0 auto}
+/* both bars open (Cut out + Group): keep them tight */
+.cutbar:not([hidden])+.groupbar:not([hidden]){margin-top:2px}
+/* the row of actions: icon over a short label, all the same width */
+.recrow .btn.ib{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:1 1 0;min-height:48px;padding:4px 2px;font-size:12px;line-height:1.1}
+.recrow .btn.ib .bi{width:20px;height:20px;flex:0 0 auto}
+.recrow .btn.ib span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.recrow .btn.rec.ib .bi{color:#fff}
+/* tabs: an icon above each label */
+.tab .ti{width:20px;height:20px;flex:0 0 auto}
+@media (min-width:861px){.tab .ti{width:16px;height:16px}}
+@media (max-width:860px){.tab{gap:3px;min-height:56px}.tab::before{margin-bottom:1px}}
+/* the update bar sits just under the header so Projects / Look stay tappable */
+.updbar{top:calc(env(safe-area-inset-top,0px) + 56px)}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -745,9 +777,9 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
               <button type="button" data-bg="dim" aria-label="Dim the rest of the frame" aria-pressed="false" style="background:linear-gradient(90deg,#08090C 50%,#4a4f5a 50%)"></button>
             </span>
             <span class="partpick" id="dkPart" hidden role="group" aria-label="Which part of the body">
-              <button type="button" data-part="all" aria-pressed="true">Whole</button>
-              <button type="button" data-part="upper" aria-pressed="false">Upper</button>
-              <button type="button" data-part="legs" aria-pressed="false">Legs</button>
+              <button type="button" data-part="all" aria-pressed="true" aria-label="Whole body" title="Whole body"><svg class="pi" viewBox="0 0 20 24" aria-hidden="true"><g stroke-width="2.4" stroke-linecap="round" fill="none"><g stroke="currentColor" opacity="1"><circle cx="10" cy="3.6" r="2.4" fill="currentColor" stroke="none"/><path d="M10 7.5v6M4 9.5l6-1.5 6 1.5M4 9.5l-1 5M16 9.5l1 5"/></g><g stroke="currentColor" opacity="1"><path d="M10 13.5l-3.5 9M10 13.5l3.5 9"/></g></g></svg><span>Whole</span></button>
+              <button type="button" data-part="upper" aria-pressed="false" aria-label="Upper body" title="Upper body"><svg class="pi" viewBox="0 0 20 24" aria-hidden="true"><g stroke-width="2.4" stroke-linecap="round" fill="none"><g stroke="currentColor" opacity="1"><circle cx="10" cy="3.6" r="2.4" fill="currentColor" stroke="none"/><path d="M10 7.5v6M4 9.5l6-1.5 6 1.5M4 9.5l-1 5M16 9.5l1 5"/></g><g stroke="currentColor" opacity="0.28"><path d="M10 13.5l-3.5 9M10 13.5l3.5 9"/></g></g></svg><span>Upper</span></button>
+              <button type="button" data-part="legs" aria-pressed="false" aria-label="Legs" title="Legs"><svg class="pi" viewBox="0 0 20 24" aria-hidden="true"><g stroke-width="2.4" stroke-linecap="round" fill="none"><g stroke="currentColor" opacity="0.28"><circle cx="10" cy="3.6" r="2.4" fill="currentColor" stroke="none"/><path d="M10 7.5v6M4 9.5l6-1.5 6 1.5M4 9.5l-1 5M16 9.5l1 5"/></g><g stroke="currentColor" opacity="1"><path d="M10 13.5l-3.5 9M10 13.5l3.5 9"/></g></g></svg><span>Legs</span></button>
             </span>
           </div>
           <div class="recdot" id="recDot" hidden>Recording</div>
@@ -757,17 +789,11 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
         <div class="groupbar mv-only" id="groupBar" hidden aria-label="Group preview">
           <div class="grrow">
-            <span class="label">Dancers</span>
-            <span class="stepper"><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
-            <label class="grmir"><input type="checkbox" id="grMirror"> Mirror every other</label>
+            <span class="stepper" title="How many dancers"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="8" r="2"/><path d="M12 10v5M5 11.5v4M19 11.5v4"/></svg><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
+            <input type="checkbox" class="icochk" id="grMirror" aria-label="Mirror every other dancer" title="Mirror every other dancer">
+            <span class="grsp" title="How far apart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><input type="range" id="grSp" min="1" max="8" step="0.1" value="3" aria-label="How far apart"><span class="val" id="grSpOut"></span></span>
           </div>
-          <div class="grrow">
-            <label class="label" for="grSp">Apart</label>
-            <input type="range" id="grSp" min="1" max="8" step="0.1" value="3">
-            <span class="val" id="grSpOut"></span>
-          </div>
-          <p class="grverdict" id="grVerdict" aria-live="polite"></p>
-          <button type="button" class="btn sm" id="grFit" hidden>Space them so they don't touch</button>
+          <div class="grrow grinfo"><p class="grverdict" id="grVerdict" aria-live="polite"></p><button type="button" class="btn sm" id="grFit" hidden>Space them</button></div>
         </div>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
@@ -793,11 +819,11 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <div class="beats s" id="sBeats" hidden aria-hidden="true"><b>Song</b><i>1</i><i>2</i><i>3</i><i>4</i></div>
           </div>
           <div class="recrow">
-            <button class="btn" id="repeat" aria-pressed="false" disabled>Repeat</button>
-            <button class="btn" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed">Study ½×</button>
-            <button class="btn" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed">Learn</button>
-            <button class="btn" id="snipBtn" aria-pressed="false" disabled title="Build a routine while you watch: tap Start from and Finish here, again and again">Snip</button>
-            <button class="btn rec" id="recBtn" disabled>Record</button>
+            <button class="btn ib" id="repeat" aria-pressed="false" disabled><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span>Repeat</span></button>
+            <button class="btn ib" id="studyBtn" aria-pressed="false" disabled title="Loop 2 seconds around here at half speed"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M20.5 20.5l-4.8-4.8"/><path d="M11 8v3l2 1.5"/></svg><span>Study ½×</span></button>
+            <button class="btn ib" id="learnBtn" aria-pressed="false" disabled title="Learn the clip 8 counts at a time: slow, then full speed"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/></svg><span>Learn</span></button>
+            <button class="btn ib" id="snipBtn" aria-pressed="false" disabled title="Build a routine while you watch: tap Start from and Finish here, again and again"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4H4v16h3M17 4h3v16h-3"/><path d="M10 12h4"/></svg><span>Snip</span></button>
+            <button class="btn rec ib" id="recBtn" disabled><svg class="bi" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg><span>Record</span></button>
             <div class="seg mode" id="modeSeg" role="group" aria-label="What plays" hidden>
               <button id="modeClip" aria-pressed="true">Clip</button>
               <button id="modeSeq" aria-pressed="false">Routine</button>
@@ -881,12 +907,12 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
         </ol>
       </section>
       <div class="tabs" role="tablist" aria-label="Settings">
-        <button class="tab" role="tab" id="t-clip" aria-controls="p-clip" aria-selected="true"><span class="dot" style="background:var(--dance)"></span>Clip</button>
-        <button class="tab" role="tab" id="t-song" aria-controls="p-song" aria-selected="false" tabindex="-1"><span class="dot" style="background:var(--song-hot)"></span>Song</button>
-        <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1">Tempo</button>
-        <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1">Moves</button>
-        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1">Routine</button>
-        <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice">Body</button>
+        <button class="tab" role="tab" id="t-clip" aria-controls="p-clip" aria-selected="true"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z" fill="currentColor"/></svg><span class="dot" style="background:var(--dance)"></span>Clip</button>
+        <button class="tab" role="tab" id="t-song" aria-controls="p-song" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg><span class="dot" style="background:var(--song-hot)"></span>Song</button>
+        <button class="tab" role="tab" id="t-tempo" aria-controls="p-tempo" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8l-3-17h-2z"/><path d="M12 15l5-8"/></svg>Tempo</button>
+        <button class="tab" role="tab" id="t-moves" aria-controls="p-moves" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3c2 0 3 2 3 5s-1 4-3 4-3-1-3-4 1-5 3-5zM6 15h3v3a1.5 1.5 0 0 1-3 0zM17 7c2 0 3 2 3 5s-1 4-3 4-3-1-3-4 1-5 3-5zM15 19h3v1.5a1.5 1.5 0 0 1-3 0z"/></svg>Moves</button>
+        <button class="tab" role="tab" id="t-routine" aria-controls="p-routine" aria-selected="false" tabindex="-1"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h3M4 12h3M4 18h3M10 6h10M10 12h10M10 18h10"/></svg>Routine</button>
+        <button class="tab mv-only" id="t-body" type="button" title="Body: mirror with your camera, Worldline, Pulse and practice"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2.2"/><path d="M12 8v6M12 14l-3.5 7M12 14l3.5 7M5 10l7-2 7 2"/></svg>Body</button>
       </div>
 
       <!-- CLIP: 1 your videos and the dancer's body · 2 speed, start and end, hits, compare · 3 more options -->
@@ -2627,11 +2653,23 @@ if(typeof module!=='undefined')module.exports=RA;
     ctx.drawImage(ccv,0,0);
     return true;
   }
+  /* just the dancer (no background) from this frame, as a w×h picture of the whole video frame: for drawing copies of the
+     cut-out (the Group preview), each placed and mirrored by the caller */
+  let dcv=null,dcx=null;
+  function cutDancer(B,t,video,w,h,part){
+    const k=maskIndex(B,t); if(k<0||!video||!video.videoWidth||w<2||h<2)return null;
+    w=Math.round(w);h=Math.round(h);
+    if(!dcv){dcv=document.createElement('canvas');dcx=dcv.getContext('2d')}
+    if(dcv.width!==w||dcv.height!==h){dcv.width=w;dcv.height=h}
+    dcx.globalCompositeOperation='source-over';dcx.clearRect(0,0,w,h);dcx.drawImage(video,0,0,w,h);
+    dcx.globalCompositeOperation='destination-in';dcx.imageSmoothingEnabled=true;dcx.imageSmoothingQuality='high';dcx.drawImage(partMask(B,k,part),0,0,w,h);
+    dcx.globalCompositeOperation='source-over';return dcv;
+  }
   /* where a video frame sits inside a box with object-fit: contain */
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
@@ -3919,13 +3957,13 @@ function startRecording(){
   toStart(); if(useCodecs)S.switchPending=true;
   play();
   if(useCodecs)watchFrames(v);
-  $('#recBtn').textContent='Stop'; $('#recDot').hidden=false;
+  $('#recBtn span').textContent='Stop'; $('#recDot').hidden=false;
   recMsg('Recording '+(routineOn()?'the routine':'the clip')+' · '+fmt(len));
 }
 function stopRecording(){
   const R=S.rec; if(!R)return; S.rec=null;
   pause();
-  $('#recBtn').textContent='Record'; $('#recDot').hidden=true;
+  $('#recBtn span').textContent='Record'; $('#recDot').hidden=true;
   if(R.mode==='codecs'){finishCodecRec(R);return}
   recStopSong(); recMsg('Finishing the video…');
   try{if(R.mr.state!=='inactive'){R.mr.requestData&&R.mr.requestData();R.mr.stop()}}catch(e){}
@@ -4539,7 +4577,7 @@ function drawBody(){
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   const ft=shownT(el);
-  if(S.group.on){drawGroup(c,B,ft,w,h,dpr);bodyDrawn=true;return}
+  if(S.group.on){drawGroup(c,B,ft,w,h,dpr,el);bodyDrawn=true;return}
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,ft,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
   const cmpB=n.bodyAlt&&S.cmpShow!=='now'?n.bodyAlt:null;
   /* Show Upper / Legs (with the cut-out): only that half of the skeleton too */
@@ -4557,19 +4595,19 @@ function drawBody(){
    how far apart two copies must stand so no part of one comes near the other at the same height (in torso lengths,
    shown in metres taking a torso, shoulders to hips, as about half a metre). */
 S.group={on:false,n:3,sp:null,mirror:false};
-try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(6,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
+try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(8,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
 const GR_M=0.5;   /* metres per torso length (rough, adult) */
 const grSave=()=>{try{localStorage.setItem('rs-group',JSON.stringify({n:S.group.n,sp:S.group.sp,mirror:S.group.mirror}))}catch(e){}};
 const GR_J=[0,11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32], GR_BONES=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,23],[12,24]];
 function groupRoom(B){
   if(B._room&&B._room.n===B.n)return B._room;
-  const W=B.w||1,H=B.h||1,S0=RB.STRIDE,ts=[],fr=[],Ts=[],hx=[];
+  const W=B.w||1,H=B.h||1,S0=RB.STRIDE,ts=[],fr=[],Ts=[],hx=[],hy=[];
   for(let i=0;i<B.n;i++){const t=B.data[i*S0];const P=RB.poseAt(B,t);if(!P)continue;
     const v=j=>P[j][2]>=0.35,X=j=>[P[j][0]*W,P[j][1]*H];
     const sh=[(P[11][0]+P[12][0])/2*W,(P[11][1]+P[12][1])/2*H],hp=[(P[23][0]+P[24][0])/2*W,(P[23][1]+P[24][1])/2*H];
     const pts=[];for(const j of GR_J)if(v(j))pts.push(X(j));
     for(const [a,b] of GR_BONES)if(v(a)&&v(b)){const p=X(a),q=X(b);pts.push([(p[0]+q[0])/2,(p[1]+q[1])/2])}
-    if(pts.length<6)continue;ts.push(t);fr.push(pts);Ts.push(Math.hypot(sh[0]-hp[0],sh[1]-hp[1]));hx.push(hp[0])}
+    if(pts.length<6)continue;ts.push(t);fr.push(pts);Ts.push(Math.hypot(sh[0]-hp[0],sh[1]-hp[1]));hx.push(hp[0]);hy.push(hp[1])}
   if(!fr.length)return B._room={n:B.n,none:true};
   const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s[s.length>>1]};
   const T=med(Ts)||1,cx=med(hx),band=0.4*T,margin=0.2*T;
@@ -4582,15 +4620,26 @@ function groupRoom(B){
   /* a touch counts when it lasts 3 frames or more (a single odd frame of tracking isn't a real touch) */
   const steady=a=>a.map((v,i)=>Math.min(v,a[i-1]??v,a[i+1]??v));
   const sU=steady(nU),sM=steady(nM),rec=a=>Math.max(1,Math.ceil(Math.max(...a)*10)/10);
-  return B._room={n:B.n,T,cx,ts,nU:sU,nM:sM,recU:rec(sU),recM:rec(sM),box:[x0,x1,y0,y1]};
+  return B._room={n:B.n,T,cx,hy:med(hy),ts,nU:sU,nM:sM,recU:rec(sU),recM:rec(sM),box:[x0,x1,y0,y1]};
 }
 function groupSpacing(R){return S.group.sp||(S.group.mirror?R.recM:R.recU)}
 function groupCheck(R,d){const a=S.group.mirror?R.nM:R.nU;let k=0,worst=-1,wi=-1;for(let i=0;i<a.length;i++){if(a[i]>d){k++;if(a[i]>worst){worst=a[i];wi=i}}}return {frac:k/a.length,at:wi>=0?R.ts[wi]:null}}
 function groupNeedAt(R,t){const a=S.group.mirror?R.nM:R.nU;let lo=0,hi=R.ts.length-1;while(lo<hi){const m=(lo+hi)>>1;if(R.ts[m]<t)lo=m+1;else hi=m}const i=lo;return Math.abs(R.ts[i]-t)<0.1?a[i]:null}
-function drawGroup(c,B,t,w,h,dpr){
-  c.fillStyle='#0B0D11';c.fillRect(0,0,w,h);
+/* with Cut out on, the copies are the real dancer (that part of the body, on the chosen background) instead of only
+   skeletons; the skeleton goes on top when Body is on */
+let grBcv=null;
+function groupCut(B){return !!(S.cutOn&&RB.hasCutout(B))}
+function drawGroup(c,B,t,w,h,dpr,el){
+  const cut=groupCut(B)&&el&&el.videoWidth;
+  c.fillStyle=cut&&S.cutBg==='colour'?'#2B2F6B':'#0B0D11';c.fillRect(0,0,w,h);
+  if(cut&&S.cutBg==='blur'){if(!grBcv)grBcv=document.createElement('canvas');const sw=Math.max(8,Math.round(w/24)),sh=Math.max(8,Math.round(h/24));if(grBcv.width!==sw||grBcv.height!==sh){grBcv.width=sw;grBcv.height=sh}
+    const bx=grBcv.getContext('2d');bx.imageSmoothingEnabled=true;bx.drawImage(el,0,0,sw,sh);c.save();c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.drawImage(grBcv,0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.restore()}
   const R=groupRoom(B);if(R.none)return;
-  const n=S.group.n,d=groupSpacing(R)*R.T,W=B.w||1,H=B.h||1,[bx0,bx1,by0,by1]=R.box;
+  const n=S.group.n,d=groupSpacing(R)*R.T,W=B.w||1,H=B.h||1;
+  /* the cut-out reaches past the joints (top of the head, hands, clothes): leave room for it */
+  const ex=cut?0.3*R.T:0;let [bx0,bx1,by0,by1]=[R.box[0]-ex,R.box[1]+ex,R.box[2]-(cut?0.5*R.T:0),R.box[3]+(cut?0.1*R.T:0)];
+  /* Legs / Upper only: frame that half, so it fills the space */
+  if(cut&&S.cutPart==='legs'&&R.hy)by0=R.hy-0.35*R.T; if(cut&&S.cutPart==='upper'&&R.hy)by1=R.hy+0.35*R.T;
   const mx0=2*R.cx-bx1,mx1=2*R.cx-bx0;
   const offs=[...Array(n)].map((_,k)=>(k-(n-1)/2)*d), mirOf=k=>S.group.mirror&&k%2===1;
   let gx0=1e9,gx1=-1e9;offs.forEach((o,k)=>{const a=mirOf(k)?mx0:bx0,b=mirOf(k)?mx1:bx1;gx0=Math.min(gx0,a+o);gx1=Math.max(gx1,b+o)});
@@ -4598,12 +4647,15 @@ function drawGroup(c,B,t,w,h,dpr){
   const s=Math.min((w-2*side)/(gx1-gx0),(h-top-resB-pad)/(by1-by0));
   const ox=(w-(gx1-gx0)*s)/2-gx0*s,oy=top-by0*s+Math.max(0,(h-top-resB-pad-(by1-by0)*s)/2);
   /* floor */
-  c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();c.moveTo(pad,oy+by1*s+4*dpr);c.lineTo(w-pad,oy+by1*s+4*dpr);c.stroke();
+  c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();if(by1>=R.box[3]){c.moveTo(pad,oy+R.box[3]*s+4*dpr);c.lineTo(w-pad,oy+R.box[3]*s+4*dpr)}c.stroke();
   const nd=groupNeedAt(R,t),touch=nd!=null&&nd>d/R.T;
   if(touch){c.save();c.strokeStyle='rgba(242,125,116,.85)';c.setLineDash([6*dpr,6*dpr]);c.lineWidth=2*dpr;
     for(let k=0;k<n-1;k++){const x=ox+((offs[k]+offs[k+1])/2+R.cx)*s;c.beginPath();c.moveTo(x,oy+by0*s);c.lineTo(x,oy+by1*s);c.stroke()}c.restore()}
+  const part=cut?S.cutPart:'all',skel=!cut||$('#bodyShow').checked;
+  const img=cut?RB.cutDancer(B,t,el,W*s,H*s,part):null;
   for(let k=0;k<n;k++){const m=mirOf(k),rect=m?{x:ox+(2*R.cx+offs[k])*s,y:oy,w:-W*s,h:H*s}:{x:ox+offs[k]*s,y:oy,w:W*s,h:H*s};
-    LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false},dpr)}
+    if(img){c.save();c.translate(rect.x,0);if(m)c.scale(-1,1);c.drawImage(img,0,rect.y,W*s,H*s);c.restore()}
+    if(skel)LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false,part},dpr)}
   c.font=`700 ${Math.round(12*dpr)}px Figtree,sans-serif`;c.textAlign='left';c.textBaseline='top';
   c.fillStyle=touch?'#F27D74':'rgba(243,241,236,.7)';
   c.fillText(`${n} dancers · ${(d/R.T*GR_M).toFixed(1)} m apart`+(touch?' · touching here':''),pad,8*dpr);
@@ -4614,17 +4666,20 @@ function groupUpdate(){
   $('#groupBar').hidden=!on;if(!on)return;
   const R=groupRoom(B);if(R.none){$('#grVerdict').textContent='No skeleton to copy yet.';return}
   const rec=S.group.mirror?R.recM:R.recU,d=groupSpacing(R),chk=groupCheck(R,d),m=x=>(x*GR_M).toFixed(1)+' m';
-  $('#grN').textContent=S.group.n;$('#grLess').disabled=S.group.n<=2;$('#grMore').disabled=S.group.n>=6;
+  $('#grN').textContent=S.group.n;$('#grLess').disabled=S.group.n<=2;$('#grMore').disabled=S.group.n>=8;
   const sp=$('#grSp');if(document.activeElement!==sp)sp.value=d;$('#grSpOut').textContent=m(d)+(S.group.sp?'':' (auto)');
   $('#grMirror').checked=S.group.mirror;
   const width=(S.group.n-1)*rec+(R.box[1]-R.box[0])/R.T;
-  $('#grVerdict').textContent=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across. `+
-    (chk.frac>0?`At ${m(d)} apart they'd touch ${Math.max(1,Math.round(chk.frac*100))}% of the time (most at ${fmt(chk.at)}).`:`At ${m(d)} apart they don't touch.`);
+  /* short, so it fits on one or two lines under the video (the full sentence is in the title) */
+  const tch=chk.frac>0?`touch ${Math.max(1,Math.round(chk.frac*100))}% of the time (most at ${fmt(chk.at)})`:`no touching`;
+  $('#grVerdict').textContent=`Each needs ~${m(rec)} · ${S.group.n} need ~${m(width)} across · ${tch}`;
+  $('#grVerdict').title=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across. At ${m(d)} apart: ${tch}.`;
+  $('#grVerdict').classList.toggle('bad',chk.frac>0);
   $('#grFit').hidden=!(chk.frac>0);
 }
 $('#dkGroup').addEventListener('click',()=>{S.group.on=!S.group.on;groupUpdate();dockUpdate();bodyKey='';drawBody()});
 $('#grLess').addEventListener('click',()=>{S.group.n=Math.max(2,S.group.n-1);grSave();groupUpdate();bodyKey='';drawBody()});
-$('#grMore').addEventListener('click',()=>{S.group.n=Math.min(6,S.group.n+1);grSave();groupUpdate();bodyKey='';drawBody()});
+$('#grMore').addEventListener('click',()=>{S.group.n=Math.min(8,S.group.n+1);grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grSp').addEventListener('input',e=>{S.group.sp=+e.target.value;grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grFit').addEventListener('click',()=>{S.group.sp=null;grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grMirror').addEventListener('change',e=>{S.group.mirror=e.target.checked;grSave();groupUpdate();bodyKey='';drawBody()});
@@ -4855,7 +4910,7 @@ function dockUpdate(){
   $('#dkCut').hidden=!canCut&&!staleCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn)); $('#dkCut').dataset.stale=staleCut?'1':'';
   $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
   $('#dkPart').hidden=!(canCut&&S.cutOn); $$('#dkPart button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===S.cutPart)));
-  $('#cutBar').hidden=!(canCut&&S.cutOn)||S.group.on;
+  $('#cutBar').hidden=!(canCut&&S.cutOn);   /* Cut out and Group work together: both sets of options show */
   groupUpdate();
 }
 $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
@@ -5558,7 +5613,8 @@ function panelIn(p,dir,from){
 (function(){const pin=$('.pin');/* stuck = the bar is actually pinned at the top (the header has scrolled away), not merely scrolled a little */
   const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4&&pin.getBoundingClientRect().top<=(parseFloat(getComputedStyle(pin).top)||0)+1);window.addEventListener('scroll',f,{passive:true});window.addEventListener('resize',f);f();
   /* things scrolled into view land below the pinned header and bar, not under them */
-  const pad=()=>{const cs=getComputedStyle(pin);document.documentElement.style.scrollPaddingTop=(cs.position==='sticky'?(parseFloat(cs.top)||0)+pin.offsetHeight+8:0)+'px'};
+  const padEl=document.head.appendChild(document.createElement('style'));let padV='';   /* a style element, not an inline style: themes own the root's inline styles */
+  const pad=()=>{const cs=getComputedStyle(pin),v=(cs.position==='sticky'?(parseFloat(cs.top)||0)+pin.offsetHeight+8:0)+'px';if(v!==padV){padV=v;padEl.textContent='html{scroll-padding-top:'+v+'}'}};
   try{new ResizeObserver(pad).observe(pin)}catch(e){}window.addEventListener('resize',pad);pad()})();
 /* full screen playback: the whole video bar (video, body, play and scrub) fills the screen. Uses the browser's
    full screen where it is allowed, and fills the window where it isn't (iPhone Safari, inside other apps). */

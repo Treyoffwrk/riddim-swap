@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-47f6d35228'</script>
+<script>window.RS_BUILD='rs-397e4ea191'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -1561,11 +1561,23 @@ main{padding-bottom:12px}
     ctx.drawImage(ccv,0,0);
     return true;
   }
+  /* just the dancer (no background) from this frame, as a w×h picture of the whole video frame: for drawing copies of the
+     cut-out (the Group preview), each placed and mirrored by the caller */
+  let dcv=null,dcx=null;
+  function cutDancer(B,t,video,w,h,part){
+    const k=maskIndex(B,t); if(k<0||!video||!video.videoWidth||w<2||h<2)return null;
+    w=Math.round(w);h=Math.round(h);
+    if(!dcv){dcv=document.createElement('canvas');dcx=dcv.getContext('2d')}
+    if(dcv.width!==w||dcv.height!==h){dcv.width=w;dcv.height=h}
+    dcx.globalCompositeOperation='source-over';dcx.clearRect(0,0,w,h);dcx.drawImage(video,0,0,w,h);
+    dcx.globalCompositeOperation='destination-in';dcx.imageSmoothingEnabled=true;dcx.imageSmoothingQuality='high';dcx.drawImage(partMask(B,k,part),0,0,w,h);
+    dcx.globalCompositeOperation='source-over';return dcv;
+  }
   /* where a video frame sits inside a box with object-fit: contain */
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 

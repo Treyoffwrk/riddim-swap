@@ -1281,13 +1281,13 @@ function startRecording(){
   toStart(); if(useCodecs)S.switchPending=true;
   play();
   if(useCodecs)watchFrames(v);
-  $('#recBtn').textContent='Stop'; $('#recDot').hidden=false;
+  $('#recBtn span').textContent='Stop'; $('#recDot').hidden=false;
   recMsg('Recording '+(routineOn()?'the routine':'the clip')+' · '+fmt(len));
 }
 function stopRecording(){
   const R=S.rec; if(!R)return; S.rec=null;
   pause();
-  $('#recBtn').textContent='Record'; $('#recDot').hidden=true;
+  $('#recBtn span').textContent='Record'; $('#recDot').hidden=true;
   if(R.mode==='codecs'){finishCodecRec(R);return}
   recStopSong(); recMsg('Finishing the video…');
   try{if(R.mr.state!=='inactive'){R.mr.requestData&&R.mr.requestData();R.mr.stop()}}catch(e){}
@@ -1901,7 +1901,7 @@ function drawBody(){
   const c=bodyCv.getContext('2d');c.clearRect(0,0,w,h);
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   const ft=shownT(el);
-  if(S.group.on){drawGroup(c,B,ft,w,h,dpr);bodyDrawn=true;return}
+  if(S.group.on){drawGroup(c,B,ft,w,h,dpr,el);bodyDrawn=true;return}
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,ft,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
   const cmpB=n.bodyAlt&&S.cmpShow!=='now'?n.bodyAlt:null;
   /* Show Upper / Legs (with the cut-out): only that half of the skeleton too */
@@ -1919,19 +1919,19 @@ function drawBody(){
    how far apart two copies must stand so no part of one comes near the other at the same height (in torso lengths,
    shown in metres taking a torso, shoulders to hips, as about half a metre). */
 S.group={on:false,n:3,sp:null,mirror:false};
-try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(6,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
+try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(8,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
 const GR_M=0.5;   /* metres per torso length (rough, adult) */
 const grSave=()=>{try{localStorage.setItem('rs-group',JSON.stringify({n:S.group.n,sp:S.group.sp,mirror:S.group.mirror}))}catch(e){}};
 const GR_J=[0,11,12,13,14,15,16,23,24,25,26,27,28,29,30,31,32], GR_BONES=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,23],[12,24]];
 function groupRoom(B){
   if(B._room&&B._room.n===B.n)return B._room;
-  const W=B.w||1,H=B.h||1,S0=RB.STRIDE,ts=[],fr=[],Ts=[],hx=[];
+  const W=B.w||1,H=B.h||1,S0=RB.STRIDE,ts=[],fr=[],Ts=[],hx=[],hy=[];
   for(let i=0;i<B.n;i++){const t=B.data[i*S0];const P=RB.poseAt(B,t);if(!P)continue;
     const v=j=>P[j][2]>=0.35,X=j=>[P[j][0]*W,P[j][1]*H];
     const sh=[(P[11][0]+P[12][0])/2*W,(P[11][1]+P[12][1])/2*H],hp=[(P[23][0]+P[24][0])/2*W,(P[23][1]+P[24][1])/2*H];
     const pts=[];for(const j of GR_J)if(v(j))pts.push(X(j));
     for(const [a,b] of GR_BONES)if(v(a)&&v(b)){const p=X(a),q=X(b);pts.push([(p[0]+q[0])/2,(p[1]+q[1])/2])}
-    if(pts.length<6)continue;ts.push(t);fr.push(pts);Ts.push(Math.hypot(sh[0]-hp[0],sh[1]-hp[1]));hx.push(hp[0])}
+    if(pts.length<6)continue;ts.push(t);fr.push(pts);Ts.push(Math.hypot(sh[0]-hp[0],sh[1]-hp[1]));hx.push(hp[0]);hy.push(hp[1])}
   if(!fr.length)return B._room={n:B.n,none:true};
   const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s[s.length>>1]};
   const T=med(Ts)||1,cx=med(hx),band=0.4*T,margin=0.2*T;
@@ -1944,15 +1944,26 @@ function groupRoom(B){
   /* a touch counts when it lasts 3 frames or more (a single odd frame of tracking isn't a real touch) */
   const steady=a=>a.map((v,i)=>Math.min(v,a[i-1]??v,a[i+1]??v));
   const sU=steady(nU),sM=steady(nM),rec=a=>Math.max(1,Math.ceil(Math.max(...a)*10)/10);
-  return B._room={n:B.n,T,cx,ts,nU:sU,nM:sM,recU:rec(sU),recM:rec(sM),box:[x0,x1,y0,y1]};
+  return B._room={n:B.n,T,cx,hy:med(hy),ts,nU:sU,nM:sM,recU:rec(sU),recM:rec(sM),box:[x0,x1,y0,y1]};
 }
 function groupSpacing(R){return S.group.sp||(S.group.mirror?R.recM:R.recU)}
 function groupCheck(R,d){const a=S.group.mirror?R.nM:R.nU;let k=0,worst=-1,wi=-1;for(let i=0;i<a.length;i++){if(a[i]>d){k++;if(a[i]>worst){worst=a[i];wi=i}}}return {frac:k/a.length,at:wi>=0?R.ts[wi]:null}}
 function groupNeedAt(R,t){const a=S.group.mirror?R.nM:R.nU;let lo=0,hi=R.ts.length-1;while(lo<hi){const m=(lo+hi)>>1;if(R.ts[m]<t)lo=m+1;else hi=m}const i=lo;return Math.abs(R.ts[i]-t)<0.1?a[i]:null}
-function drawGroup(c,B,t,w,h,dpr){
-  c.fillStyle='#0B0D11';c.fillRect(0,0,w,h);
+/* with Cut out on, the copies are the real dancer (that part of the body, on the chosen background) instead of only
+   skeletons; the skeleton goes on top when Body is on */
+let grBcv=null;
+function groupCut(B){return !!(S.cutOn&&RB.hasCutout(B))}
+function drawGroup(c,B,t,w,h,dpr,el){
+  const cut=groupCut(B)&&el&&el.videoWidth;
+  c.fillStyle=cut&&S.cutBg==='colour'?'#2B2F6B':'#0B0D11';c.fillRect(0,0,w,h);
+  if(cut&&S.cutBg==='blur'){if(!grBcv)grBcv=document.createElement('canvas');const sw=Math.max(8,Math.round(w/24)),sh=Math.max(8,Math.round(h/24));if(grBcv.width!==sw||grBcv.height!==sh){grBcv.width=sw;grBcv.height=sh}
+    const bx=grBcv.getContext('2d');bx.imageSmoothingEnabled=true;bx.drawImage(el,0,0,sw,sh);c.save();c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.drawImage(grBcv,0,0,w,h);c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.restore()}
   const R=groupRoom(B);if(R.none)return;
-  const n=S.group.n,d=groupSpacing(R)*R.T,W=B.w||1,H=B.h||1,[bx0,bx1,by0,by1]=R.box;
+  const n=S.group.n,d=groupSpacing(R)*R.T,W=B.w||1,H=B.h||1;
+  /* the cut-out reaches past the joints (top of the head, hands, clothes): leave room for it */
+  const ex=cut?0.3*R.T:0;let [bx0,bx1,by0,by1]=[R.box[0]-ex,R.box[1]+ex,R.box[2]-(cut?0.5*R.T:0),R.box[3]+(cut?0.1*R.T:0)];
+  /* Legs / Upper only: frame that half, so it fills the space */
+  if(cut&&S.cutPart==='legs'&&R.hy)by0=R.hy-0.35*R.T; if(cut&&S.cutPart==='upper'&&R.hy)by1=R.hy+0.35*R.T;
   const mx0=2*R.cx-bx1,mx1=2*R.cx-bx0;
   const offs=[...Array(n)].map((_,k)=>(k-(n-1)/2)*d), mirOf=k=>S.group.mirror&&k%2===1;
   let gx0=1e9,gx1=-1e9;offs.forEach((o,k)=>{const a=mirOf(k)?mx0:bx0,b=mirOf(k)?mx1:bx1;gx0=Math.min(gx0,a+o);gx1=Math.max(gx1,b+o)});
@@ -1960,12 +1971,15 @@ function drawGroup(c,B,t,w,h,dpr){
   const s=Math.min((w-2*side)/(gx1-gx0),(h-top-resB-pad)/(by1-by0));
   const ox=(w-(gx1-gx0)*s)/2-gx0*s,oy=top-by0*s+Math.max(0,(h-top-resB-pad-(by1-by0)*s)/2);
   /* floor */
-  c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();c.moveTo(pad,oy+by1*s+4*dpr);c.lineTo(w-pad,oy+by1*s+4*dpr);c.stroke();
+  c.strokeStyle='rgba(243,241,236,.12)';c.lineWidth=Math.max(1,dpr);c.beginPath();if(by1>=R.box[3]){c.moveTo(pad,oy+R.box[3]*s+4*dpr);c.lineTo(w-pad,oy+R.box[3]*s+4*dpr)}c.stroke();
   const nd=groupNeedAt(R,t),touch=nd!=null&&nd>d/R.T;
   if(touch){c.save();c.strokeStyle='rgba(242,125,116,.85)';c.setLineDash([6*dpr,6*dpr]);c.lineWidth=2*dpr;
     for(let k=0;k<n-1;k++){const x=ox+((offs[k]+offs[k+1])/2+R.cx)*s;c.beginPath();c.moveTo(x,oy+by0*s);c.lineTo(x,oy+by1*s);c.stroke()}c.restore()}
+  const part=cut?S.cutPart:'all',skel=!cut||$('#bodyShow').checked;
+  const img=cut?RB.cutDancer(B,t,el,W*s,H*s,part):null;
   for(let k=0;k<n;k++){const m=mirOf(k),rect=m?{x:ox+(2*R.cx+offs[k])*s,y:oy,w:-W*s,h:H*s}:{x:ox+offs[k]*s,y:oy,w:W*s,h:H*s};
-    LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false},dpr)}
+    if(img){c.save();c.translate(rect.x,0);if(m)c.scale(-1,1);c.drawImage(img,0,rect.y,W*s,H*s);c.restore()}
+    if(skel)LOOK.drawBody(c,B,t,rect,{hipPath:false,meter:false,tiltGuide:false,feet:false,part},dpr)}
   c.font=`700 ${Math.round(12*dpr)}px Figtree,sans-serif`;c.textAlign='left';c.textBaseline='top';
   c.fillStyle=touch?'#F27D74':'rgba(243,241,236,.7)';
   c.fillText(`${n} dancers · ${(d/R.T*GR_M).toFixed(1)} m apart`+(touch?' · touching here':''),pad,8*dpr);
@@ -1976,17 +1990,20 @@ function groupUpdate(){
   $('#groupBar').hidden=!on;if(!on)return;
   const R=groupRoom(B);if(R.none){$('#grVerdict').textContent='No skeleton to copy yet.';return}
   const rec=S.group.mirror?R.recM:R.recU,d=groupSpacing(R),chk=groupCheck(R,d),m=x=>(x*GR_M).toFixed(1)+' m';
-  $('#grN').textContent=S.group.n;$('#grLess').disabled=S.group.n<=2;$('#grMore').disabled=S.group.n>=6;
+  $('#grN').textContent=S.group.n;$('#grLess').disabled=S.group.n<=2;$('#grMore').disabled=S.group.n>=8;
   const sp=$('#grSp');if(document.activeElement!==sp)sp.value=d;$('#grSpOut').textContent=m(d)+(S.group.sp?'':' (auto)');
   $('#grMirror').checked=S.group.mirror;
   const width=(S.group.n-1)*rec+(R.box[1]-R.box[0])/R.T;
-  $('#grVerdict').textContent=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across. `+
-    (chk.frac>0?`At ${m(d)} apart they'd touch ${Math.max(1,Math.round(chk.frac*100))}% of the time (most at ${fmt(chk.at)}).`:`At ${m(d)} apart they don't touch.`);
+  /* short, so it fits on one or two lines under the video (the full sentence is in the title) */
+  const tch=chk.frac>0?`touch ${Math.max(1,Math.round(chk.frac*100))}% of the time (most at ${fmt(chk.at)})`:`no touching`;
+  $('#grVerdict').textContent=`Each needs ~${m(rec)} · ${S.group.n} need ~${m(width)} across · ${tch}`;
+  $('#grVerdict').title=`Each dancer needs about ${m(rec)} side to side; ${S.group.n} dancers need about ${m(width)} across. At ${m(d)} apart: ${tch}.`;
+  $('#grVerdict').classList.toggle('bad',chk.frac>0);
   $('#grFit').hidden=!(chk.frac>0);
 }
 $('#dkGroup').addEventListener('click',()=>{S.group.on=!S.group.on;groupUpdate();dockUpdate();bodyKey='';drawBody()});
 $('#grLess').addEventListener('click',()=>{S.group.n=Math.max(2,S.group.n-1);grSave();groupUpdate();bodyKey='';drawBody()});
-$('#grMore').addEventListener('click',()=>{S.group.n=Math.min(6,S.group.n+1);grSave();groupUpdate();bodyKey='';drawBody()});
+$('#grMore').addEventListener('click',()=>{S.group.n=Math.min(8,S.group.n+1);grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grSp').addEventListener('input',e=>{S.group.sp=+e.target.value;grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grFit').addEventListener('click',()=>{S.group.sp=null;grSave();groupUpdate();bodyKey='';drawBody()});
 $('#grMirror').addEventListener('change',e=>{S.group.mirror=e.target.checked;grSave();groupUpdate();bodyKey='';drawBody()});
@@ -2217,7 +2234,7 @@ function dockUpdate(){
   $('#dkCut').hidden=!canCut&&!staleCut; $('#dkCut').setAttribute('aria-pressed',String(canCut&&S.cutOn)); $('#dkCut').dataset.stale=staleCut?'1':'';
   $('#dkBg').hidden=!(canCut&&S.cutOn); $$('#dkBg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.bg===S.cutBg)));
   $('#dkPart').hidden=!(canCut&&S.cutOn); $$('#dkPart button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.part===S.cutPart)));
-  $('#cutBar').hidden=!(canCut&&S.cutOn)||S.group.on;
+  $('#cutBar').hidden=!(canCut&&S.cutOn);   /* Cut out and Group work together: both sets of options show */
   groupUpdate();
 }
 $('#dkBody').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;
@@ -2920,7 +2937,8 @@ function panelIn(p,dir,from){
 (function(){const pin=$('.pin');/* stuck = the bar is actually pinned at the top (the header has scrolled away), not merely scrolled a little */
   const f=()=>pin.classList.toggle('stuck',(window.scrollY||document.documentElement.scrollTop)>4&&pin.getBoundingClientRect().top<=(parseFloat(getComputedStyle(pin).top)||0)+1);window.addEventListener('scroll',f,{passive:true});window.addEventListener('resize',f);f();
   /* things scrolled into view land below the pinned header and bar, not under them */
-  const pad=()=>{const cs=getComputedStyle(pin);document.documentElement.style.scrollPaddingTop=(cs.position==='sticky'?(parseFloat(cs.top)||0)+pin.offsetHeight+8:0)+'px'};
+  const padEl=document.head.appendChild(document.createElement('style'));let padV='';   /* a style element, not an inline style: themes own the root's inline styles */
+  const pad=()=>{const cs=getComputedStyle(pin),v=(cs.position==='sticky'?(parseFloat(cs.top)||0)+pin.offsetHeight+8:0)+'px';if(v!==padV){padV=v;padEl.textContent='html{scroll-padding-top:'+v+'}'}};
   try{new ResizeObserver(pad).observe(pin)}catch(e){}window.addEventListener('resize',pad);pad()})();
 /* full screen playback: the whole video bar (video, body, play and scrub) fills the screen. Uses the browser's
    full screen where it is allowed, and fills the window where it isn't (iPhone Safari, inside other apps). */
