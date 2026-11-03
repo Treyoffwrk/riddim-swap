@@ -22,7 +22,7 @@ const [,,HOST,CLIP,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpperCa
  const t0=Date.now();await p.evaluate(()=>document.getElementById('cutRev').click());
  let prog=null;for(let i=0;i<10;i++){await p.waitForTimeout(300);prog=await p.evaluate(()=>({bar:!document.getElementById('cutProg').hidden,msg:document.getElementById('cutRevMsg').textContent}));if(prog.bar)break}
  let made=null;for(let i=0;i<400;i++){await p.waitForTimeout(500);made=await p.evaluate(()=>window.__rsRev||null);if(made)break;if(errs.length)break}
- const secs=((Date.now()-t0)/1000).toFixed(1);made&&(made.rate=await p.evaluate(()=>REV.rate).catch(()=>null));
+ const secs=((Date.now()-t0)/1000).toFixed(1);
  rec('While it works it shows progress',prog&&prog.bar&&/Making the reverse/.test(prog.msg)?'passed':'failed',JSON.stringify(prog));
  await p.waitForTimeout(1500);
  const nw=await p.evaluate(()=>{const S=window.__rs.S,n=window.__rs.srcById(S.cur);return {id:n.id,name:n.name,dur:n.el.duration,pieces:n.pieces,sources:S.sources.length,msg:document.getElementById('recMsg').textContent,w:n.el.videoWidth,h:n.el.videoHeight}});
@@ -60,4 +60,9 @@ const [,,HOST,CLIP,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpperCa
  if(SHOT)await p.screenshot({path:SHOT+'-play.png'});
  await p.click('#play');
  rec('The copy plays straight through the reverse',pl.playing&&pl.t>6.8&&pl.t<8.5?'passed':'failed',JSON.stringify(pl));
+ /* the strip: the copy knows its own length (saved), and its pictures cover it to the end, sharp */
+ await p.waitForTimeout(4000);
+ const th=await p.evaluate(()=>{const n=window.__rs.srcById(window.__rs.S.cur),J=window.__rsThumb.jobs.get(n.id);const ks=J?[...J.map.keys()]:[];const c=J&&J.map.values().next().value;
+   return {kd:n.kd,dur:n.dur,el:n.el.duration,len:(n.dur||0),last:ks.length?Math.max(...ks):null,count:ks.length,h:c&&c.height}});
+ rec('The strip uses the copy\'s real length and has sharp pictures to the end',th.kd>0&&Math.abs(th.kd-th.dur)<1e-6&&Math.abs(th.el-th.kd)<0.1&&Math.abs(th.len-th.kd)<1e-6&&th.last>th.kd-1&&th.h===144?'passed':'failed',JSON.stringify({...th,rate:made&&made.rate,secs}));
  rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));await b.close()})();

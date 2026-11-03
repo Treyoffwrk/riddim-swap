@@ -371,13 +371,18 @@ function applyRates(){
 function wire(el){
   const me=()=>el===v;
   el.addEventListener('loadedmetadata',()=>{
-    const n=S.sources.find(x=>x.el===el||x.el2===el); if(n)n.dur=el.duration;
+    const n=S.sources.find(x=>x.el===el||x.el2===el); if(n)srcDur(n,el.duration);
     if(n&&n.el2===el)return;
     try{el.currentTime=Math.max(0.001,n&&n.cIn||0)}catch(e){}   /* makes iPhone draw the first frame */
     if(!me())return;
     v.playbackRate=curRate(); prepRec();
     if(n)$('#vidName').textContent=n.name+' · '+fmt(n.dur);
     renderSources(); updateTrim(); applyRates();
+  });
+  /* iPhone can report a short length first and grow it while the video loads: follow it, and keep the strip in step */
+  el.addEventListener('durationchange',()=>{
+    const n=S.sources.find(x=>x.el===el||x.el2===el);if(!n||!(el.readyState>=1))return;const d0=n.dur;srcDur(n,el.duration);
+    if(Math.abs(n.dur-d0)>0.05&&me()){if(n.pieces)piecesOf(n);$('#vidName').textContent=n.name+' · '+fmt(n.dur);updateTrim();try{TL.redrawAll()}catch(e){}}
   });
   el.addEventListener('error',()=>{
     const n=S.sources.find(x=>x.el===el||x.el2===el);
@@ -397,6 +402,8 @@ function wire(el){
 wire(v);
 function mediaKey(f){return f.name+'|'+f.size+'|'+(f.lastModified||0)}
 /* make a video slot; f can be null when restoring a project whose file isn't on this phone */
+/* a clip's length: a copy the app made itself knows its exact length (kd), whatever the player says while it loads */
+function srcDur(n,d){if(n.kd>0){n.dur=n.kd;return}if(isFinite(d)&&d>0)n.dur=d}
 function createSource(f,meta){
   meta=meta||{};
   const vid=$('#vid'); let ve;
@@ -406,7 +413,7 @@ function createSource(f,meta){
   const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,pieces:Array.isArray(meta.pieces)?meta.pieces.map(p=>p.rev?{s:+p.s,e:+p.e,on:!!p.on,rev:true}:{s:+p.s,e:+p.e,on:!!p.on}):null,
     name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
     key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0,
-    motion:meta.motion||null, curve:meta.curve||null};
+    motion:meta.motion||null, curve:meta.curve||null, kd:+meta.kd||0};
   if(f){n.url=URL.createObjectURL(f);ve.src=n.url;ve.load()}
   S.sources.push(n); return n;
 }
@@ -1392,7 +1399,7 @@ function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.
 function snapshot(){
   return {v:1,
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
-      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
+      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,kd:n.kd||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
     beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
     cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.study?!!S.study.loop:S.loop,   /* Study and Learn turn Repeat on for themselves: save yours */ useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
