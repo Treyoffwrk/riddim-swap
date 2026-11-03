@@ -683,3 +683,6 @@ details.more .field{margin-top:8px}
 .grplan[hidden]{display:none}
 .grplan .grdot{cursor:grab}
 #grSave{justify-self:start;font-size:12px}
+
+#cutRev{display:inline-flex;align-items:center;gap:5px}
+#cutRev .bi{width:16px;height:16px}

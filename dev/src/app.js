@@ -403,7 +403,7 @@ function createSource(f,meta){
   if(!S.sources.some(x=>x.el===vid))ve=vid;
   else{ve=document.createElement('video');ve.setAttribute('playsinline','');ve.muted=true;ve.preload='auto';ve.classList.add('off');$('#stage').insertBefore(ve,$('#empty'));wire(ve)}
   const num=meta.num||++srcCount; if(num>srcCount)srcCount=num;
-  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,pieces:Array.isArray(meta.pieces)?meta.pieces.map(p=>({s:+p.s,e:+p.e,on:!!p.on})):null,
+  const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,pieces:Array.isArray(meta.pieces)?meta.pieces.map(p=>p.rev?{s:+p.s,e:+p.e,on:!!p.on,rev:true}:{s:+p.s,e:+p.e,on:!!p.on}):null,
     name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
     key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0,
     motion:meta.motion||null, curve:meta.curve||null};

@@ -862,6 +862,14 @@
   function containRect(bw,bh,vw,vh){if(!vw||!vh)return {x:0,y:0,w:bw,h:bh};const s=Math.min(bw/vw,bh/vh);return {x:(bw-vw*s)/2,y:(bh-vh*s)/2,w:vw*s,h:vh*s}}
   /* MirrorView's pose sample format: {t, points:[{x,y,z,visibility}]} */
   function toMirrorView(B){const out=[];for(let i=0;i<B.n;i++){const o=i*STRIDE;out.push({t:B.data[o],points:isNaN(B.data[o+1])?null:Array.from({length:N},(_,j)=>({x:B.data[o+1+j*3],y:B.data[o+2+j*3],z:0,visibility:B.data[o+3+j*3]}))})}return out}
-  root.RB={CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  /* a track for an edited copy of the video: rows = [{i:source frame, t:new time}] in the new order (used by Reverse,
+     which plays a part forwards then backwards). Every per-frame store (points, 3D, hips, fingers, masks) follows. */
+  function remapTrack(B,rows,cuts){
+    const n=rows.length,per=(A,w)=>{if(!A||A.length<B.n*w)return null;const O=new A.constructor(n*w);rows.forEach((r,k)=>O.set(A.subarray(r.i*w,(r.i+1)*w),k*w));return O};
+    const data=per(B.data,STRIDE);rows.forEach((r,k)=>{data[k*STRIDE]=r.t});
+    let mask=null;if(B.mask&&B.mask.data&&B.mask.w){const mw=B.mask.w,mh=B.mask.h,md=new Uint8Array(n*mw*mh);let fr=0;rows.forEach((r,k)=>{if(r.i<B.mask.n){const src=B.mask.data.subarray(r.i*mw*mh,(r.i+1)*mw*mh);md.set(src,k*mw*mh);if(src.some(x=>x))fr++}});mask={w:mw,h:mh,n,data:md,frames:fr}}
+    const out={...B,n,data,world:per(B.world,WS),hips:per(B.hips,HS),ext:per(B.ext,EXTN*3),mask,cuts:cuts||B.cuts||[],edited:(B.edited||0)+1};
+    delete out._room;delete out._up;return out}
+  root.RB={remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

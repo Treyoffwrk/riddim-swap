@@ -140,6 +140,7 @@ function cutUI(){
   const tg=$('#cutToggle');tg.disabled=!sel||(sel.on&&P.filter(p=>p.on).length<=1);tg.textContent=sel&&!sel.on?'Bring this part back':'Cut this part';
   tg.classList.toggle('danger',!!sel&&sel.on);
   $('#cutClear').disabled=!P.some(p=>!p.on)&&P.length<=1;
+  const rv=$('#cutRev');if(rv){const L=sel?sel.e-sel.s:0;rv.disabled=REV.busy||!sel||!sel.on||L<0.2||L>12;rv.title=!sel?'Split at the start and end of a move, tap that part, then reverse it':L>12?'Pick a part of 12 s or less':'Play this part, then the same part backwards right after it'}
   const kept=ok?segs().reduce((t,g)=>t+(g.e-g.s),0):0, cuts=P.filter(p=>!p.on).length;
   $('#cutSum').textContent=ok?(cuts?`${cuts} part${cuts>1?'s':''} cut · keeps ${kept.toFixed(1)} s of ${(clipEnd()-S.cIn).toFixed(1)} s`:P.length>1?`${P.length} parts · nothing cut yet`:''):routineOn()?'Switch to Clip under the video to cut this clip.':'';
 }
@@ -164,6 +165,8 @@ function initCut(){
       P.forEach((p,i)=>{const X0=tl.X(p.s),X1=tl.X(p.e);if(X1<0||X0>W)return;
         if(!p.on){x.fillStyle=TLC.cut;x.fillRect(X0,top,X1-X0,th);x.save();x.beginPath();x.rect(X0,top,X1-X0,th);x.clip();x.strokeStyle='rgba(255,77,94,.55)';x.lineWidth=2;for(let k=X0-th;k<X1;k+=12){x.beginPath();x.moveTo(k,bot);x.lineTo(k+th,top);x.stroke()}x.restore();
           if(X1-X0>40){x.fillStyle='#FF8A95';x.font='800 12px Figtree,system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText('CUT',(X0+X1)/2,top+th/2)}}
+        if(p.rev&&p.on){x.fillStyle='rgba(255,95,162,.18)';x.fillRect(X0,top,X1-X0,th);x.fillStyle='#FF5FA2';x.fillRect(X0,top,X1-X0,3);
+          if(X1-X0>34){x.font='800 11px Figtree,system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='rgba(10,11,14,.7)';const tw=x.measureText('⇆ REVERSE').width+10;tlRound(x,(X0+X1)/2-tw/2,top+th/2-9,tw,18,9);x.fill();x.fillStyle='#FF8BC0';x.fillText(X1-X0>80?'⇆ REVERSE':'⇆',(X0+X1)/2,top+th/2)}}
         if(i===CUT.sel){x.strokeStyle=TLC.sel;x.lineWidth=3;tlRound(x,X0+1.5,top+1.5,X1-X0-3,th-3,6);x.stroke()}});
       /* edges you can drag */
       for(let i=1;i<P.length;i++){const X=tl.X(P[i].s);if(X<-10||X>W+10)continue;x.fillStyle='#F3F1EC';x.fillRect(X-1.5,top-2,3,th+4);tlRound(x,X-6,top+th/2-14,12,28,6);x.fill();x.fillStyle='#12151B';x.fillRect(X-2,top+th/2-7,1.5,14);x.fillRect(X+0.5,top+th/2-7,1.5,14)}
@@ -176,12 +179,114 @@ function initCut(){
     }});
   $('#cutSplit').addEventListener('click',()=>{const n=srcById(S.cur);if(!n||!n.dur)return;const t=v.currentTime,P=piecesOf(n),i=pieceAt(n,t),p=P[i];
     if(t-p.s<0.1||p.e-t<0.1){recMsg('Move a little away from the last cut first.');return}
-    cutPush(n);P.splice(i+1,0,{s:+t.toFixed(3),e:p.e,on:p.on});p.e=+t.toFixed(3);CUT.sel=i+1;cutChanged()});
+    cutPush(n);P.splice(i+1,0,p.rev?{s:+t.toFixed(3),e:p.e,on:p.on,rev:true}:{s:+t.toFixed(3),e:p.e,on:p.on});p.e=+t.toFixed(3);CUT.sel=i+1;cutChanged()});
   $('#cutToggle').addEventListener('click',()=>{const n=srcById(S.cur),P=piecesOf(n),p=P[CUT.sel];if(!p)return;if(p.on&&P.filter(q=>q.on).length<=1)return;cutPush(n);p.on=!p.on;cutChanged()});
   $('#cutUndo').addEventListener('click',()=>{const u=CUT.undo.pop();if(!u)return;const n=srcById(u.id);if(n)n.pieces=JSON.parse(u.p);CUT.sel=null;$('#cutUndo').disabled=!CUT.undo.length;cutChanged()});
   $('#cutClear').addEventListener('click',()=>{const n=srcById(S.cur);if(!n)return;cutPush(n);n.pieces=null;CUT.sel=null;cutChanged()});
+  $('#cutRev').addEventListener('click',reversePart);
   $('#cutZoomIn').addEventListener('click',()=>CUT.tl.zoom(1.6));$('#cutZoomOut').addEventListener('click',()=>CUT.tl.zoom(1/1.6));
   cutUI();
+}
+
+/* ======================= Clip: Reverse a part ======================= */
+/* The reverse: a move, then the same move backwards straight after it. Pick a part on the strip (split at its start and
+   end, tap it) and tap Reverse: a new copy of the clip is made on the phone with that part played backwards right where
+   it ends, and everything after it moves along. The skeleton comes across too (reordered, no tracking again), so Ghost,
+   Step mode, Worldline and the rest work on the reverse straight away. The original clip stays in your videos.
+   How: the clip is played once, hidden; each frame is encoded to MP4 (WebCodecs); the frames of the part are also kept
+   as JPEGs, then encoded in reverse order when the playback reaches the part's end. The copy has no sound of its own
+   (the song plays over it as usual). */
+var REV={busy:false,stop:false};
+const revEven=x=>Math.max(2,Math.round(x/2)*2);
+async function revConfig(W,H){
+  for(const codec of ['avc1.640028','avc1.4d0028','avc1.42002a','avc1.42001f','vp09.00.10.08']){
+    const avc=codec.startsWith('avc'),cfg=avc?{codec,width:W,height:H,bitrate:6000000,framerate:30,avc:{format:'avc'}}:{codec,width:W,height:H,bitrate:6000000,framerate:30};
+    const r=await VideoEncoder.isConfigSupported(cfg).catch(()=>null);if(r&&r.supported){cfg.mux=avc?'avc':'vp9';return cfg}}
+  return null}
+function revProg(f,txt){const b=$('#cutProg');if(!b)return;b.hidden=f==null;if(f!=null)b.firstElementChild.style.width=Math.round(f*100)+'%';const m=$('#cutRevMsg');if(m){m.textContent=txt||'';m.hidden=!txt}}
+/* play el from a to b (hidden), calling onFrame(mediaTime) for each frame shown; pauses itself while the encoder catches up */
+function revPass(el,a,b,onFrame,busy){return new Promise((res,rej)=>{let done=false;
+  const fin=()=>{if(done)return;done=true;try{el.pause()}catch(e){}el.removeEventListener('ended',fin);res()};
+  /* frames the phone skipped (missed callbacks, or dropped by the player): slow the hidden playback down so every frame is kept */
+  let pf=null,dq=null,win=[0,0];
+  const cb=async(now,m)=>{if(done)return;if(REV.stop){fin();return}const t=m&&m.mediaTime!=null?m.mediaTime:el.currentTime;
+    if(t>b+1e-4){fin();return}
+    try{onFrame(t)}catch(e){done=true;rej(e);return}
+    const q=el.getVideoPlaybackQuality?el.getVideoPlaybackQuality().droppedVideoFrames:0;
+    if(m&&m.presentedFrames!=null&&pf!=null){win[0]+=Math.max(0,m.presentedFrames-pf-1)+Math.max(0,q-dq);win[1]++;
+      if(win[1]>=12){if(win[0]>win[1]*0.1&&el.playbackRate>0.25){el.playbackRate=Math.max(0.25,el.playbackRate*0.7);REV.rate=el.playbackRate}win=[0,0]}}
+    if(m)pf=m.presentedFrames;dq=q;
+    if(busy()){el.pause();while(busy()&&!REV.stop)await new Promise(r=>setTimeout(r,15));if(!done)el.play().catch(()=>{})}
+    el.requestVideoFrameCallback(cb)};
+  el.addEventListener('ended',fin);
+  const go=()=>{el.playbackRate=REV.rate||1;el.requestVideoFrameCallback(cb);el.play().catch(e=>{done=true;rej(e)})};
+  if(Math.abs(el.currentTime-a)>0.001){el.addEventListener('seeked',go,{once:true});el.currentTime=a}else go()})}
+async function reversePart(){
+  const n=srcById(S.cur);if(!n||REV.busy||routineOn())return;const P=piecesOf(n),p=CUT.sel!=null?P[CUT.sel]:null;if(!p||!p.on)return;
+  const A=p.s,Bt=p.e,L=Bt-A;if(L<0.2||L>12)return;
+  if(!(window.VideoEncoder&&window.VideoFrame&&window.Mp4Muxer)||!HTMLVideoElement.prototype.requestVideoFrameCallback){recMsg('This phone\'s browser can\'t make video here yet (it needs iOS 16.4 or newer, or a recent Chrome).',true);return}
+  if(S.rec)return;pause();REV.busy=true;REV.stop=false;REV.rate=1;cutUI();revProg(0,'Making the reverse… the clip plays through once, hidden.');
+  const el=document.createElement('video');el.muted=true;el.setAttribute('playsinline','');el.playsInline=true;el.preload='auto';el.className='camsrc';el.src=n.url;document.body.append(el);
+  let ve=null;
+  try{
+    await new Promise((res,rej)=>{if(el.readyState>=2)return res();el.addEventListener('loadeddata',res,{once:true});el.addEventListener('error',()=>rej(new Error('the clip didn\'t load')),{once:true})});
+    const dur=el.duration||n.dur||0,vw=el.videoWidth,vh=el.videoHeight,sc=Math.min(1,1280/Math.max(vw,vh)),W=revEven(vw*sc),H=revEven(vh*sc);
+    const cfg=await revConfig(W,H);if(!cfg)throw new Error('no video encoder on this phone');
+    const cv=document.createElement('canvas');cv.width=W;cv.height=H;const cx=cv.getContext('2d');
+    const target=new Mp4Muxer.ArrayBufferTarget(),muxer=new Mp4Muxer.Muxer({target,fastStart:'in-memory',firstTimestampBehavior:'offset',video:{codec:cfg.mux,width:W,height:H}});
+    let err=null,lastTs=-1,lastKey=-1e9,frames=0;
+    ve=new VideoEncoder({output:(c,m)=>{try{muxer.addVideoChunkRaw(rawChunk(c),c.type,c.timestamp,okDur(c.duration)?c.duration:33333,m)}catch(e){err=e}},error:e=>{err=e}});
+    ve.configure(cfg);
+    /* the copy is written at a steady 30 frames a second: each tick shows the latest frame at or before it (a frame the
+       phone skipped repeats the one before, instead of leaving a gap in the file) */
+    let tick=0,lastT=-1;
+    const put=()=>{const ts=Math.round(tick*1e6/30);const f=new VideoFrame(cv,{timestamp:ts,duration:33333});const key=frames===0||ts-lastKey>=1000000;if(key)lastKey=ts;ve.encode(f,{keyFrame:key});f.close();lastTs=ts;frames++;tick++};
+    const enc=(src,t)=>{if(t<=lastT+1e-4)return false;if(frames)while((tick+0.5)/30<t)put();cx.drawImage(src,0,0,W,H);lastT=t;if(tick/30<=t+0.5/30)put();return true};
+    const busy=()=>!!err||ve.encodeQueueSize>6,total=dur+L;
+    /* up to the part's end, keeping the part's frames */
+    const keep=[];
+    await revPass(el,0,Bt,t=>{if(err)throw err;if(enc(el,t)&&t>=A-1e-3)keep.push({t,b:new Promise(r=>cv.toBlob(r,'image/jpeg',0.9))});revProg(Math.min(t,Bt)/total,'Making the reverse… '+Math.round(Math.min(t,Bt)/total*100)+'%')},busy);
+    if(REV.stop)throw new Error('stopped');
+    /* the part backwards, straight after it */
+    for(let k=keep.length-1;k>=0;k--){if(err)throw err;if(REV.stop)throw new Error('stopped');const bl=await keep[k].b;if(!bl)continue;const bm=await createImageBitmap(bl);enc(bm,Bt+(Bt-keep[k].t)+1e-4);bm.close();
+      while(busy()&&!err)await new Promise(r=>setTimeout(r,10));revProg((Bt+(Bt-keep[k].t))/total,'Making the reverse… '+Math.round((Bt+(Bt-keep[k].t))/total*100)+'%')}
+    if(!keep.length)throw new Error('no frames in that part');
+    /* the rest, moved along */
+    if(dur-Bt>0.05)await revPass(el,Bt,dur+1,t=>{if(err)throw err;if(t<=Bt+1e-3)return;enc(el,t+L);revProg((t+L)/total,'Making the reverse… '+Math.round((t+L)/total*100)+'%')},busy);
+    if(REV.stop)throw new Error('stopped');
+    while(tick/30<total-0.5/30)put();   /* to the end */
+    await ve.flush();if(err)throw err;muxer.finalize();ve.close();ve=null;
+    const base=(n.name||'clip').replace(/ · reverse.*$/,''),file=new File([target.buffer],base.replace(/[^\w\- ]+/g,'').slice(0,40)+' reverse.mp4',{type:'video/mp4',lastModified:Date.now()});
+    revMakeSource(n,file,A,Bt,frames);
+  }catch(e){if(!REV.stop)recMsg('Couldn\'t make the reverse ('+(e&&e.message||e)+').',true);revProg(null)}
+  finally{try{ve&&ve.close()}catch(e){}el.pause();el.removeAttribute('src');el.load();el.remove();REV.busy=false;cutUI()}
+}
+/* the new clip: same edits, the part backwards after it, and the skeleton and hits moved to match */
+function revMakeSource(n,file,A,Bt,frames){
+  const L=Bt-A,mapT=t=>t<Bt-1e-4?t:t+L;
+  const P=piecesOf(n).map(p=>({...p})),i=P.findIndex(p=>Math.abs(p.s-A)<1e-3&&Math.abs(p.e-Bt)<1e-3);
+  const pieces=[];P.forEach((p,k)=>{if(p.e<=Bt+1e-4)pieces.push(p);else if(p.s>=Bt-1e-4)pieces.push({...p,s:+(p.s+L).toFixed(3),e:+(p.e+L).toFixed(3)});else pieces.push({...p,e:Bt},{...p,s:+(Bt+L).toFixed(3),e:+(p.e+L).toFixed(3)});
+    if(k===i)pieces.push({s:Bt,e:+(Bt+L).toFixed(3),on:true,rev:true})});
+  const cIn=n.id===S.cur?S.cIn:n.cIn,cOut=n.id===S.cur?S.cOut:n.cOut;
+  let motion=null;if(n.motion){const bs=[];for(const b of n.motion.beats||[]){bs.push({...b,t:mapT(b.t)});if(b.t>=A&&b.t<=Bt)bs.push({...b,t:Bt+(Bt-b.t)})}motion={...n.motion,beats:bs.sort((x,y)=>x.t-y.t)}}
+  let curve=null;if(n.curve)curve={...JSON.parse(JSON.stringify(n.curve))},curve.pts=(curve.pts||[]).map(q=>({...q,t:mapT(q.t)}));
+  const name=(n.name||'Clip').replace(/ · reverse.*$/,'')+' · reverse '+fmtClock(A)+'–'+fmtClock(Bt);
+  const m=createSource(file,{name,pieces,motion,curve,cIn:cIn>=Bt?cIn+L:cIn,cOut:cOut!=null?(cOut>=Bt-1e-3?cOut+L:cOut):null});
+  m.revOf={id:n.id,a:A,b:Bt};saveMedia(m.key,file);
+  const B=bodyOf(n);
+  if(B&&B.n){const rows=[],tA=k=>B.data[k*RB.STRIDE];for(let k=0;k<B.n;k++){const t=tA(k);if(t<Bt-1e-4)rows.push({i:k,t})}
+    for(let k=B.n-1;k>=0;k--){const t=tA(k);if(t>=A-1e-4&&t<=Bt+1e-4)rows.push({i:k,t:Bt+(Bt-t)+1e-4})}
+    for(let k=0;k<B.n;k++){const t=tA(k);if(t>Bt+1e-4)rows.push({i:k,t:t+L})}
+    const ok=rows.filter((r,k)=>k===0||r.t>rows[k-1].t);
+    const cuts=[];for(const c of B.cuts||[]){cuts.push(mapT(c));if(c>A&&c<Bt)cuts.push(Bt+(Bt-c))}
+    const NB=RB.remapTrack(B,ok,cuts.sort((x,y)=>x-y));NB.start=0;NB.end=(B.end!=null?mapT(B.end):undefined);m.body=NB;mediaPut('body:'+m.key,NB).catch(()=>{})}
+  else m.body=undefined;
+  S.preview=null;S.useSeq=false;activate(m.id);S.segIdx=0;CUT.sel=pieces.findIndex(p=>p.rev&&Math.abs(p.s-Bt)<1e-3);if(CUT.tl)CUT.tl.fitted=false;
+  enable();renderSources();renderMoves();updateTrim();revProg(null);
+  const go=()=>{try{v.currentTime=Math.max(0,A-0.05)}catch(e){}cutChanged();renderDance&&renderDance()};if(v.readyState>=1)go();else v.addEventListener('loadedmetadata',go,{once:true});
+  recMsg(`Made "${name}": the part plays, then backwards right after it${B&&B.n?', with the skeleton':''}. Your original clip is still in your videos.`+($('#origAudio').checked?' The copy has no sound of its own; the song plays over it.':''));
+  try{autosave()}catch(e){}
+  window.__rsRev={id:m.id,frames,A,B:Bt};
 }
 
 /* ======================= Routine: the timeline editor ======================= */

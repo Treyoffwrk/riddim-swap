@@ -355,10 +355,13 @@
           <div class="tle-bar">
             <button class="btn sm primary" id="cutSplit" disabled>✂ Split here</button>
             <button class="btn sm" id="cutToggle" disabled>Cut this part</button>
+            <button class="btn sm" id="cutRev" disabled><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>Reverse</button>
             <button class="btn sm ghost" id="cutUndo" disabled>Undo</button>
             <span class="tle-zoom"><button class="btn sm" id="cutZoomOut" aria-label="Zoom out" disabled>−</button><button class="btn sm" id="cutZoomIn" aria-label="Zoom in" disabled>+</button></span>
           </div>
-          <p class="hint">Get rid of the parts you don't need instead of speeding through them. Play or scrub to a spot and tap <b>Split here</b>, tap a part to pick it, then <b>Cut this part</b>. Drag the white edges to adjust. Cut parts are skipped and the song keeps going. <button class="linkbtn" id="cutClear" disabled>Clear all cuts</button></p>
+          <p class="hint">Get rid of the parts you don't need instead of speeding through them. Play or scrub to a spot and tap <b>Split here</b>, tap a part to pick it, then <b>Cut this part</b>. Drag the white edges to adjust. Cut parts are skipped and the song keeps going. <b>Reverse</b> plays the part you picked, then the same part backwards straight after it (a new copy of the clip, with the skeleton). <button class="linkbtn" id="cutClear" disabled>Clear all cuts</button></p>
+          <div class="prog" id="cutProg" hidden><i></i></div>
+          <p class="hint" id="cutRevMsg" hidden aria-live="polite"></p>
         </div>
         <div class="anal lv2" id="danceCard">
           <div class="subhead"><h3>Dance hits</h3><button class="btn sm" id="danceAnalyze" disabled>Find hits</button></div>
