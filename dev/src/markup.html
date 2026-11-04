@@ -137,52 +137,6 @@
           <div class="studytag" id="studyTag" hidden>Study · ½ speed · looping</div>
           <div class="studytag learntag" id="learnTag" hidden>Learn</div>
         </div>
-        <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
-        <div class="groupbar mv-only" id="groupBar" hidden aria-label="Group preview">
-          <div class="grrow">
-            <span class="stepper" title="How many dancers"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="8" r="2"/><path d="M12 10v5M5 11.5v4M19 11.5v4"/></svg><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
-            <input type="checkbox" class="icochk" id="grMirror" aria-label="Mirror every other dancer" title="Mirror every other dancer">
-            <span class="grsp" title="How far apart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><input type="range" id="grSp" min="1" max="8" step="0.1" value="3" aria-label="How far apart"><span class="val" id="grSpOut"></span></span>
-          </div>
-          <div class="grrow grinfo"><p class="grverdict" id="grVerdict" aria-live="polite"></p><button type="button" class="btn sm" id="grFit" hidden>Space them</button></div>
-          <div class="grforms" aria-label="Formations">
-            <div class="grshapes" id="grShapes" role="group" aria-label="Shape for this part"></div>
-            <div class="grrow grtl">
-              <div class="grchanges" id="grChanges" aria-label="Formation changes through the clip"></div>
-              <button type="button" class="pchip" id="grAdd" title="Add a formation change on the beat nearest to now"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Change here</button>
-              <button type="button" class="pchip" id="grEdit" aria-pressed="false" title="Drag the dancers on a floor plan"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/><circle cx="12" cy="15" r="1.6"/></svg>Floor plan</button>
-            </div>
-            <svg class="grplan" id="grPlan" hidden role="img" aria-label="Floor plan: drag a dancer to move them"></svg>
-            <button type="button" class="linkbtn" id="grSave">Save this shape</button>
-          </div>
-        </div>
-        <div class="pracbar" id="pracBar" hidden aria-label="Practice with your camera">
-          <div class="pracrow">
-            <div class="seg" id="pracMode" role="group" aria-label="View">
-              <button type="button" data-pm="split" aria-pressed="true"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>Side by side</button>
-              <button type="button" data-pm="ghost" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 8v6M12 14l-3.5 6M12 14l3.5 6M6 10l6-2 6 2" stroke-dasharray="3 2.5"/></svg>Ghost</button>
-              <button type="button" data-pm="world" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l6-4 10 4M10 14V4M4 18V8l6-4 10 4v10"/></svg>Worldline</button>
-            </div>
-            <button type="button" class="pchip" id="pracStop" aria-label="Stop the camera" title="Stop the camera"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h11v10H3zM14 10l7-4v12l-7-4"/><path d="M2 2l20 20"/></svg></button>
-          </div>
-          <div class="pracrow chips" aria-label="Practice options (swipe for more)">
-            <button type="button" class="pchip" id="pracMirror" aria-pressed="true" title="Show your camera like a mirror">Mirror me</button>
-            <button type="button" class="pchip" id="pracMine" aria-pressed="true" title="Draw your skeleton on your camera">My skeleton</button>
-            <button type="button" class="pchip" id="pracTargets" aria-pressed="true" title="Ghost: show each hit coming, then how well you hit it">Hit targets</button>
-            <button type="button" class="pchip" id="pracFlip" aria-pressed="false" title="Ghost: same side as the dancer instead of mirror image">Flip ghost</button>
-            <button type="button" class="pchip" id="pracCount" title="Before the clip starts: time to step back into place">Countdown: 3 s</button>
-            <button type="button" class="pchip" id="pracHands" aria-pressed="true" title="Raise both hands above your head to play; hold them up longer to pause">Hands up to play</button>
-            <button type="button" class="pchip" id="pracStep" aria-pressed="false" title="Ghost: the clip waits on each key move until you match it">Step mode</button>
-            <button type="button" class="pchip" id="pracMyRun" aria-pressed="true" title="Worldline: your last run in green beside the dancer">My last run</button>
-            <button type="button" class="pchip" id="pracLive" title="Stop the replay and practise live again">Back to live</button>
-            <button type="button" class="pchip" id="pracAll" aria-pressed="false" title="Targets on every hit instead of only the key moves">All hits</button>
-            <button type="button" class="pchip lead" id="pracLead" title="How far ahead each move shows up">Warning: 2 beats</button>
-            <button type="button" class="pchip" id="pracReset" title="Turn the Worldline back to the start">Reset view</button>
-            <button type="button" class="pchip" id="pracCam" title="Turn your camera on to see yourself on the now pose">Add my camera</button>
-          </div>
-          <p class="pracmsg" id="pracMsg" aria-live="polite"></p>
-          <button type="button" class="linkbtn" id="pracMore">Worldline and more: open in Body ↗</button>
-        </div>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
             <button class="playbtn" id="play" aria-label="Play" disabled>
@@ -230,6 +184,55 @@
             <button type="button" class="lsbtn" id="snipUndo" aria-label="Undo the last snippet">↶</button>
           </div>
           <p class="hint" id="recMsg" hidden></p>
+        </div>
+      </div>
+      <!-- options for what the player shows: below the pinned player, so the video and play bar stay together on screen -->
+      <div class="playopts">
+        <div class="pracbar" id="pracBar" hidden aria-label="Practice with your camera">
+          <div class="pracrow">
+            <div class="seg" id="pracMode" role="group" aria-label="View">
+              <button type="button" data-pm="split" aria-pressed="true"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>Side by side</button>
+              <button type="button" data-pm="ghost" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="2.2"/><path d="M12 8v6M12 14l-3.5 6M12 14l3.5 6M6 10l6-2 6 2" stroke-dasharray="3 2.5"/></svg>Ghost</button>
+              <button type="button" data-pm="world" aria-pressed="false"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l6-4 10 4M10 14V4M4 18V8l6-4 10 4v10"/></svg>Worldline</button>
+            </div>
+            <button type="button" class="pchip" id="pracStop" aria-label="Stop the camera" title="Stop the camera"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7h11v10H3zM14 10l7-4v12l-7-4"/><path d="M2 2l20 20"/></svg></button>
+          </div>
+          <div class="pracrow chips" aria-label="Practice options (swipe for more)">
+            <button type="button" class="pchip" id="pracMirror" aria-pressed="true" title="Show your camera like a mirror">Mirror me</button>
+            <button type="button" class="pchip" id="pracMine" aria-pressed="true" title="Draw your skeleton on your camera">My skeleton</button>
+            <button type="button" class="pchip" id="pracTargets" aria-pressed="true" title="Ghost: show each hit coming, then how well you hit it">Hit targets</button>
+            <button type="button" class="pchip" id="pracFlip" aria-pressed="false" title="Ghost: same side as the dancer instead of mirror image">Flip ghost</button>
+            <button type="button" class="pchip" id="pracCount" title="Before the clip starts: time to step back into place">Countdown: 3 s</button>
+            <button type="button" class="pchip" id="pracHands" aria-pressed="true" title="Raise both hands above your head to play; hold them up longer to pause">Hands up to play</button>
+            <button type="button" class="pchip" id="pracStep" aria-pressed="false" title="Ghost: the clip waits on each key move until you match it">Step mode</button>
+            <button type="button" class="pchip" id="pracMyRun" aria-pressed="true" title="Worldline: your last run in green beside the dancer">My last run</button>
+            <button type="button" class="pchip" id="pracLive" title="Stop the replay and practise live again">Back to live</button>
+            <button type="button" class="pchip" id="pracAll" aria-pressed="false" title="Targets on every hit instead of only the key moves">All hits</button>
+            <button type="button" class="pchip lead" id="pracLead" title="How far ahead each move shows up">Warning: 2 beats</button>
+            <button type="button" class="pchip" id="pracReset" title="Turn the Worldline back to the start">Reset view</button>
+            <button type="button" class="pchip" id="pracCam" title="Turn your camera on to see yourself on the now pose">Add my camera</button>
+          </div>
+          <p class="pracmsg" id="pracMsg" aria-live="polite"></p>
+          <button type="button" class="linkbtn" id="pracMore">Worldline and more: open in Body ↗</button>
+        </div>
+        <div class="cutbar mv-only" id="cutBar" hidden aria-label="Cut-out options"></div>
+        <div class="groupbar mv-only" id="groupBar" hidden aria-label="Group preview">
+          <div class="grrow">
+            <span class="stepper" title="How many dancers"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="8" r="2"/><circle cx="19" cy="8" r="2"/><path d="M12 10v5M5 11.5v4M19 11.5v4"/></svg><button type="button" id="grLess" aria-label="Fewer dancers">−</button><b id="grN">3</b><button type="button" id="grMore" aria-label="More dancers">+</button></span>
+            <input type="checkbox" class="icochk" id="grMirror" aria-label="Mirror every other dancer" title="Mirror every other dancer">
+            <span class="grsp" title="How far apart"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><input type="range" id="grSp" min="1" max="8" step="0.1" value="3" aria-label="How far apart"><span class="val" id="grSpOut"></span></span>
+          </div>
+          <div class="grrow grinfo"><p class="grverdict" id="grVerdict" aria-live="polite"></p><button type="button" class="btn sm" id="grFit" hidden>Space them</button></div>
+          <div class="grforms" aria-label="Formations">
+            <div class="grshapes" id="grShapes" role="group" aria-label="Shape for this part"></div>
+            <div class="grrow grtl">
+              <div class="grchanges" id="grChanges" aria-label="Formation changes through the clip"></div>
+              <button type="button" class="pchip" id="grAdd" title="Add a formation change on the beat nearest to now"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Change here</button>
+              <button type="button" class="pchip" id="grEdit" aria-pressed="false" title="Drag the dancers on a floor plan"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/><circle cx="12" cy="15" r="1.6"/></svg>Floor plan</button>
+            </div>
+            <svg class="grplan" id="grPlan" hidden role="img" aria-label="Floor plan: drag a dancer to move them"></svg>
+            <button type="button" class="linkbtn" id="grSave">Save this shape</button>
+          </div>
         </div>
       </div>
 
@@ -381,7 +384,7 @@
           <p class="hint" id="hitCheckMsg"></p>
         </div>
         <div class="anal lv2 mv-only" id="cmpCard">
-          <div class="cmprow mv-only" id="cmpRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
+          <div class="cmprow mv-only" id="cmpTryRow"><span class="label">Compare a try</span><select id="cmpPick" class="txt" aria-label="Video of your try"></select><button class="btn sm" id="cmpGo">Compare</button></div>
           <p class="hint mv-only" id="cmpOut"></p>
         </div>
         <details class="more" data-more="clip">

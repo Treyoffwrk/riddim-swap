@@ -336,6 +336,8 @@ html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 /* full screen */
 .fsbtn{position:absolute;top:8px;right:8px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(14,16,20,.7);color:#F3F1EC;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:transform .25s var(--spring),opacity .3s}
 .fsbtn:active{transform:scale(.9)}
+#audName.loading{color:var(--dance);animation:rsPulse 1.2s ease-in-out infinite}
+@keyframes rsPulse{50%{opacity:.45}}
 .mirbtn{right:60px}.mirbtn[aria-pressed="true"]{background:var(--dance);color:#0E1014;border-color:var(--dance)}
 .stage.mirr video{transform:scaleX(-1)}
 .fsbtn svg{width:20px;height:20px}
@@ -629,7 +631,7 @@ details.more .field{margin-top:8px}
 .camsrc{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none;z-index:-1}
 .camcv{position:absolute;inset:0;width:100%;height:100%;z-index:2;background:#000}
 .stage.practice{aspect-ratio:auto;height:min(120vw,58vh)}
-@media (max-width:860px){.stage.practice{height:min(122vw,56vh)}}
+@media (max-width:860px){.stage.practice{height:min(112vw,50vh)}}
 .stage.pr-split video,.stage.pr-split .bodycv{right:auto;width:50%}
 .stage.pr-split .camcv{left:50%;width:50%}
 .stage.pr-split::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;margin-left:-1px;background:var(--bg);z-index:3}

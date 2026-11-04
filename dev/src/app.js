@@ -18,8 +18,9 @@ let recDest=null,recSrc=null,recT=0,recPos=0;
 try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
 a.preservesPitch=false; a.webkitPreservesPitch=false;
 
-const fmt=t=>{if(!isFinite(t))t=0;const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1)};
-const fmt2=t=>{const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2)};
+/* rounded first, so 119.97 s reads 2:00.0 (it read 1:60.0) */
+const fmt=t=>{if(!isFinite(t))t=0;t=Math.round(t*10)/10;const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1)};
+const fmt2=t=>{if(!isFinite(t))t=0;t=Math.round(t*100)/100;const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2)};
 const clamp=(x,lo,hi)=>Math.min(hi,Math.max(lo,x));
 function getCtx(){if(!ctx){const C=window.AudioContext||window.webkitAudioContext;ctx=new C({latencyHint:'interactive'});
   /* a call, Siri or another app took the sound: drop this engine; a fresh one is made the next time it's needed */
@@ -204,7 +205,8 @@ function showSlots(){
   set('#rVRate',r.vr); $('#rVRateOut').textContent='×'+r.vr.toFixed(2);
   $('#rFade').checked=!!r.fade;
   const miss=so=>so&&so.missing?' · needs re-adding':'';
-  $('#audName').textContent=S.mainSong?S.mainSong.name+(md?' · '+fmt(md):'')+miss(S.mainSong):'No song yet';
+  $('#audName').textContent=S.songLoading?'Loading '+S.songLoading+'…':S.mainSong?S.mainSong.name+(md?' · '+fmt(md):'')+miss(S.mainSong):'No song yet';
+  $('#audName').classList.toggle('loading',!!S.songLoading);
   $('#rSongName').textContent=S.rtSong?S.rtSong.name+(sDur(S.rtSong)?' · '+fmt(sDur(S.rtSong)):'')+miss(S.rtSong):(S.mainSong?'Same song as the Song tab':'No song yet');
   $('#rSongReset').hidden=!S.rtSong;
   scheduleFit();
@@ -293,7 +295,11 @@ function syncSteady(force){
       S.songStuck=stuck?(S.songStuck||0)+1:0;S.songClk={t:now,at:a.currentTime};
       if(stuck){snd.songStuck=(snd.songStuck||0)+1;
         if(S.songStuck===2){S.lastFix=now;S.driftEma=0;seekSong(e);if(a.paused)a.play().catch(songFail)}
-        if(S.songStuck===6&&!S.songStuckSaid){S.songStuckSaid=true;recMsg("The song stopped keeping time on this phone, so the video plays on by itself. Tap pause, then play, to line them up again.",true)}}}}
+        /* still stuck after 3 s: give the song player a fresh start, once per play, at the video's spot (no tap needed);
+           only if that doesn't help, say so */
+        if(S.songStuck===6&&!S.songHealed&&!S.songHealing&&S.liveSong&&S.liveSong.blob){S.songHealing=true;S.songHealed=true;snd.healed=(snd.healed||0)+1;S.songHealN=(S.songHealN||0)+1;const so=S.liveSong;setSongSrc(so.blob);
+          a.addEventListener('loadedmetadata',()=>{S.songHealing=false;if(!S.playing)return;try{seekSong(expected())}catch(err){}setRate(songRate());a.play().catch(songFail);S.songClk=null;S.songStuck=0},{once:true})}
+        else if(S.songStuck===6&&S.songHealed&&!S.songHealing&&!S.songStuckSaid){S.songStuckSaid=true;recMsg("The song stopped keeping time on this phone, so the video plays on by itself. Tap pause, then play, to line them up again.",true)}}}}
   if(S.songStuck){if(S.vNudge)setV(0);return}
   if(S.seekCheck||busy)return;
   S.driftEma=0.8*(S.driftEma||0)+0.2*drift;
@@ -328,7 +334,7 @@ function setPlaying(p){
   $('#play').setAttribute('aria-label',p?'Pause':'Play');
 }
 function play(){
-  S.playAt=performance.now(); S.songClk=null; S.songStuck=0; S.songStuckSaid=false; if(S.snd&&S.snd.frames>10){S.snd.endAt=S.snd.endAt||performance.now();S.sndLast=S.snd} S.snd={jumps:0,maxLate:0,frames:0,within:0,started:performance.now()}; S.vNudge=0; S.vI=0;
+  S.playAt=performance.now(); S.songClk=null; S.songStuck=0; S.songStuckSaid=false; S.songHealed=false; S.songHealing=false; if(S.snd&&S.snd.frames>10){S.snd.endAt=S.snd.endAt||performance.now();S.sndLast=S.snd} S.snd={jumps:0,maxLate:0,frames:0,within:0,started:performance.now()}; S.vNudge=0; S.vI=0;
   /* the beat click needs the live engine, started inside the tap */
   if(S.clickOn){try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}catch(e){}}
   if(S.hasV&&broken(v)){healMedia(false);recMsg('Reloading the video… tap play again.');return}
@@ -508,16 +514,20 @@ function loadSong(f,which,restoring,meta){
     confirmed:!!(meta&&meta.confirmed),oneAt:meta&&meta.oneAt!=null?meta.oneAt:null,cleared:!!(meta&&meta.cleared)};
   if(!restoring)saveMedia(so.key,f);
   msg('Reading the sound…');
+  /* show straight away that the new song was picked (the name used to stay on the old song until it was read) */
+  if(!rt){S.songLoading=so.name;showSlots()}
+  const done=()=>{if(!rt&&id===loadIds[slotKey]){S.songLoading=null;showSlots()}};
   const place=()=>{if(rt)S.rtSong=so;else S.mainSong=so;S.liveSong=undefined;syncSlot();syncSong(true);updateMissing()};
   f.arrayBuffer()
-    .then(ab=>decodeAudio(ab))
+    .then(ab=>decodeAudioSafe(ab))
     .then(b=>{
       if(id!==loadIds[slotKey])return;
-      so.buf=b; so.dur=b.duration; so.blob=encodeWav(b); so.ready=true; place(); analyzeSongObj(so,!restoring);
+      done();so.buf=b; so.dur=b.duration; so.blob=encodeWav(b); so.ready=true; place(); analyzeSongObj(so,!restoring);
       msg(isVideo?'Using the sound from this video. Its picture is ignored.':(rt?'':'Song ready.'));
     })
     .catch(()=>{
       if(id!==loadIds[slotKey])return;
+      done();
       if(isVideo){msg("Couldn't read any sound from this video. Check it has audio.",true);return}
       so.blob=f; so.ready=true; place();   /* let the audio player try it directly */
       a.addEventListener('loadedmetadata',()=>{so.dur=a.duration;showSlots()},{once:true});
@@ -1194,6 +1204,15 @@ function decodeAudio(ab){
   let oc;try{oc=new O(2,SONG_RATE,SONG_RATE)}catch(e){return new Promise((res,rej)=>getCtx().decodeAudioData(ab,res,rej))}
   return new Promise((res,rej)=>{const p=oc.decodeAudioData(ab,res,rej);if(p&&p.then)p.then(res,rej)});
 }
+/* decoding with a way out: if the phone's offline decoder hasn't answered in 8 s, try the live one; give up at 25 s
+   (the song then plays straight from the file). A picked song could otherwise look as if nothing happened. */
+function decodeAudioSafe(ab){
+  const copy=ab.slice(0);   /* decodeAudioData takes the buffer over, so keep one for the second try */
+  return new Promise((res,rej)=>{let over=false;const fin=(f,x)=>{if(!over){over=true;clearTimeout(t1);clearTimeout(t2);f(x)}};
+    decodeAudio(ab).then(b=>fin(res,b),e=>{if(!over)tryLive()});
+    let live=false;const tryLive=()=>{if(live)return;live=true;try{getCtx().decodeAudioData(copy.slice(0),b=>fin(res,b),e=>fin(rej,e))}catch(e){fin(rej,e)}};
+    const t1=setTimeout(()=>{if(!over){S.decodeSlow=(S.decodeSlow||0)+1;tryLive()}},8000);
+    const t2=setTimeout(()=>fin(rej,new Error('decode timed out')),25000)})}
 function closeCtx(){
   if(!ctx)return; const c=ctx; ctx=null; recDest=null; try{c.close().catch(()=>{})}catch(e){}
 }
@@ -1901,7 +1920,10 @@ $('#hitCheck').addEventListener('click',()=>{
 function srcOfEl(el){return S.sources.find(x=>x.el===el||x.el2===el)}
 function bodyOf(n){
   if(!n||!n.key)return null;
-  if(n.body===undefined){n.body=null;mediaGet('body:'+n.key).then(b=>{if(b&&b.data&&b.n){n.body=b;renderDance()}}).catch(()=>{});mediaGet('bodyalt:'+n.key).then(b=>{if(b&&b.data&&b.n){n.bodyAlt=b;cmpUI()}}).catch(()=>{})}
+  if(n.body===undefined){n.body=null;mediaGet('body:'+n.key).then(b=>{if(b&&b.data&&b.n){n.body=b;
+      /* the skeleton is kept but its hits aren't (the app was closed before the project saved them): find them again from it */
+      if(!(n.motion&&n.motion.beats&&n.motion.beats.length)){try{if(hitsFromBody(n)){S.hitsRebuilt=(S.hitsRebuilt||0)+1;PR.hk='';try{renderMoves();scheduleFit();drawHitStrip()}catch(e){}autosave(true).catch(()=>{})}}catch(e){}}
+      renderDance()}}).catch(()=>{});mediaGet('bodyalt:'+n.key).then(b=>{if(b&&b.data&&b.n){n.bodyAlt=b;cmpUI()}}).catch(()=>{})}
   return n.body;
 }
 try{const v0=localStorage.getItem('rs-body');if(v0==='0')$('#bodyShow').checked=false;const h0=localStorage.getItem('rs-hip');if(h0==='0')$('#hipShow').checked=false}catch(e){}
@@ -2197,6 +2219,7 @@ async function runTrack(fresh){
         $('#bodyInfo').textContent=bodyInfoText(n,B)+(got?' Hits now come from the body.':'');
         if(got&&n.id===S.cur&&(!S.dBase||S.danceSrc!=='tapped')){S.dBase=+n.motion.bpm.toFixed(1);S.danceSrc='detected';$('#dBpm').value=S.dBase.toFixed(1)}
         waitDone(n,true);
+        autosave(true).catch(()=>{});   /* keep the new hits with the project straight away */
         break;
       }catch(e){clearInterval(wd);
         const stuck=!!(e&&(e.stall||e.name==='AbortError'))&&!(S.trackRun&&S.trackRun.user);
@@ -2475,7 +2498,9 @@ function pracStatus(){
   prMsg(PR.mode==='ghost'?'Match the ghost. Press play.':'You on the right, the dancer on the left. Press play.');
 }
 /* the targets: the clip's hits inside what plays (trim and cuts); Key moves keeps the strongest in each 2 beats */
-function prHits(n){if(!n)return [];const bp=beatPer();const k=(n.key||n.id)+':'+S.hitLevel+':'+(n.motion?n.motion.beats.length:0)+':'+S.cIn+':'+S.cOut+':'+segs().length+':'+PR.all+':'+bp.toFixed(3);
+function prHits(n){if(!n)return [];const bp=beatPer();/* the key has the parts' real extents (not just how many): worked out before the video's length was known, the
+     targets came out empty and stayed empty for the whole session */
+  const mb=n.motion?n.motion.beats:null;const k=(n.key||n.id)+':'+S.hitLevel+':'+(mb?mb.length+'/'+(mb.length?mb[0].t.toFixed(2)+'/'+mb[mb.length-1].t.toFixed(2):''):0)+':'+S.cIn+':'+S.cOut+':'+segs().map(g=>(+g.s||0).toFixed(2)+'-'+(+g.e||0).toFixed(2)).join(',')+':'+PR.all+':'+bp.toFixed(3);
   if(PR.hk!==k){PR.hk=k;const L=segs();const hs=hitsOf(n).filter(b=>L.some(g=>b.t>=g.s&&b.t<g.e));
     if(PR.all)PR.hits=hs.map(b=>b.t);
     else{const gap=Math.max(0.9,2*bp)*0.98,keep=[];hs.slice().sort((a,b)=>(b.w||0)-(a.w||0)).forEach(b=>{if(keep.every(t=>Math.abs(t-b.t)>=gap))keep.push(b.t)});PR.hits=keep.sort((a,b)=>a-b)}}
@@ -2508,6 +2533,8 @@ function prDiff(A,Bp){const out=[];
   for(const [name,ls] of PR_PARTS){let worst=0,hint='';
     for(const li of ls){const [i,j]=PR_LIMBS[li];if(!prVis(A,i)||!prVis(A,j)||!prVis(Bp,i)||!prVis(Bp,j))continue;
       const ax=A[j][0]-A[i][0],ay=A[j][1]-A[i][1],bx=Bp[j][0]-Bp[i][0],by=Bp[j][1]-Bp[i][1];
+      /* the shoulder and hip lines are short when side-on, and their angle is then mostly noise: judge them only when both are long enough */
+      if(li>=8&&(Math.hypot(ax,ay)<0.3*(prTorso(A)||1e9)||Math.hypot(bx,by)<0.3*(prTorso(Bp)||1e9)))continue;
       let d=Math.abs(Math.atan2(ay,ax)-Math.atan2(by,bx));if(d>Math.PI)d=2*Math.PI-d;
       if(d>worst){worst=d;const ua=ay/(Math.hypot(ax,ay)||1),ub=by/(Math.hypot(bx,by)||1);
         hint=li>=8?'level':ua<ub-0.35?'too high':ua>ub+0.35?'too low':'angle'}}
@@ -2631,8 +2658,8 @@ function prOverlay(c,w,h,dpr,now){
 /* a key move is over: its best score in the window becomes Hit / Close / Miss */
 function prFinal(H){if(PR.done.has(H))return;PR.done.add(H);const sc=PR.win.get(H);PR.pass.n++;
   let lab='Not seen';if(sc!=null&&sc>=0){lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++}
-  /* a whole arm or leg way off (60°+) isn't a Hit, however good the rest is: it becomes Close and says which part */
-  const w0=PR.why.get(H)||[];if(lab==='Hit'&&w0.some(x=>x.deg>=60)){lab='Close';PR.pass.hit--;PR.pass.close++}
+  /* a whole arm or leg way off (60°+) isn't a Hit (shoulders and hips don't cap: too noisy), however good the rest is: it becomes Close and says which part */
+  const w0=PR.why.get(H)||[];if(lab==='Hit'&&w0.some(x=>x.deg>=60&&/arm|leg/.test(x.part))){lab='Close';PR.pass.hit--;PR.pass.close++}
   const why=lab==='Hit'||lab==='Not seen'?[]:w0;
   PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now(),why:prWhyText(why.slice(0,1))};PR.res.set(H,lab);
   PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200);
@@ -3673,7 +3700,7 @@ async function phoneCheck(){
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
-  try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`)}catch(e){}
+  try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`+(S.decodeSlow?` · slow song decode ${S.decodeSlow}×`:'')+(S.songHealN?` · song player restarted ${S.songHealN}×`:''))}catch(e){}
   try{const r=await storageScan();const t=r.total!=null?Math.max(r.total,r.media+r.body+r.unused+r.projects):null;
     add('Storage',`${fmtMB(t)} in use${r.quota?' of '+fmtMB(r.quota):''} · media ${fmtMB(r.media)} · tracking ${fmtMB(r.body)} · unused ${fmtMB(r.unused)} · ${r.projectsN} project${r.projectsN===1?'':'s'} · ${r.persisted?'kept safe':'may be cleared by the browser'}`)}catch(e){add('Storage','couldn’t read')}
   add('Errors',ERRS.length?'\n  '+ERRS.join('\n  '):'none this session');

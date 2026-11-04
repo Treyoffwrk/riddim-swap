@@ -18,13 +18,22 @@ const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
  await p.tap('#play');await p.waitForTimeout(800);
  await p.evaluate(()=>{const a=document.querySelector('audio'),d=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'currentTime');window.__freeze={a,d,at:a.currentTime};
    Object.defineProperty(a,'currentTime',{get(){return window.__freeze.at},set(x){window.__freeze.at=x},configurable:true})});
- const ts=[];for(let i=0;i<12;i++){ts.push((await st()).t);await p.waitForTimeout(400)}
+ const ts=[];for(let i=0;i<20;i++){ts.push((await st()).t);await p.waitForTimeout(400)}
  const back=ts.slice(1).filter((t,i)=>t<ts[i]-0.05).length, gain=ts[ts.length-1]-ts[0];
  const msg=await p.evaluate(()=>document.getElementById('recMsg')?.textContent||'');
- rec('Song clock stuck: the video plays on instead of jumping back (no loop)',back===0&&gain>3.5?'passed':'failed',JSON.stringify({ts:ts.map(t=>+t.toFixed(2)),back,gain:+gain.toFixed(2)}));
- rec('…and it says what happened',/stopped keeping time/.test(msg)?'passed':'failed',msg);
+ rec('Song clock stuck: the video plays on instead of jumping back (no loop)',back===0&&gain>6?'passed':'failed',JSON.stringify({ts:ts.map(t=>+t.toFixed(2)),back,gain:+gain.toFixed(2)}));
+ const healed=await p.evaluate(()=>(window.__rs.S.snd&&window.__rs.S.snd.healed)||0);
+ rec('…it first gives the song player a fresh start by itself (once), and only when that doesn\'t help it says what happened',healed===1&&/stopped keeping time/.test(msg)?'passed':'failed',JSON.stringify({healed,msg}));
  /* the clock moves again: they line up */
  await p.evaluate(()=>{const F=window.__freeze;delete F.a.currentTime;});await p.tap('#play');await p.waitForTimeout(500);await p.tap('#play');await p.waitForTimeout(2500);
  const sy=await p.evaluate(()=>{const S=window.__rs.S,a=document.querySelector('audio'),v=document.querySelector('#stage video:not(.off)');return {drift:+(a.currentTime-(S.offset+(v.currentTime-(S.cIn||0))*S.ar)).toFixed(3),playing:S.playing,ap:a.paused}});
  rec('When the song keeps time again, pause and play lines them up',Math.abs(sy.drift)<0.15&&sy.playing&&!sy.ap?'passed':'failed',JSON.stringify(sy));
+ await p.tap('#play');await p.waitForTimeout(400);await p.evaluate(()=>{document.getElementById('recMsg').textContent='';window.__rs.S.segIdx=0;document.querySelector('#stage video:not(.off)').currentTime=0});await p.waitForTimeout(400);
+ await p.tap('#play');await p.waitForTimeout(800);
+ await p.evaluate(()=>{const a=document.querySelector('audio');window.__f2={at:a.currentTime};Object.defineProperty(a,'currentTime',{get(){return window.__f2.at},set(x){window.__f2.at=x},configurable:true});
+   a.addEventListener('loadstart',()=>{delete a.currentTime},{once:true})});
+ await p.waitForTimeout(6000);
+ const h2=await p.evaluate(()=>{const S=window.__rs.S,a=document.querySelector('audio'),v=document.querySelector('#stage video:not(.off)');return {healed:S.snd.healed||0,drift:+(a.currentTime-(S.offset+(v.currentTime-(S.cIn||0))*S.ar)).toFixed(3),ap:a.paused,playing:S.playing,msg:document.getElementById('recMsg').textContent}});
+ await p.tap('#play');
+ rec('A song player that stalls is restarted by itself and lines up again with no tap and no message',h2.healed===1&&Math.abs(h2.drift)<0.2&&!h2.ap&&h2.playing&&!/stopped keeping time/.test(h2.msg)?'passed':'failed',JSON.stringify(h2));
  rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));await b.close()})();
