@@ -347,7 +347,16 @@ function play(){
     if(!err||err.name!=='AbortError'){if(healMedia(false))recMsg('Reloaded the video. Tap play again.')}});
 }
 function pause(){S.stopAtT=null;if(S.snd&&!S.snd.endAt&&S.playing)S.snd.endAt=performance.now();setPlaying(false);v.pause();a.pause();recStopSong()}
-function toggle(){if(S.rec){stopRecording();return}S.playing?pause():play()}
+function toggle(){if(S.rec){stopRecording();return}
+  if(PR.cd){prCdCancel();return}   /* a tap during the countdown cancels it */
+  if(!S.playing&&prCdWanted()){prCdStart();return}
+  S.playing?pause():play()}
+/* Countdown (Practice with your camera): 3 or 5 seconds to step back into place before the clip starts. The song is
+   primed inside the tap (a muted play and pause) so it may start by itself when the count ends. */
+function prCdWanted(){return PR.on&&!!PR.stream&&PR.count>0&&!PR.replay&&PR.mode!=="world"&&PR.hold==null}
+function primeSong(){if(!S.hasA||!a.paused)return;a.muted=true;const p=a.play();if(p)p.then(()=>{if(!S.playing)a.pause();a.muted=false}).catch(()=>{a.muted=false});else a.muted=false}
+function prCdStart(){primeSong();PR.cd={end:performance.now()+PR.count*1000};$('#pracRes').hidden=true;prMsg('Get into place…')}
+function prCdCancel(){PR.cd=null;pracStatus()}
 
 function enable(){
   const hv=S.hasV;
@@ -1906,7 +1915,7 @@ function shownT(el){if(!el)return 0;
   if(!el.__rvfc&&typeof el.requestVideoFrameCallback==='function'){el.__rvfc=true;const cb=(now,m)=>{el.__mt=m.mediaTime;el.__mtAt=performance.now();el.requestVideoFrameCallback(cb)};el.requestVideoFrameCallback(cb)}
   return S.playing&&!el.paused&&!el.seeking&&el.__mt!=null&&performance.now()-el.__mtAt<120&&Math.abs(el.__mt-el.currentTime)<0.25?el.__mt:el.currentTime}
 function drawBody(){
-  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,JSON.stringify(S.group),$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.liveBody?S.liveBody.B.n:0,S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA].join('|');
+  {const el0=curVid(),r0=bodyCv.getBoundingClientRect();const k=[el0&&el0.currentTime,S.playing,S.bodyPicking,S.cutOn,S.cutBg,S.cutPart,JSON.stringify(S.group),$('#bodyShow').checked,$('#hipShow').checked,Math.round(r0.width),Math.round(r0.height),S.cur,el0&&el0.videoWidth,(()=>{const q=el0&&srcOfEl(el0);return q&&q.body?q.body.n+':'+!!q.body.mask:0})(),S.liveBody?S.liveBody.B.n:0,S.bodyBusy,el0&&el0.seeking,S.beatView,S.hasA,S.mirror].join('|');
    if(!S.playing&&k===bodyKey)return; bodyKey=k}
   const el=curVid(), n=el&&srcOfEl(el), B0=n&&bodyOf(n), L=!B0&&n&&S.liveBody&&S.liveBody.src===n.id?S.liveBody:null, B=B0||(L&&L.B);
   /* while it tracks: the skeleton so far, only over the part that's tracked */
@@ -1922,14 +1931,19 @@ function drawBody(){
   const rect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
   const ft=shownT(el);
   if(S.group.on){drawGroup(c,B,ft,w,h,dpr,el);bodyDrawn=true;return}
+  /* Mirror: the video is flipped with CSS; the cut-out and skeleton are drawn flipped around the video's middle, the hip
+     meter is drawn the right way round (its readings flipped to match what is seen) */
+  const mir=!!S.mirror;if(mir){c.save();c.translate(w,0);c.scale(-1,1)}
   if(S.cutOn&&RB.hasCutout(B))RB.cutout(c,B,ft,el,rect,{bg:S.cutBg,colour:'#2B2F6B',part:S.cutPart});
   const cmpB=n.bodyAlt&&S.cmpShow!=='now'?n.bodyAlt:null;
   /* Show Upper / Legs (with the cut-out): only that half of the skeleton too */
   const part=S.cutOn&&RB.hasCutout(B)?S.cutPart:'all';
   if(cmpB&&S.cmpShow==='prev')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,part});
-  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h),{part,hipPath:$('#hipShow').checked,meter:$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA)&&!(PR.on&&PR.mode!=='split'),tiltGuide:$('#hipShow').checked&&!(PR.on&&PR.mode!=='split'),reserveBottom:(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr},dpr);
+  const meterOn=$('#hipShow').checked&&!(S.beatView==='ball'&&S.hasA)&&!(PR.on&&PR.mode!=='split'),resB=(($('#dock')&&!$('#dock').hidden)?$('#dock').getBoundingClientRect().height+20:0)*dpr,bRect=RB.containRect(w,h,el.videoWidth||B.w,el.videoHeight||B.h);
+  if($('#bodyShow').checked&&S.cmpShow!=='prev')LOOK.drawBody(c,B,ft,bRect,{part,hipPath:$('#hipShow').checked,meter:meterOn&&!mir,tiltGuide:$('#hipShow').checked&&!(PR.on&&PR.mode!=='split'),reserveBottom:resB},dpr);
   /* Both: the previous skeleton thinner and on top, so the two can be seen where they differ */
   if(cmpB&&S.cmpShow==='both')RB.draw(c,cmpB,ft,RB.containRect(w,h,el.videoWidth||cmpB.w,el.videoHeight||cmpB.h),{dance:'#FFB347',hips:'#FFB347',hipPath:false,meter:false,tiltGuide:false,feet:false,lwScale:0.5,ends:false,part});
+  if(mir){c.restore();if($('#bodyShow').checked&&S.cmpShow!=='prev'&&meterOn)RB.drawMeter(c,B,ft,bRect,{mirror:true,hips:LOOK.skel().hips,reserveBottom:resB})}
   if(S.bodyPicking){c.save();c.fillStyle='rgba(8,9,12,.55)';c.fillRect(0,0,w,h);c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(16*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText('Tap the dancer to follow',w/2,h/2);c.restore()}
   bodyDrawn=true;
 }
@@ -1939,6 +1953,12 @@ function drawBody(){
    how far apart two copies must stand so no part of one comes near the other at the same height (in torso lengths,
    shown in metres taking a torso, shoulders to hips, as about half a metre). */
 S.group={on:false,n:3,sp:null,mirror:false};
+/* Mirror the clip: left and right swap, as if the dancer were your reflection (kept for every clip) */
+S.mirror=false;try{S.mirror=localStorage.getItem('rs-mirror')==='1'}catch(e){}
+function mirUI(){const b=$('#mirBtn');if(b){b.setAttribute('aria-pressed',String(S.mirror));b.setAttribute('aria-label',S.mirror?'Mirrored: tap to show the clip as filmed':'Mirror the clip')}$('#stage').classList.toggle('mirr',S.mirror)}
+function setMirror(on){S.mirror=!!on;try{localStorage.setItem('rs-mirror',S.mirror?'1':'0')}catch(e){}mirUI();bodyKey='';try{drawBody()}catch(e){}}
+$('#mirBtn').addEventListener('click',e=>{e.stopPropagation();setMirror(!S.mirror)});
+mirUI();
 try{const g=JSON.parse(localStorage.getItem('rs-group')||'null');if(g){S.group.n=Math.max(2,Math.min(8,g.n|0||3));S.group.sp=g.sp>0?+g.sp:null;S.group.mirror=!!g.mirror}}catch(e){}
 const GR_M=0.5;   /* metres per torso length (rough, adult) */
 /* Formations: where each dancer stands, as a floor plan (x across and z back from the front, in spacings), with changes
@@ -2014,7 +2034,7 @@ function drawGroup(c,B,t,w,h,dpr,el){
   const ex=cut?0.3*R.T:0;let [bx0,bx1,by0,by1]=[R.box[0]-ex,R.box[1]+ex,R.box[2]-(cut?0.5*R.T:0),R.box[3]+(cut?0.1*R.T:0)];
   /* Legs / Upper only: frame that half, so it fills the space */
   if(cut&&S.cutPart==='legs'&&R.hy)by0=R.hy-0.35*R.T; if(cut&&S.cutPart==='upper'&&R.hy)by1=R.hy+0.35*R.T;
-  const mirOf=k=>S.group.mirror&&k%2===1;
+  const mirOf=k=>(S.group.mirror&&k%2===1)!==!!S.mirror;
   /* each dancer at their spot in the formation: further back is smaller and higher (simple perspective) */
   const Pos=grPositions(t),fy=R.box[3],L=0.8*(R.box[3]-R.box[2]),Fd=3.5*d;
   const D=Pos.map(([x,z],k)=>{const X=x*d,Z=Math.max(0,z)*d;return {k,x,z,X,Z,kk:Fd/(Fd+Z),m:mirOf(k)}});
@@ -2393,9 +2413,9 @@ startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
    1 beat, 2 beats or a bar ahead, with rings shrinking onto the hand/foot that makes it; on the move your pose is scored
    (limb directions compared, 0-100) and the result flashes; each pass through the clip is tallied. The camera only
    starts from a tap and stops when you leave practice or the app. */
-var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1},step:false,hold:null,holdOk:0,holdSc:null,run:null,last:null,replay:null,myRun:true};
-try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2;PR.step=!!g.step;PR.myRun=g.myRun!==false}}catch(e){}
-const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead,step:PR.step,myRun:PR.myRun}))}catch(e){}};
+var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),why:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1},step:false,hold:null,holdOk:0,holdSc:null,run:null,last:null,replay:null,myRun:true,count:3,hands:true,cd:null,hup:0,hupArm:true,hupCool:0};
+try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2;PR.step=!!g.step;PR.myRun=g.myRun!==false;PR.count=[0,3,5].includes(g.count)?g.count:3;PR.hands=g.hands!==false}}catch(e){}
+const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead,step:PR.step,myRun:PR.myRun,count:PR.count,hands:PR.hands}))}catch(e){}};
 const camV=$('#camVid'),camCv=$('#camCanvas'),recV=$('#camRec');
 const PR_BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32],[15,19],[16,20]];
 const PR_LIMBS=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,12],[23,24]];
@@ -2415,11 +2435,13 @@ function pracUI(){
   $('#pracStep').setAttribute('aria-pressed',String(PR.step));$('#pracStep').hidden=!g||!PR.targets||!!PR.replay;
   $('#pracMyRun').setAttribute('aria-pressed',String(PR.myRun));$('#pracMyRun').hidden=!wl||!(PR.last&&PR.last.samples.length);
   $('#pracLive').hidden=!PR.replay;
+  $('#pracCount').textContent='Countdown: '+(PR.count?PR.count+' s':'off');$('#pracCount').hidden=wl;
+  $('#pracHands').setAttribute('aria-pressed',String(PR.hands));
   const tb=$('#t-body');if(tb){tb.setAttribute('aria-pressed',String(PR.on));tb.classList.toggle('on',PR.on)}
   bodyKey='';
 }
 async function camStart(){
-  if(PR.stream||PR.camBusy)return;PR.camBusy=true;prMsg('Starting your camera…');
+  if(PR.stream||PR.camBusy)return;PR.camBusy=true;primeSong();prMsg('Starting your camera…');
   try{PR.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:720},height:{ideal:960}},audio:false})}
   catch(e){PR.camBusy=false;recMsg(e&&e.name==='NotAllowedError'?'Camera blocked: allow the camera for this app in your phone\'s settings, then try again.':'Couldn\'t start the camera ('+(e&&e.message||e)+').',true);if(prNeedsCam()){PR.on=false;pracUI()}return}
   PR.camBusy=false;
@@ -2429,7 +2451,7 @@ async function camStart(){
   RB.live().then(rt=>{PR.rt=rt;pracStatus()}).catch(e=>prMsg('The body tracker didn\'t load ('+(e&&e.message||e)+'). Your camera still shows.'));
   pracUI();
 }
-function camStop(){if(PR.stream){PR.stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});PR.stream=null}camV.srcObject=null;PR.Praw=null;PR.P=null}
+function camStop(){PR.cd=null;PR.hup=0;if(PR.stream){PR.stream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});PR.stream=null}camV.srcObject=null;PR.Praw=null;PR.P=null}
 async function pracOn(){
   if(PR.on)return; if(!S.hasV){recMsg('Add a dance video first, then practise it here with your camera.',true);return}
   PR.on=true;prReset();PR.flash=null;pracUI();
@@ -2438,7 +2460,7 @@ async function pracOn(){
   if(prNeedsCam())await camStart();else pracStatus();
 }
 function pracOff(){prReplayStop(true);prRunEnd();PR.hold=null;PR.on=false;cancelAnimationFrame(PR.raf);camStop();$('#pracRes').hidden=true;pracUI()}
-function prReset(){PR.pass={n:0,hit:0,close:0};PR.done.clear();PR.win.clear();PR.res.clear()}
+function prReset(){PR.pass={n:0,hit:0,close:0};PR.done.clear();PR.win.clear();PR.res.clear();PR.why.clear()}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&PR.on)pracOff()});   /* never keep the camera on in the background */
 function pracStatus(){
   if(!PR.on)return;const n=srcById(S.cur),B=n&&bodyOf(n);
@@ -2479,6 +2501,19 @@ function prScore(A,Bp){let sum=0,k=0;
     const a=Math.atan2(A[j][1]-A[i][1],A[j][0]-A[i][0]),b=Math.atan2(Bp[j][1]-Bp[i][1],Bp[j][0]-Bp[i][0]);let d=Math.abs(a-b);if(d>Math.PI)d=2*Math.PI-d;
     sum+=Math.max(0,1-d/(Math.PI/2));k++}
   return k>=6?Math.round(sum/k*100):null}
+/* what was off: the body parts whose limbs point more than 40° away from the move, worst first, each with a hint.
+   Named from your side (your left arm), from your own pose's points. */
+const PR_PARTS=[['left arm',[0,1]],['right arm',[2,3]],['left leg',[4,5]],['right leg',[6,7]],['shoulders',[8]],['hips',[9]]];
+function prDiff(A,Bp){const out=[];
+  for(const [name,ls] of PR_PARTS){let worst=0,hint='';
+    for(const li of ls){const [i,j]=PR_LIMBS[li];if(!prVis(A,i)||!prVis(A,j)||!prVis(Bp,i)||!prVis(Bp,j))continue;
+      const ax=A[j][0]-A[i][0],ay=A[j][1]-A[i][1],bx=Bp[j][0]-Bp[i][0],by=Bp[j][1]-Bp[i][1];
+      let d=Math.abs(Math.atan2(ay,ax)-Math.atan2(by,bx));if(d>Math.PI)d=2*Math.PI-d;
+      if(d>worst){worst=d;const ua=ay/(Math.hypot(ax,ay)||1),ub=by/(Math.hypot(bx,by)||1);
+        hint=li>=8?'level':ua<ub-0.35?'too high':ua>ub+0.35?'too low':'angle'}}
+    if(worst>40*Math.PI/180)out.push({part:name,hint,deg:Math.round(worst*180/Math.PI)})}
+  return out.sort((a,b)=>b.deg-a.deg)}
+const prWhyText=w=>w&&w.length?w.slice(0,2).map(x=>x.hint==='level'?x.part+' not level like the dancer':x.hint==='angle'?x.part+' at the wrong angle':x.part+' '+x.hint).join(', '):'';
 function prDraw(c,P,col,lw,alpha,dash){c.save();c.globalAlpha=alpha;c.strokeStyle=col;c.lineWidth=lw;c.lineCap='round';if(dash)c.setLineDash(dash);
   for(const [a,b] of PR_BONES){if(!prVis(P,a)||!prVis(P,b))continue;c.beginPath();c.moveTo(P[a][0],P[a][1]);c.lineTo(P[b][0],P[b][1]);c.stroke()}
   if(prVis(P,0)&&prVis(P,11)&&prVis(P,12)){const r=prTorso(P)*0.22;c.setLineDash([]);c.beginPath();c.arc(P[0][0],P[0][1],Math.max(3,r),0,7);c.stroke()}
@@ -2504,6 +2539,8 @@ function pracLoop(){
       if(sm&&recV.readyState>=1&&Math.abs(recV.currentTime-sm.w)>0.3&&!recV.seeking)try{recV.currentTime=sm.w}catch(e){}}
     if(S.playing)PR.replay.played=true;
     if(vt<PR.lastVt-0.4&&PR.replay.played){PR.lastVt=vt;prReplayStop();return}}
+  prHands(now,fresh);
+  if(PR.cd&&now>=PR.cd.end){PR.cd=null;if(!S.playing)play()}
   if(PR.mode==='world'){if(B)prWorld(c,w,h,dpr,B,vt);if(PR.replay)PR.lastVt=vt;if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}return}
   const vw=PR.replay?(PR.replay.url?recV.videoWidth:0)||PR.replay.cw:camV.videoWidth,vh=PR.replay?(PR.replay.url?recV.videoHeight:0)||PR.replay.ch:camV.videoHeight;
   /* the camera fills its pane (cropped at the edges) */
@@ -2515,7 +2552,9 @@ function pracLoop(){
     if(PR.targets)prTargets(c,n,B,vt,rate,w,h,dpr);
   }
   if(PR.mine&&PR.P)prDraw(c,PR.P,'#2FD47A',Math.max(3,3.5*dpr),0.95);
-  if(PR.flash&&now-PR.flash.at<900){const f=PR.flash,a=1-(now-f.at)/900;c.save();c.globalAlpha=Math.min(1,a*1.6);c.fillStyle=f.col;c.font=`900 ${Math.round(28*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='top';c.fillText(f.label.toUpperCase()+' '+f.score+'%',PR.mode==='ghost'?(w*0.3+w-44*dpr)/2:w/2,PR.hold!=null?64*dpr:14*dpr);c.restore()}
+  if(PR.flash&&now-PR.flash.at<(PR.flash.why?1600:900)){const f=PR.flash,D=f.why?1600:900,a=1-(now-f.at)/D,fx=PR.mode==='ghost'?(w*0.3+w-44*dpr)/2:w/2,fy=PR.hold!=null?64*dpr:14*dpr;c.save();c.globalAlpha=Math.min(1,a*1.6);c.fillStyle=f.col;c.font=`900 ${Math.round(28*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='top';c.fillText(f.label.toUpperCase()+' '+f.score+'%',fx,fy);
+    if(f.why){c.font=`800 ${Math.round(15*dpr)}px Figtree,sans-serif`;c.lineWidth=4*dpr;c.strokeStyle='rgba(8,9,12,.8)';const tx='Fix: '+f.why;c.strokeText(tx,fx,fy+34*dpr);c.fillStyle='#F3F1EC';c.fillText(tx,fx,fy+34*dpr)}c.restore()}
+  prOverlay(c,w,h,dpr,now);
   if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}
 }
 /* Ghost targets */
@@ -2534,7 +2573,7 @@ function prTargets(c,n,B,vt,rate,w,h,dpr){
   if(PR.step&&!PR.replay){
     if(PR.hold!=null){const H=PR.hold;
       if(S.playing){prFinal(H);PR.hold=null;PR.holdOk=0}
-      else{const Q=prRef(B,H);if(Q){const G=prPlace(Q,w,h),sc=PR.P?prScore(PR.P,G):null;PR.holdSc=sc;if(sc!=null)PR.win.set(H,Math.max(PR.win.get(H)??-1,sc));
+      else{const Q=prRef(B,H);if(Q){const G=prPlace(Q,w,h),sc=PR.P?prScore(PR.P,G):null;PR.holdSc=sc;if(sc!=null&&sc>=(PR.win.get(H)??-1)){PR.win.set(H,sc);PR.why.set(H,prDiff(PR.P,G))}
         if(sc!=null&&sc>=75){const t=performance.now();if(!PR.holdOk)PR.holdOk=t;else if(t-PR.holdOk>=400){prFinal(H);PR.hold=null;PR.holdOk=0;play()}}else PR.holdOk=0}}}
     else if(playing&&nextH!=null&&!PR.done.has(nextH)&&(nextH-vt)/rate<=0.03){pause();playing=false;const el=curVid();try{el.currentTime=nextH}catch(e){}PR.hold=nextH;PR.holdOk=0;PR.holdSc=null;PR.win.delete(nextH)}
   }
@@ -2551,7 +2590,7 @@ function prTargets(c,n,B,vt,rate,w,h,dpr){
       c.restore();
     }
     /* scoring window around the move: the best match counts */
-    if(playing&&dt<=PR_PRE&&dt>=-PR_POST&&!PR.done.has(H)&&PR.P){const sc=prScore(PR.P,G);if(sc!=null)PR.win.set(H,Math.max(PR.win.get(H)??-1,sc))}
+    if(playing&&dt<=PR_PRE&&dt>=-PR_POST&&!PR.done.has(H)&&PR.P){const sc=prScore(PR.P,G);if(sc!=null&&sc>=(PR.win.get(H)??-1)){PR.win.set(H,sc);PR.why.set(H,prDiff(PR.P,G))}}
     if(playing&&dt<-PR_POST&&!PR.done.has(H))prFinal(H);
   }
   /* Step mode: the hold meter */
@@ -2564,12 +2603,40 @@ function prTargets(c,n,B,vt,rate,w,h,dpr){
     c.fillStyle='rgba(255,255,255,.18)';c.fillRect(xa+10*dpr,46*dpr,aw-20*dpr,4*dpr);
     c.fillStyle=k>0?'#2FD47A':'#FFB347';c.fillRect(xa+10*dpr,46*dpr,(aw-20*dpr)*(k>0?k:sc!=null?Math.min(1,sc/75)*0.6:0),4*dpr);c.restore()}
 }
+/* Hands up to play / pause (camera on): both wrists above your head. Held 0.6 s it starts (with the countdown), held
+   1.2 s while playing it pauses (longer, so a dance move with both arms up doesn't stop the clip). It has to see your
+   hands come down before it works again. */
+function prHands(now,fresh){
+  if(!PR.hands||!PR.stream||PR.replay||!fresh)return;
+  if(PR.hold!=null){PR.hup=0;return}   /* Step mode: the held pose decides, not the hands */
+  const P=PR.Praw,ok=j=>P&&P[j]&&P[j][2]>=0.5;
+  const up=!!(ok(0)&&ok(15)&&ok(16)&&ok(11)&&ok(12)&&P[15][1]<P[0][1]-0.03&&P[16][1]<P[0][1]-0.03);
+  if(!up){PR.hup=0;PR.hupArm=true;return}
+  if(!PR.hupArm||now<PR.hupCool)return;
+  if(!PR.hup)PR.hup=now;
+  const need=S.playing?1200:600;
+  if(now-PR.hup>=need){PR.hup=0;PR.hupArm=false;PR.hupCool=now+1500;
+    if(S.playing)pause();else if(PR.cd)prCdCancel();else if(prCdWanted())prCdStart();else play();
+    PR.handsN=(PR.handsN||0)+1}}
+function prOverlay(c,w,h,dpr,now){
+  const cx=PR.mode==='ghost'?(w*0.3+w)/2:w/2;
+  if(PR.cd){const left=Math.max(0,PR.cd.end-now)/1000,nTxt=String(Math.ceil(left)||1),fr=left%1;
+    c.save();c.fillStyle='rgba(8,9,12,.45)';c.fillRect(0,0,w,h);c.textAlign='center';c.textBaseline='middle';
+    c.font=`900 ${Math.round(Math.min(w,h)*0.32)}px Figtree,sans-serif`;c.globalAlpha=0.35+0.65*fr;c.fillStyle='#F3F1EC';c.fillText(nTxt,cx,h*0.46);
+    c.globalAlpha=1;c.font=`800 ${Math.round(15*dpr)}px Figtree,sans-serif`;c.fillText('Get into place · tap to cancel',cx,h*0.46+Math.min(w,h)*0.22);c.restore()}
+  if(PR.hup&&PR.hands){const need=S.playing?1200:600,k=Math.min(1,(now-PR.hup)/need),r=26*dpr,x=w-r-14*dpr,y=h-r-(PR.mode==='ghost'?120:14)*dpr;
+    c.save();c.lineWidth=5*dpr;c.strokeStyle='rgba(243,241,236,.25)';c.beginPath();c.arc(x,y,r,0,7);c.stroke();
+    c.strokeStyle='#2FD47A';c.beginPath();c.arc(x,y,r,-Math.PI/2,-Math.PI/2+k*2*Math.PI);c.stroke();
+    c.fillStyle='#F3F1EC';c.font=`800 ${Math.round(11*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='middle';c.fillText(S.playing?'Pause':'Play',x,y);c.restore()}}
 /* a key move is over: its best score in the window becomes Hit / Close / Miss */
 function prFinal(H){if(PR.done.has(H))return;PR.done.add(H);const sc=PR.win.get(H);PR.pass.n++;
   let lab='Not seen';if(sc!=null&&sc>=0){lab=sc>=75?'Hit':sc>=55?'Close':'Miss';if(lab==='Hit')PR.pass.hit++;else if(lab==='Close')PR.pass.close++}
-  PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now()};PR.res.set(H,lab);
+  /* a whole arm or leg way off (60°+) isn't a Hit, however good the rest is: it becomes Close and says which part */
+  const w0=PR.why.get(H)||[];if(lab==='Hit'&&w0.some(x=>x.deg>=60)){lab='Close';PR.pass.hit--;PR.pass.close++}
+  const why=lab==='Hit'||lab==='Not seen'?[]:w0;
+  PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now(),why:prWhyText(why.slice(0,1))};PR.res.set(H,lab);
   PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200);
-  if(PR.run)PR.run.hits.push({t:H,score:sc!=null&&sc>=0?sc:null,label:lab})}
+  if(PR.run)PR.run.hits.push({t:H,score:sc!=null&&sc>=0?sc:null,label:lab,why})}
 /* ---- the run: record your camera while you dance a pass, then show how it went and let you replay it ---- */
 function prRunStart(){const Rn={hits:[],samples:[],t0:performance.now(),cw:camV.videoWidth||720,ch:camV.videoHeight||960,chunks:[],rec:null,mime:''};
   try{const types=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
@@ -2593,9 +2660,14 @@ function prResShow(){const L=PR.last;if(!L)return;const box=$('#pracRes');
   $('#prResSum').textContent=`${hit} hit · ${close} close · ${miss} miss of ${L.hits.length} move${L.hits.length===1?'':'s'}`+(miss?' · tap a move to go to it':'');
   const mv=$('#prResMoves');mv.textContent='';
   L.hits.forEach((x,i)=>{const b=document.createElement('button');b.type='button';b.dataset.l=x.label;b.dataset.t=String(x.t);
-    b.title=`Move ${i+1} at ${fmtClock(x.t)}: ${x.label}${x.score!=null?' '+x.score+'%':''}`;
-    b.innerHTML=`<span>${x.label==='Not seen'?'—':x.label}</span><i>${x.score!=null?x.score+'%':'not seen'}</i>`;
+    const wt=prWhyText(x.why);
+    b.title=`Move ${i+1} at ${fmtClock(x.t)}: ${x.label}${x.score!=null?' '+x.score+'%':''}${wt?' · '+wt:''}`;
+    b.innerHTML=`<span>${x.label==='Not seen'?'—':x.label}</span><i>${x.score!=null?x.score+'%':'not seen'}</i>`+(wt?`<em>${(x.why[0].part)}</em>`:'');
     b.addEventListener('click',()=>{prReplayStop(true);pause();const el=curVid();try{el.currentTime=Math.max(0,x.t-prLeadS()-0.6)}catch(e){}PR.lastVt=-1e9;prReset()});mv.appendChild(b)});
+  /* the body part that was off most often over the pass */
+  const cnt={};for(const x of L.hits)for(const w of (x.why||[]).slice(0,2))cnt[w.part]=(cnt[w.part]||0)+1;
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0],tip=$('#prResTip');
+  if(tip){tip.textContent=top&&top[1]>=2?`Work on: your ${top[0]} (off in ${top[1]} move${top[1]===1?'':'s'})`:'';tip.hidden=!tip.textContent}
   $('#prReplay').disabled=!(L.samples.length||L.url);
   box.hidden=false}
 const fmtClock=t=>{t=Math.max(0,t);return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
@@ -2684,17 +2756,18 @@ function prOnRef(Pn,Q,cw,ch){if(!(prVis(Q,23)&&prVis(Q,24)&&prVis(Q,11)&&prVis(Q
   camCv.addEventListener('wheel',e=>{if(PR.mode!=='world')return;e.preventDefault();PR.wv.zoom=Math.max(0.5,Math.min(3,PR.wv.zoom*Math.exp(-e.deltaY*0.0015)))},{passive:false});}
 function el0playing(){const e=curVid();return !!e&&!e.paused}
 $$('#pracMode button').forEach(b=>b.addEventListener('click',()=>{PR.mode=b.dataset.pm;PR.xf=null;prSave();pracUI();if(prNeedsCam()&&!PR.stream)camStart();pracStatus()}));
-[['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all'],['#pracStep','step'],['#pracMyRun','myRun']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();if(k==='step'&&!PR.step){PR.hold=null;PR.holdOk=0}prSave();pracUI();pracStatus()}));
+$('#pracCount').addEventListener('click',()=>{PR.count=PR.count===3?5:PR.count===5?0:3;prSave();pracUI()});
+[['#pracHands','hands'],['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all'],['#pracStep','step'],['#pracMyRun','myRun']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();if(k==='step'&&!PR.step){PR.hold=null;PR.holdOk=0}prSave();pracUI();pracStatus()}));
 $('#pracLead').addEventListener('click',()=>{PR.lead=PR.lead===1?2:PR.lead===2?4:1;prSave();pracUI()});
 $('#pracReset').addEventListener('click',()=>{PR.wv={yaw:-0.62,pitch:0.28,zoom:1}});
 $('#pracCam').addEventListener('click',camStart);
 $('#pracStop').addEventListener('click',pracOff);
 $('#pracLive').addEventListener('click',()=>{prReplayStop(true);pause()});
 $('#prReplay').addEventListener('click',prReplayStart);
-$('#prAgain').addEventListener('click',()=>{prReplayStop(true);$('#pracRes').hidden=true;PR.hold=null;pause();toStart();PR.lastVt=-1e9;prReset();play()});
+$('#prAgain').addEventListener('click',()=>{prReplayStop(true);$('#pracRes').hidden=true;PR.hold=null;pause();toStart();PR.lastVt=-1e9;prReset();if(prCdWanted())prCdStart();else play()});
 $('#prResClose').addEventListener('click',()=>{$('#pracRes').hidden=true});
 $('#pracMore').addEventListener('click',()=>{pracOff();sendClip()});
-window.__rsPR=PR;window.__rsPrScore=prScore;window.__rsPrHits=()=>prHits(srcById(S.cur));
+window.__rsPR=PR;window.__rsPrScore=prScore;window.__rsPrDiff=prDiff;window.__rsPrHits=()=>prHits(srcById(S.cur));
 
 /* ---------- MirrorView hand-off ----------
    MirrorView lives at ./mirrorview/ in the same installed app (same origin and storage). A clip or take is left in
@@ -3397,7 +3470,7 @@ function panelIn(p,dir,from){
   $('#stage').addEventListener('click',e=>{if(!pin.classList.contains('fs')||e.target.closest('button,label,input'))return;if(pin.classList.contains('idle')){wake();return}$('#play').click();wake()});
   pin.addEventListener('pointermove',()=>{if(pin.classList.contains('fs'))wake()});
   pin.addEventListener('touchstart',()=>{if(pin.classList.contains('fs'))setTimeout(wake,0)},{passive:true});
-  setInterval(()=>{btn.hidden=!S.hasV;if(pin.classList.contains('fs')){if(!S.playing)pin.classList.remove('idle');else if(!pin.classList.contains('idle')&&!idleT)wake()}},400);
+  setInterval(()=>{btn.hidden=!S.hasV;$('#mirBtn').hidden=!S.hasV;if(pin.classList.contains('fs')){if(!S.playing)pin.classList.remove('idle');else if(!pin.classList.contains('idle')&&!idleT)wake()}},400);
   $('#play').addEventListener('click',()=>{if(pin.classList.contains('fs'))setTimeout(wake,0)});
 })();
 
@@ -3468,7 +3541,8 @@ $('#stage').addEventListener('pointerdown',e=>{
   if(!S.bodyPicking||e.target.closest('button,label,input'))return; e.preventDefault(); e.stopPropagation();
   const el=curVid(), n=el&&srcOfEl(el); if(!n)return;
   const r=bodyCv.getBoundingClientRect(), rect=RB.containRect(r.width,r.height,el.videoWidth,el.videoHeight);
-  const x=(e.clientX-r.left-rect.x)/rect.w, y=(e.clientY-r.top-rect.y)/rect.h; if(x<0||x>1||y<0||y>1)return;
+  const x0=(e.clientX-r.left-rect.x)/rect.w, y=(e.clientY-r.top-rect.y)/rect.h; if(x0<0||x0>1||y<0||y>1)return;
+  const x=S.mirror?1-x0:x0;   /* the clip is shown mirrored: the tap is on the flipped picture */
   S.bodyPick={src:n.id,t:el.currentTime,x,y}; S.bodyPicking=false; $('#bodyPick').setAttribute('aria-pressed','false');
   $('#pickMsg').textContent='Got it. Tracking that dancer…'; $('#bodyTrack').click();
 },true);

@@ -16,7 +16,7 @@ const [,,HOST,CLIP,CAM,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpp
  for(let i=0;i<1200;i++){await p.waitForTimeout(500);if(await p.evaluate(()=>{const n=window.__rs.srcById(window.__rs.S.cur);return !window.__rs.S.bodyBusy&&!!(n&&n.body)}))break}
  /* an edit: slower clip speed */
  await p.click('#spdBtn');await p.click('.spdpre button[data-v="0.75"]');await p.click('#spdBtn');
- await p.click('#t-body');
+ await p.click('#t-body');await p.evaluate(()=>{window.__rsPR.count=0;window.__rsPR.hands=false});
  let live=null;for(let i=0;i<60;i++){await p.waitForTimeout(500);live=await p.evaluate(()=>({cam:document.getElementById('camVid').videoWidth,pose:!!(window.__rsPR.Praw),on:window.__rsPR.on}));if(live.cam&&live.pose)break}
  const lay=await p.evaluate(()=>{const st=document.getElementById('stage').getBoundingClientRect(),v=document.querySelector('#stage video:not(.off)').getBoundingClientRect(),c=document.getElementById('camCanvas').getBoundingClientRect();
    return {stage:[Math.round(st.width),Math.round(st.height)],vid:[Math.round(v.left-st.left),Math.round(v.width)],cam:[Math.round(c.left-st.left),Math.round(c.width)],bar:!document.getElementById('pracBar').hidden,rate:document.querySelector('#stage video:not(.off)').playbackRate}});
@@ -64,7 +64,7 @@ const [,,HOST,CLIP,CAM,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpp
  /* Worldline: the dancer through time, no camera needed */
  await p.click('#pracStop');await p.waitForTimeout(300);
  await p.evaluate(()=>{const PR=window.__rsPR;PR.mode='world';localStorage.setItem('rs-prac',JSON.stringify({mode:'world'}))});
- await p.evaluate(()=>{const PR=window.__rsPR;PR.mode='world'});await p.click('#t-body');await p.waitForTimeout(1500);
+ await p.evaluate(()=>{const PR=window.__rsPR;PR.mode='world'});await p.click('#t-body');await p.evaluate(()=>{window.__rsPR.count=0;window.__rsPR.hands=false});await p.waitForTimeout(1500);
  const wl=await p.evaluate(()=>{const c=document.getElementById('camCanvas'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let lit=0,am=0;for(let i=0;i<d.length;i+=16){if(d[i]+d[i+1]+d[i+2]>300)lit++;if(d[i]>230&&d[i+1]>150&&d[i+1]<200&&d[i+2]<110)am++}
    return {lit,am,cam:!!document.getElementById('camVid').srcObject,mode:window.__rsPR.mode,on:window.__rsPR.on,msg:document.getElementById('pracMsg').textContent}});
  if(SHOT)await p.screenshot({path:SHOT+'-world.png'});
@@ -80,7 +80,7 @@ const [,,HOST,CLIP,CAM,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpp
  /* Stop, and leaving the app, turn the camera off */
  await p.click('#pracStop');await p.waitForTimeout(300);
  const off=await p.evaluate(()=>({src:!!document.getElementById('camVid').srcObject,on:window.__rsPR.on,bar:document.getElementById('pracBar').hidden,stage:document.getElementById('stage').classList.contains('practice')}));
- await p.click('#t-body');for(let i=0;i<20;i++){await p.waitForTimeout(300);if(await p.evaluate(()=>!!document.getElementById('camVid').videoWidth))break}
+ await p.click('#t-body');await p.evaluate(()=>{window.__rsPR.count=0;window.__rsPR.hands=false});for(let i=0;i<20;i++){await p.waitForTimeout(300);if(await p.evaluate(()=>!!document.getElementById('camVid').videoWidth))break}
  await p.evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'))});await p.waitForTimeout(300);
  const away=await p.evaluate(()=>({src:!!document.getElementById('camVid').srcObject,on:window.__rsPR.on}));
  rec('Stop, and leaving the app, turn the camera off',!off.src&&!off.on&&off.bar&&!off.stage&&!away.src&&!away.on?'passed':'failed',JSON.stringify({off,away}));

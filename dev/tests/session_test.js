@@ -36,11 +36,12 @@ const rec=(n,s,d)=>console.log(s.toUpperCase().padEnd(8),n,'—',d);
   const fresh=await p.evaluate(async()=>({hasV:window.__rs.S.hasV,state:document.getElementById('saveState').textContent,projects:await new Promise(r=>{const q=indexedDB.open('riddim-swap');q.onsuccess=()=>{const t=q.result.transaction('projects').objectStore('projects').count();t.onsuccess=()=>{r(t.result);q.result.close()}}})}));
   rec('Start fresh opens an empty project; the last one is kept in Projects',!fresh.hasV&&fresh.projects>=1&&/Fresh start/.test(fresh.state)?'passed':'failed',JSON.stringify(fresh));
   /* Erase everything: first tap arms, second erases */
+  await p.evaluate(async()=>{for(const k of ['rs-runtime-1','rs-models-test']){const c=await caches.open(k);await c.put('/__before-wipe',new Response('x'))}});   /* marks in the caches: they must be gone (the reloaded app may make fresh caches) */
   await p.click('#projBtn');await p.waitForTimeout(500);await p.click('#wipeBtn');await p.waitForTimeout(300);
   const armed=await p.textContent('#wipeBtn');
   const nav4=p.waitForEvent('framenavigated',{timeout:15000}).catch(()=>null);await p.click('#wipeBtn');await nav4;await p.waitForTimeout(3000);
-  const wiped=await p.evaluate(async()=>({dbs:(await indexedDB.databases()).map(d=>d.name),ls:localStorage.length,hasV:window.__rs?window.__rs.S.hasV:null,caches:await caches.keys()}));
-  rec('Erase everything needs a second tap, then wipes projects, media and saved app files',/Tap again/.test(armed)&&!wiped.dbs.includes('riddim-bridge')&&!wiped.hasV&&!wiped.caches.includes('rs-runtime-1')?'passed':'failed',JSON.stringify({armed,...wiped}));
+  const wiped=await p.evaluate(async()=>({dbs:(await indexedDB.databases()).map(d=>d.name),ls:localStorage.length,hasV:window.__rs?window.__rs.S.hasV:null,caches:await caches.keys(),marks:(await Promise.all((await caches.keys()).map(async k=>!!(await (await caches.open(k)).match('/__before-wipe'))))).filter(Boolean).length}));
+  rec('Erase everything needs a second tap, then wipes projects, media and saved app files',/Tap again/.test(armed)&&!wiped.dbs.includes('riddim-bridge')&&!wiped.hasV&&wiped.marks===0?'passed':'failed',JSON.stringify({armed,...wiped}));
   const projAfter=await p.evaluate(async()=>new Promise(r=>{const q=indexedDB.open('riddim-swap');q.onsuccess=()=>{const d=q.result;if(!d.objectStoreNames.contains('projects')){r(0);d.close();return}const t=d.transaction('projects').objectStore('projects').count();t.onsuccess=()=>{r(t.result);d.close()}};q.onerror=()=>r(-1)}));
   rec('…and no projects are left',projAfter===0?'passed':'failed','projects: '+projAfter);
   rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));

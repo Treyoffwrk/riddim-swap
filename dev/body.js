@@ -696,8 +696,10 @@
       const a0=up>0?0:Math.PI, a1=up>0?-tilt*Math.PI/180:Math.PI-tilt*Math.PI/180;
       ctx.fillStyle=o.pink;ctx.globalAlpha=0.25;ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,R,Math.min(a0,a1),Math.max(a0,a1));ctx.closePath();ctx.fill();ctx.globalAlpha=1;
       const fs=Math.max(11,Math.round(o.torso*0.16)), lx=up*(R+fs*0.3), ly=-Math.abs(Math.sin(tilt*Math.PI/180))*R-fs*0.35;
-      ctx.font=`800 ${fs}px Figtree,system-ui,sans-serif`;ctx.textAlign=up>0?'left':'right';ctx.textBaseline='middle';
-      ctx.lineWidth=3;ctx.strokeStyle='rgba(8,9,12,.85)';ctx.strokeText(Math.round(Math.abs(tilt))+'°',lx,ly);ctx.fillStyle='#F3F1EC';ctx.fillText(Math.round(Math.abs(tilt))+'°',lx,ly);
+      /* drawn flipped (a mirrored clip): turn the text back so it reads the right way */
+      const fl=ctx.getTransform&&ctx.getTransform().a<0; if(fl)ctx.scale(-1,1); const tx=fl?-lx:lx;
+      ctx.font=`800 ${fs}px Figtree,system-ui,sans-serif`;ctx.textAlign=(up>0)!==!!fl?'left':'right';ctx.textBaseline='middle';
+      ctx.lineWidth=3;ctx.strokeStyle='rgba(8,9,12,.85)';ctx.strokeText(Math.round(Math.abs(tilt))+'°',tx,ly);ctx.fillStyle='#F3F1EC';ctx.fillText(Math.round(Math.abs(tilt))+'°',tx,ly);
       ctx.restore();
     }
   }

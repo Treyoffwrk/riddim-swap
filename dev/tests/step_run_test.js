@@ -14,7 +14,7 @@ const [,,HOST,CLIP,CAM,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUpp
  await p.setInputFiles('#vidFile',CLIP);await p.waitForTimeout(2500);
  await p.click('#bodyTrack');
  for(let i=0;i<1200;i++){await p.waitForTimeout(500);if(await p.evaluate(()=>{const n=window.__rs.srcById(window.__rs.S.cur);return !window.__rs.S.bodyBusy&&!!(n&&n.body)}))break}
- await p.click('#t-body');
+ await p.click('#t-body');await p.evaluate(()=>{window.__rsPR.count=0;window.__rsPR.hands=false});
  for(let i=0;i<60;i++){await p.waitForTimeout(500);if(await p.evaluate(()=>document.getElementById('camVid').videoWidth&&window.__rsPR.rt&&window.__rsPR.Praw))break}
  await p.click('#pracMode button[data-pm="ghost"]');await p.waitForTimeout(400);
  const stepShown=await p.evaluate(()=>!document.getElementById('pracStep').hidden);

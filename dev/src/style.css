@@ -336,6 +336,8 @@ html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 /* full screen */
 .fsbtn{position:absolute;top:8px;right:8px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(14,16,20,.7);color:#F3F1EC;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:transform .25s var(--spring),opacity .3s}
 .fsbtn:active{transform:scale(.9)}
+.mirbtn{right:60px}.mirbtn[aria-pressed="true"]{background:var(--dance);color:#0E1014;border-color:var(--dance)}
+.stage.mirr video{transform:scaleX(-1)}
 .fsbtn svg{width:20px;height:20px}
 .fsbtn .ico-exit{display:none}
 .pin.fs .fsbtn .ico-exit{display:block}.pin.fs .fsbtn .ico-enter{display:none}
@@ -637,6 +639,10 @@ details.more .field{margin-top:8px}
 .pracbar{display:grid;gap:6px;margin:6px 0 2px}
 .pracbar[hidden]{display:none}
 .pracrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* the options in one row that scrolls sideways: wrapped, they pushed the play bar under the tabs on a phone */
+.pracrow.chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);padding-right:24px}
+.pracrow.chips::-webkit-scrollbar{display:none}
+.pracrow.chips .pchip{flex:0 0 auto;white-space:nowrap}
 .pracbar .seg{flex:1 1 auto}
 .pracbar .seg button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .pracbar .seg .bi{width:18px;height:18px}
@@ -662,6 +668,8 @@ details.more .field{margin-top:8px}
 .prres-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .prres-head b{font:900 26px var(--f-body);color:var(--dance)}
 .prres-head span{font-size:13px;color:rgba(243,241,236,.7)}
+.prres-tip{font:700 13px var(--f-body);color:#FFB347}
+.prres-moves button em{font-style:normal;font-weight:600;font-size:9px;color:rgba(243,241,236,.65);white-space:nowrap}
 .prres-moves{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
 .prres-moves button{flex:0 0 auto;min-width:54px;min-height:44px;border-radius:10px;border:2px solid var(--line);background:transparent;color:#F3F1EC;font:700 11px var(--f-body);display:grid;place-items:center;line-height:1.15;padding:3px 6px;cursor:pointer}
 .prres-moves button[data-l="Hit"]{border-color:#2FD47A}
