@@ -670,6 +670,9 @@ details.more .field{margin-top:8px}
 .prres-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .prres-head b{font:900 26px var(--f-body);color:var(--dance)}
 .prres-head span{font-size:13px;color:rgba(243,241,236,.7)}
+.prres-hist{display:flex;align-items:flex-end;gap:10px;font:600 12px var(--f-body);color:rgba(243,241,236,.8)}
+.prres-bars{display:flex;align-items:flex-end;gap:2px;height:26px;flex:0 0 auto}
+.prres-bars i{display:block;width:5px;border-radius:2px;background:rgba(243,241,236,.35)}.prres-bars i.now{background:var(--dance)}
 .prres-tip{font:700 13px var(--f-body);color:#FFB347}
 .prres-moves button em{font-style:normal;font-weight:600;font-size:9px;color:rgba(243,241,236,.65);white-space:nowrap}
 .prres-moves{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}

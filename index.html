@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-2b254f9417'</script>
+<script>window.RS_BUILD='rs-52e9011e4b'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -692,6 +692,9 @@ details.more .field{margin-top:8px}
 .prres-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .prres-head b{font:900 26px var(--f-body);color:var(--dance)}
 .prres-head span{font-size:13px;color:rgba(243,241,236,.7)}
+.prres-hist{display:flex;align-items:flex-end;gap:10px;font:600 12px var(--f-body);color:rgba(243,241,236,.8)}
+.prres-bars{display:flex;align-items:flex-end;gap:2px;height:26px;flex:0 0 auto}
+.prres-bars i{display:block;width:5px;border-radius:2px;background:rgba(243,241,236,.35)}.prres-bars i.now{background:var(--dance)}
 .prres-tip{font:700 13px var(--f-body);color:#FFB347}
 .prres-moves button em{font-style:normal;font-weight:600;font-size:9px;color:rgba(243,241,236,.65);white-space:nowrap}
 .prres-moves{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
@@ -840,10 +843,12 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <canvas class="camcv" id="camCanvas" hidden aria-label="Your camera"></canvas>
           <div class="prres" id="pracRes" hidden aria-label="How the run went">
             <div class="prres-head"><b id="prResScore">0%</b><span id="prResSum"></span></div>
+            <div class="prres-hist" id="prResHist" hidden><div class="prres-bars" id="prHistBars" aria-hidden="true"></div><span id="prHistTxt"></span></div>
             <div class="prres-tip" id="prResTip" hidden></div>
             <div class="prres-moves" id="prResMoves" aria-label="Each key move: tap one to go to it"></div>
             <div class="pracrow">
               <button type="button" class="pchip" id="prReplay"><svg class="bi" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M10 9l5 3-5 3z"/></svg>Replay me</button>
+              <button type="button" class="pchip" id="prSave" title="Save a video of you and the dancer side by side, with each move's result">Save video</button>
               <button type="button" class="pchip" id="prAgain">Go again</button>
               <button type="button" class="pchip" id="prResClose" aria-label="Close the results">Close</button>
             </div>
@@ -937,6 +942,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
             <button type="button" class="pchip" id="pracTargets" aria-pressed="true" title="Ghost: show each hit coming, then how well you hit it">Hit targets</button>
             <button type="button" class="pchip" id="pracFlip" aria-pressed="false" title="Ghost: same side as the dancer instead of mirror image">Flip ghost</button>
             <button type="button" class="pchip" id="pracCount" title="Before the clip starts: time to step back into place">Countdown: 3 s</button>
+            <button type="button" class="pchip" id="pracVoice" aria-pressed="true" title="Says the countdown and what to fix after a move">Voice</button>
             <button type="button" class="pchip" id="pracHands" aria-pressed="true" title="Raise both hands above your head to play; hold them up longer to pause">Hands up to play</button>
             <button type="button" class="pchip" id="pracStep" aria-pressed="false" title="Ghost: the clip waits on each key move until you match it">Step mode</button>
             <button type="button" class="pchip" id="pracMyRun" aria-pressed="true" title="Worldline: your last run in green beside the dancer">My last run</button>
@@ -3201,8 +3207,12 @@ function toggle(){if(S.rec){stopRecording();return}
    primed inside the tap (a muted play and pause) so it may start by itself when the count ends. */
 function prCdWanted(){return PR.on&&!!PR.stream&&PR.count>0&&!PR.replay&&PR.mode!=="world"&&PR.hold==null}
 function primeSong(){if(!S.hasA||!a.paused)return;a.muted=true;const p=a.play();if(p)p.then(()=>{if(!S.playing)a.pause();a.muted=false}).catch(()=>{a.muted=false});else a.muted=false}
-function prCdStart(){primeSong();PR.cd={end:performance.now()+PR.count*1000};$('#pracRes').hidden=true;prMsg('Get into place…')}
-function prCdCancel(){PR.cd=null;pracStatus()}
+/* Voice: says the countdown and, after a Close or Miss, the main thing to fix (at most one every 2.5 s, so it never
+   talks over itself). The first word is said inside a tap, which phones need before a page may speak. */
+function say(t){if(!PR.voice||!t||!window.speechSynthesis||!window.SpeechSynthesisUtterance)return;
+  try{const u=new SpeechSynthesisUtterance(t);u.rate=1.05;u.volume=1;u.lang='en-GB';speechSynthesis.cancel();speechSynthesis.speak(u);PR.saidAt=performance.now();PR.said=(PR.said||[]).concat([t]).slice(-30)}catch(e){}}
+function prCdStart(){primeSong();PR.cd={end:performance.now()+PR.count*1000,n:PR.count};say(String(PR.count));$('#pracRes').hidden=true;prMsg('Get into place…')}
+function prCdCancel(){PR.cd=null;try{window.speechSynthesis&&speechSynthesis.cancel()}catch(e){}pracStatus()}
 
 function enable(){
   const hv=S.hasV;
@@ -3870,7 +3880,7 @@ function captureFrame(mediaTime){
   const ts=Math.round(T*1e6);
   if(ts<=R.lastTs||R.ve.encodeQueueSize>8)return;
   try{
-    drawFit(v); drawBodyOnTake(v,mediaTime);
+    if(S.recCompose)drawCompose(mediaTime); else {drawFit(v); drawBodyOnTake(v,mediaTime);}
     const f=new VideoFrame(cv,{timestamp:ts,duration:33333});
     const key=R.frames===0||ts-R.lastKey>=2000000; if(key)R.lastKey=ts;
     R.ve.encode(f,{keyFrame:key}); f.close();
@@ -3895,14 +3905,15 @@ function watchFrames(el){
 function rawChunk(c){const d=new Uint8Array(c.byteLength);c.copyTo(d);return d}
 const okDur=x=>typeof x==='number'&&isFinite(x)&&x>=0;
 function startCodecRec(){
-  cv.width=vCfg.width; cv.height=vCfg.height;
+  const vc=S.recCompose&&S.recCompose.cfg||vCfg;
+  cv.width=vc.width; cv.height=vc.height;
   const target=new Mp4Muxer.ArrayBufferTarget();
   const muxer=new Mp4Muxer.Muxer({target,fastStart:'in-memory',firstTimestampBehavior:'offset',
-    video:{codec:vCfg.mux||'avc',width:vCfg.width,height:vCfg.height},
+    video:{codec:vc.mux||'avc',width:vc.width,height:vc.height},
     audio:{codec:aCfg.mux||'aac',numberOfChannels:aCfg.numberOfChannels,sampleRate:aCfg.sampleRate}});
   const R={mode:'codecs',segs:segs().map(g=>({src:g.src,s:g.s,e:g.e,r:segR(g),k:g.k})),fade:routineOn()&&S.rt.fade,muxer,target,vr:S.vr,ar:S.ar,offset:S.offset+(S.variant&&S.variant.shift||0),lastTs:-1,lastKey:0,frames:0,failed:null};
   R.ve=new VideoEncoder({output:(c,m)=>{try{muxer.addVideoChunkRaw(rawChunk(c),c.type,c.timestamp,okDur(c.duration)?c.duration:33333,m)}catch(e){R.failed=e}},error:e=>{R.failed=e}});
-  R.ve.configure(vCfg);
+  R.ve.configure(vc);
   return R;
 }
 function stripAdts(d){
@@ -4147,11 +4158,11 @@ function pickMime(){
   const t=['video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
   return t.find(x=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(x))||'';
 }
-function drawFrame(){if(v.readyState>=2){drawFit(v);drawBodyOnTake(v,v.currentTime)}}
+function drawFrame(){if(v.readyState>=2){if(S.recCompose)drawCompose(v.currentTime);else{drawFit(v);drawBodyOnTake(v,v.currentTime)}}}
 function startMrRec(){
   const c=getCtx(); c.resume().catch(()=>{});
   if(!recDest)recDest=c.createMediaStreamDestination();
-  const [w,h]=recSize(); cv.width=w; cv.height=h; drawFrame();
+  const [w,h]=S.recCompose?[S.recCompose.lay.W,S.recCompose.lay.H]:recSize(); cv.width=w; cv.height=h; drawFrame();
   const stream=new MediaStream([...cv.captureStream(30).getVideoTracks(),...recDest.stream.getAudioTracks()]);
   const mime=pickMime();
   const mr=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:5000000}:undefined);
@@ -4164,7 +4175,7 @@ function startMrRec(){
 
 function startRecording(){
   if(S.study)studyOff();
-  const useCodecs=!!(vCfg&&aCfg&&buf&&canCodecs());
+  const useCodecs=!!((S.recCompose?S.recCompose.cfg:vCfg)&&aCfg&&buf&&canCodecs());
   if(!useCodecs&&!(window.MediaRecorder&&cv.captureStream)){recMsg("This browser can't record video.",true);return}
   pause(); S.preview=null; S.segIdx=0; recMsg(''); updateTrim();
   const L=segs(), len=segStart(L.length,L);
@@ -4179,6 +4190,7 @@ function startRecording(){
 function stopRecording(){
   const R=S.rec; if(!R)return; S.rec=null;
   pause();
+  if(S.recCompose){S.recCompose=null;try{recV.playbackRate=1}catch(e){}prReplayStop(true);if(PR.on)pracUI()}
   $('#recBtn span').textContent='Record'; $('#recDot').hidden=true;
   if(R.mode==='codecs'){finishCodecRec(R);return}
   recStopSong(); recMsg('Finishing the video…');
@@ -5280,9 +5292,9 @@ startUpdate();setInterval(()=>{try{startUpdate();dockUpdate()}catch(e){}},700);
    1 beat, 2 beats or a bar ahead, with rings shrinking onto the hand/foot that makes it; on the move your pose is scored
    (limb directions compared, 0-100) and the result flashes; each pass through the clip is tallied. The camera only
    starts from a tap and stops when you leave practice or the app. */
-var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),why:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1},step:false,hold:null,holdOk:0,holdSc:null,run:null,last:null,replay:null,myRun:true,count:3,hands:true,cd:null,hup:0,hupArm:true,hupCool:0};
-try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2;PR.step=!!g.step;PR.myRun=g.myRun!==false;PR.count=[0,3,5].includes(g.count)?g.count:3;PR.hands=g.hands!==false}}catch(e){}
-const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead,step:PR.step,myRun:PR.myRun,count:PR.count,hands:PR.hands}))}catch(e){}};
+var PR={on:false,mode:'split',mirror:true,mine:true,targets:true,flip:false,all:false,lead:2,stream:null,rt:null,P:null,raf:0,detAt:0,xf:null,win:new Map(),why:new Map(),done:new Set(),res:new Map(),pass:{n:0,hit:0,close:0},flash:null,lastVt:0,hk:'',hits:[],wv:{yaw:-0.62,pitch:0.28,zoom:1},step:false,hold:null,holdOk:0,holdSc:null,run:null,last:null,replay:null,myRun:true,count:3,hands:true,voice:true,cd:null,hup:0,hupArm:true,hupCool:0};
+try{const g=JSON.parse(localStorage.getItem('rs-prac')||'null');if(g){PR.mode=['split','ghost','world'].includes(g.mode)?g.mode:'split';PR.mirror=g.mirror!==false;PR.mine=g.mine!==false;PR.targets=g.targets!==false;PR.flip=!!g.flip;PR.all=!!g.all;PR.lead=[1,2,4].includes(g.lead)?g.lead:2;PR.step=!!g.step;PR.myRun=g.myRun!==false;PR.count=[0,3,5].includes(g.count)?g.count:3;PR.hands=g.hands!==false;PR.voice=g.voice!==false}}catch(e){}
+const prSave=()=>{try{localStorage.setItem('rs-prac',JSON.stringify({mode:PR.mode,mirror:PR.mirror,mine:PR.mine,targets:PR.targets,flip:PR.flip,all:PR.all,lead:PR.lead,step:PR.step,myRun:PR.myRun,count:PR.count,hands:PR.hands,voice:PR.voice}))}catch(e){}};
 const camV=$('#camVid'),camCv=$('#camCanvas'),recV=$('#camRec');
 const PR_BONES=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28],[27,31],[28,32],[15,19],[16,20]];
 const PR_LIMBS=[[11,13],[13,15],[12,14],[14,16],[23,25],[25,27],[24,26],[26,28],[11,12],[23,24]];
@@ -5303,7 +5315,7 @@ function pracUI(){
   $('#pracMyRun').setAttribute('aria-pressed',String(PR.myRun));$('#pracMyRun').hidden=!wl||!(PR.last&&PR.last.samples.length);
   $('#pracLive').hidden=!PR.replay;
   $('#pracCount').textContent='Countdown: '+(PR.count?PR.count+' s':'off');$('#pracCount').hidden=wl;
-  $('#pracHands').setAttribute('aria-pressed',String(PR.hands));
+  $('#pracHands').setAttribute('aria-pressed',String(PR.hands));$('#pracVoice').setAttribute('aria-pressed',String(PR.voice));
   const tb=$('#t-body');if(tb){tb.setAttribute('aria-pressed',String(PR.on));tb.classList.toggle('on',PR.on)}
   bodyKey='';
 }
@@ -5411,7 +5423,8 @@ function pracLoop(){
     if(S.playing)PR.replay.played=true;
     if(vt<PR.lastVt-0.4&&PR.replay.played){PR.lastVt=vt;prReplayStop();return}}
   prHands(now,fresh);
-  if(PR.cd&&now>=PR.cd.end){PR.cd=null;if(!S.playing)play()}
+  if(PR.cd){const left=Math.ceil((PR.cd.end-now)/1000);if(left>0&&left<PR.cd.n){PR.cd.n=left;say(String(left))}}
+  if(PR.cd&&now>=PR.cd.end){PR.cd=null;say('Go');if(!S.playing)play()}
   if(PR.mode==='world'){if(B)prWorld(c,w,h,dpr,B,vt);if(PR.replay)PR.lastVt=vt;if(now-(PR.stAt||0)>400){PR.stAt=now;pracStatus()}return}
   const vw=PR.replay?(PR.replay.url?recV.videoWidth:0)||PR.replay.cw:camV.videoWidth,vh=PR.replay?(PR.replay.url?recV.videoHeight:0)||PR.replay.ch:camV.videoHeight;
   /* the camera fills its pane (cropped at the edges) */
@@ -5506,6 +5519,7 @@ function prFinal(H){if(PR.done.has(H))return;PR.done.add(H);const sc=PR.win.get(
   const w0=PR.why.get(H)||[];if(lab==='Hit'&&w0.some(x=>x.deg>=60&&/arm|leg/.test(x.part))){lab='Close';PR.pass.hit--;PR.pass.close++}
   const why=lab==='Hit'||lab==='Not seen'?[]:w0;
   PR.flash={label:lab,score:sc??0,col:prCol(lab),at:performance.now(),why:prWhyText(why.slice(0,1))};PR.res.set(H,lab);
+  if(PR.flash.why&&!PR.replay&&!S.rec&&performance.now()-(PR.saidAt||0)>2500)say(PR.flash.why);
   PR.results=(PR.results||[]).concat([{t:H,score:sc}]).slice(-200);
   if(PR.run)PR.run.hits.push({t:H,score:sc!=null&&sc>=0?sc:null,label:lab,why})}
 /* ---- the run: record your camera while you dance a pass, then show how it went and let you replay it ---- */
@@ -5519,8 +5533,31 @@ function prRunEnd(){const Rn=PR.run;PR.run=null;if(!Rn)return;
   const keep=Rn.hits.some(x=>x.score!=null);   /* a pass where you were never seen doesn't replace the last one */if(keep&&S.playing)pause();   /* the pass is over: stop on the results (Go again starts the next) */
   const fin=()=>{if(!keep)return;const url=Rn.chunks.length?URL.createObjectURL(new Blob(Rn.chunks,{type:(Rn.mime||'video/webm').split(';')[0]})):null;
     const old=PR.last;if(old&&old.url&&!(PR.replay&&PR.replay.url===old.url))URL.revokeObjectURL(old.url);
-    PR.last={hits:Rn.hits,samples:Rn.samples,url,cw:Rn.cw,ch:Rn.ch,mime:Rn.mime};if(PR.on){prResShow();pracUI()}};
+    PR.last={hits:Rn.hits,samples:Rn.samples,url,cw:Rn.cw,ch:Rn.ch,mime:Rn.mime};prLog(Rn.hits);if(PR.on){prResShow();pracUI()}};
   if(Rn.rec&&Rn.rec.state!=='inactive'){Rn.rec.onstop=fin;try{Rn.rec.stop()}catch(e){fin()}}else fin()}
+/* ---- progress: every kept run is logged for its clip (score, hits, when), and the days you practised (any clip) ---- */
+const dayKey=d=>{d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function prLogKey(){const n=srcById(S.cur);return n?'rs-runs:'+(n.key||n.id):null}
+function prRuns(){const k=prLogKey();if(!k)return [];try{return JSON.parse(localStorage.getItem(k)||'[]')}catch(e){return []}}
+function prLog(hits){const k=prLogKey();if(!k||!hits.length)return;
+  const seen=hits.filter(x=>x.score!=null),avg=seen.length?Math.round(hits.reduce((a,x)=>a+(x.score||0),0)/hits.length):0;
+  const r={at:Date.now(),score:avg,hit:hits.filter(x=>x.label==='Hit').length,n:hits.length};
+  try{const a=prRuns();a.push(r);localStorage.setItem(k,JSON.stringify(a.slice(-200)))}catch(e){}
+  try{const d=JSON.parse(localStorage.getItem('rs-days')||'[]');const t=dayKey();if(d[d.length-1]!==t){d.push(t);localStorage.setItem('rs-days',JSON.stringify(d.slice(-400)))}}catch(e){}}
+function prStreak(){let d=[];try{d=JSON.parse(localStorage.getItem('rs-days')||'[]')}catch(e){}if(!d.length)return 0;
+  const set=new Set(d),day=new Date();if(!set.has(dayKey(day))){day.setDate(day.getDate()-1);if(!set.has(dayKey(day)))return 0}
+  let n=0;while(set.has(dayKey(day))){n++;day.setDate(day.getDate()-1)}return n}
+function prHistShow(){const box=$('#prResHist');if(!box)return;const runs=prRuns();if(!runs.length){box.hidden=true;return}
+  const last=runs[runs.length-1],prev=runs.slice(0,-1),best=Math.max(...runs.map(r=>r.score)),pb=prev.length?Math.max(...prev.map(r=>r.score)):-1;
+  const today=runs.filter(r=>dayKey(new Date(r.at))===dayKey()).length,st=prStreak();
+  const first=runs[0],up=runs.length>=3?last.score-first.score:null;
+  const bits=[];if(prev.length&&last.score>pb)bits.push('New best!');else bits.push('Best '+best+'%');
+  bits.push(runs.length+' run'+(runs.length===1?'':'s')+(today>1?` (${today} today)`:''));
+  if(up!=null&&up!==0)bits.push((up>0?'+':'')+up+'% since your first');
+  if(st>=2)bits.push(st+'-day streak');
+  $('#prHistTxt').textContent=bits.join(' · ');
+  const g=$('#prHistBars');g.textContent='';for(const r of runs.slice(-12)){const i=document.createElement('i');i.style.height=Math.max(8,r.score)+'%';i.title=new Date(r.at).toLocaleString()+': '+r.score+'%';if(r===last)i.className='now';g.appendChild(i)}
+  box.hidden=false}
 /* your pose at clip time t in a run (the last one kept at or before t, so a Step-mode hold shows the matched pose) */
 function prSampleAt(sm,t,last){if(!sm||!sm.length)return null;let best=null,bd=1e9;
   for(let i=0;i<sm.length;i++){const d=t-sm[i].vt;if(d>=-0.02&&d<0.5&&(last?d<=bd+0.001:d<bd)){bd=d;best=sm[i]}}return best}
@@ -5539,7 +5576,8 @@ function prResShow(){const L=PR.last;if(!L)return;const box=$('#pracRes');
   const cnt={};for(const x of L.hits)for(const w of (x.why||[]).slice(0,2))cnt[w.part]=(cnt[w.part]||0)+1;
   const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0],tip=$('#prResTip');
   if(tip){tip.textContent=top&&top[1]>=2?`Work on: your ${top[0]} (off in ${top[1]} move${top[1]===1?'':'s'})`:'';tip.hidden=!tip.textContent}
-  $('#prReplay').disabled=!(L.samples.length||L.url);
+  prHistShow();
+  $('#prReplay').disabled=!(L.samples.length||L.url);$('#prSave').disabled=!(L.samples.length||L.url);
   box.hidden=false}
 const fmtClock=t=>{t=Math.max(0,t);return Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0')};
 function prReplayStart(){const L=PR.last;if(!L)return;prRunEnd();PR.hold=null;
@@ -5548,6 +5586,62 @@ function prReplayStart(){const L=PR.last;if(!L)return;prRunEnd();PR.hold=null;
   $('#pracRes').hidden=true;if(PR.mode==='split')PR.mode='ghost';PR.xf=null;pracUI();
   pause();toStart();PR.lastVt=-1e9;play();
   if(!L.url)recMsg('This phone didn\'t record the camera, so the replay shows your skeleton only.')}
+/* ---- Save my run: the dancer and you side by side, each move's result on screen, the song underneath, as one video.
+   It records like a take (the clip plays once from the start), with your camera recording from the run on the right,
+   kept in time with the clip from the run's own timing (where the clip was at each moment of the recording). ---- */
+function runCamTime(L,t){const sm=L&&L.samples;if(!sm||!sm.length)return null;
+  let lo=0,hi=sm.length-1;if(t<=sm[0].vt)return sm[0].w-(sm[0].vt-t);if(t>=sm[hi].vt)return sm[hi].w+(t-sm[hi].vt);
+  while(hi-lo>1){const m=(lo+hi)>>1;if(sm[m].vt<=t)lo=m;else hi=m}
+  const a=sm[lo],b=sm[hi],k=(t-a.vt)/((b.vt-a.vt)||1);return a.w+(b.w-a.w)*k}
+async function composeCfg(w,h){
+  const codecs=[...(vCfg&&vCfg.codec?[vCfg.codec]:[]),'avc1.640028','avc1.4d0028','avc1.42002a','vp09.00.10.08'];
+  for(const codec of codecs){const avc=codec.startsWith('avc');const cfg=avc?{codec,width:w,height:h,bitrate:6000000,framerate:30,avc:{format:'avc'}}:{codec,width:w,height:h,bitrate:6000000,framerate:30};
+    const r=await VideoEncoder.isConfigSupported(cfg).catch(()=>null);if(r&&r.supported){cfg.mux=avc?'avc':'vp9';return cfg}}
+  return null}
+function composeLayout(L){const H=960,vw=v.videoWidth||720,vh=v.videoHeight||1280,cw=(L.url&&recV.videoWidth)||L.cw||720,ch=(L.url&&recV.videoHeight)||L.ch||960;
+  let lw=Math.round(vw/vh*H/2)*2,rw=Math.round(cw/ch*H/2)*2;const k=Math.min(1,1920/(lw+rw));
+  const h=Math.round(H*k/2)*2;lw=Math.round(lw*k/2)*2;rw=Math.round(rw*k/2)*2;return {W:lw+rw,H:h,lw,rw}}
+function drawCompose(t){const C=S.recCompose,L=C.L,{W,H,lw,rw}=C.lay;
+  if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
+  cx.fillStyle='#0E1014';cx.fillRect(0,0,W,H);
+  /* the dancer, with the skeleton (flipped too when the clip is shown mirrored) */
+  const vw=v.videoWidth||lw,vh=v.videoHeight||H,k=Math.min(lw/vw,H/vh),dw=vw*k,dh=vh*k,R={x:(lw-dw)/2,y:(H-dh)/2,w:dw,h:dh};
+  cx.save();if(S.mirror){cx.translate(lw,0);cx.scale(-1,1)}
+  try{cx.drawImage(v,R.x,R.y,R.w,R.h)}catch(e){}
+  try{const n=srcOfEl(v),B=n&&bodyOf(n);if(B&&$('#bodyShow').checked)LOOK.drawBody(cx,B,t,R,{hipPath:false,meter:false,tiltGuide:false},1)}catch(e){}
+  cx.restore();
+  /* you: the camera recording kept in time with the clip, shown as you saw yourself */
+  const ct=runCamTime(L,t);
+  if(L.url&&recV.readyState>=2){
+    if(ct!=null&&!recV.seeking){const d=ct-recV.currentTime;if(Math.abs(d)>0.25){try{recV.currentTime=Math.max(0,ct)}catch(e){}}else recV.playbackRate=Math.max(0.5,Math.min(4,(v.playbackRate||1)*(1+d*1.5)))}
+    const cw=recV.videoWidth,ch=recV.videoHeight,k2=Math.min(rw/cw,H/ch),w2=cw*k2,h2=ch*k2;
+    cx.save();if(PR.mirror){cx.translate(lw+rw,0);cx.scale(-1,1);cx.drawImage(recV,(rw-w2)/2,(H-h2)/2,w2,h2)}else cx.drawImage(recV,lw+(rw-w2)/2,(H-h2)/2,w2,h2);cx.restore()}
+  else{const sm=prSampleAt(L.samples,t,true),P=sm&&sm.P;
+    if(P){cx.save();cx.strokeStyle='#2FD47A';cx.lineWidth=6;cx.lineCap='round';const X=q=>lw+(PR.mirror?1-q[0]:q[0])*rw,Y=q=>q[1]*H;
+      for(const [i,j] of PR_BONES){if(!P[i]||!P[j]||P[i][2]<0.4||P[j][2]<0.4)continue;cx.beginPath();cx.moveTo(X(P[i]),Y(P[i]));cx.lineTo(X(P[j]),Y(P[j]));cx.stroke()}cx.restore()}}
+  /* labels, the dividing line, and each move's result as it happens */
+  cx.fillStyle='rgba(243,241,236,.9)';cx.fillRect(lw-1,0,2,H);
+  const fs=Math.round(H/34);cx.font=`800 ${fs}px Figtree,system-ui,sans-serif`;cx.textBaseline='top';cx.lineWidth=4;cx.strokeStyle='rgba(8,9,12,.8)';
+  const tag=(s,x,al)=>{cx.textAlign=al;cx.strokeText(s,x,fs*0.8);cx.fillStyle='#F3F1EC';cx.fillText(s,x,fs*0.8)};
+  tag('DANCER',fs,'left');tag('YOU',W-fs,'right');
+  let cur=null;for(const x of L.hits)if(x.t<=t+0.05&&t-x.t<1.3)cur=x;
+  if(cur){const big=Math.round(H/16);cx.textAlign='center';cx.textBaseline='bottom';cx.font=`900 ${big}px Figtree,system-ui,sans-serif`;cx.lineWidth=7;
+    const s=(cur.label==='Not seen'?'NOT SEEN':cur.label.toUpperCase()+(cur.score!=null?' '+cur.score+'%':'')),y=H-fs*2.2;cx.strokeText(s,lw+rw/2,y);cx.fillStyle=prCol(cur.label);cx.fillText(s,lw+rw/2,y);
+    const wt=prWhyText((cur.why||[]).slice(0,1));if(wt){cx.font=`800 ${fs}px Figtree,system-ui,sans-serif`;cx.lineWidth=4;cx.textBaseline='top';cx.strokeText('Fix: '+wt,lw+rw/2,y+fs*0.3);cx.fillStyle='#F3F1EC';cx.fillText('Fix: '+wt,lw+rw/2,y+fs*0.3)}}
+  const hit=L.hits.filter(x=>x.label==='Hit').length;cx.textAlign='left';cx.textBaseline='bottom';cx.font=`800 ${fs}px Figtree,system-ui,sans-serif`;cx.lineWidth=4;
+  const sc=`${hit}/${L.hits.length} hits · Riddim Swap`;cx.strokeText(sc,fs,H-fs*0.7);cx.fillStyle='rgba(243,241,236,.85)';cx.fillText(sc,fs,H-fs*0.7)}
+async function prSaveRun(){const L=PR.last;if(!L||S.rec)return;const b=$('#prSave');
+  const C={L,lay:null,cfg:null};
+  if(L.url){recV.src=L.url;recV.load();await new Promise(r=>{if(recV.readyState>=1)r();else{recV.addEventListener('loadedmetadata',r,{once:true});setTimeout(r,3000)}})}
+  C.lay=composeLayout(L);
+  if(canCodecs()&&buf&&aCfg){C.cfg=await composeCfg(C.lay.W,C.lay.H)}
+  /* the replay (your recording follows the clip), then record it like a take */
+  prRunEnd();PR.hold=null;PR.replay={...L,played:false};PR.res=new Map(L.hits.map(x=>[x.t,x.label]));PR.done=new Set(L.hits.map(x=>x.t));PR.flash=null;
+  $('#pracRes').hidden=true;PR.xf=null;pracUI();
+  S.recCompose=C;S.recComposeN=(S.recComposeN||0)+1;
+  startRecording();
+  if(!S.rec){S.recCompose=null;prReplayStop(true);prResShow();return}
+  recMsg('Making your video: you and the dancer side by side · '+fmt(segStart(segs().length,segs())))}
 function prReplayStop(quiet){if(!PR.replay)return;PR.replay=null;try{recV.pause()}catch(e){}PR.Praw=null;PR.P=null;prReset();PR.xf=null;
   if(!quiet){pause();prResShow()}pracUI()}
 function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
@@ -5627,8 +5721,9 @@ function prOnRef(Pn,Q,cw,ch){if(!(prVis(Q,23)&&prVis(Q,24)&&prVis(Q,11)&&prVis(Q
   camCv.addEventListener('wheel',e=>{if(PR.mode!=='world')return;e.preventDefault();PR.wv.zoom=Math.max(0.5,Math.min(3,PR.wv.zoom*Math.exp(-e.deltaY*0.0015)))},{passive:false});}
 function el0playing(){const e=curVid();return !!e&&!e.paused}
 $$('#pracMode button').forEach(b=>b.addEventListener('click',()=>{PR.mode=b.dataset.pm;PR.xf=null;prSave();pracUI();if(prNeedsCam()&&!PR.stream)camStart();pracStatus()}));
+$('#prSave').addEventListener('click',()=>prSaveRun());
 $('#pracCount').addEventListener('click',()=>{PR.count=PR.count===3?5:PR.count===5?0:3;prSave();pracUI()});
-[['#pracHands','hands'],['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all'],['#pracStep','step'],['#pracMyRun','myRun']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();if(k==='step'&&!PR.step){PR.hold=null;PR.holdOk=0}prSave();pracUI();pracStatus()}));
+[['#pracVoice','voice'],['#pracHands','hands'],['#pracMirror','mirror'],['#pracMine','mine'],['#pracTargets','targets'],['#pracFlip','flip'],['#pracAll','all'],['#pracStep','step'],['#pracMyRun','myRun']].forEach(([id,k])=>$(id).addEventListener('click',()=>{PR[k]=!PR[k];PR.xf=null;if(k==='all')prReset();if(k==='step'&&!PR.step){PR.hold=null;PR.holdOk=0}prSave();pracUI();pracStatus()}));
 $('#pracLead').addEventListener('click',()=>{PR.lead=PR.lead===1?2:PR.lead===2?4:1;prSave();pracUI()});
 $('#pracReset').addEventListener('click',()=>{PR.wv={yaw:-0.62,pitch:0.28,zoom:1}});
 $('#pracCam').addEventListener('click',camStart);
