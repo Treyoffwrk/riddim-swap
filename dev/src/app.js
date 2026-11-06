@@ -278,6 +278,7 @@ function syncSteady(force){
   }
   if(a.paused){seekSong(e);setRate(songRate());a.play().catch(songFail);S.lastFix=now;S.driftEma=0;S.vI=0;setV(0);return}
   setRate(songRate());
+  if(!force&&(S.scrubbing||now-(S.userSeekAt||0)<700)){S.driftEma=0;S.songClk=null;return}   /* you're moving the bar: the song follows you, never the other way */
   const drift=a.currentTime-e;   /* + = song ahead of the video */
   const busy=S.switchPending||v.seeking||a.seeking||now-(S.cutAt||0)<400;
   /* right after a jump: learn how late the song lands (once), never jump again for small errors */
@@ -404,7 +405,7 @@ function wire(el){
     if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
     if(me())$('#vidName').textContent="This video can't play here";
   });
-  el.addEventListener('seeked',()=>{if(me()){if(S.catchUp&&performance.now()-S.catchUp<1500){S.catchUp=0;syncSong(false)}else syncSong(!segMode());recSync(true)}});   /* our own catch-up seek doesn't move the song */
+  el.addEventListener('seeked',()=>{if(me()){const user=performance.now()-(S.userSeekAt||0)<1200;if(user){S.catchUp=0;S.driftEma=0;syncSong(true)}else if(S.catchUp&&performance.now()-S.catchUp<1500){S.catchUp=0;syncSong(false)}else syncSong(!segMode());recSync(true)}});   /* our own catch-up seek doesn't move the song */
   /* a short video hiccup no longer stops the song (that was a cut-out); only a stall over 0.6 s pauses it */
   el.addEventListener('waiting',()=>{if(!me()||S.switchPending||segMode())return;
     if(S.rec){S.stalled=true;a.pause();recStopSong();return}
@@ -555,7 +556,11 @@ document.addEventListener('keydown',e=>{
   if(e.code!=='Space'||e.target.matches('input[type=number],input[type=text],button,label'))return;
   e.preventDefault(); if(!$('#play').disabled)toggle();
 });
-$('#scrub').addEventListener('input',e=>{const x=+e.target.value; if(segMode())seekT(x); else v.currentTime=x});
+/* dragging the bar is your move: while playing, the song follows the video to where you let go (on a clip with cut
+   parts it didn't: the song stayed put and the video was pulled back to it, so dragging back jumped forward again) */
+$('#scrub').addEventListener('input',e=>{const x=+e.target.value;S.userSeekAt=performance.now(); if(segMode())seekT(x); else v.currentTime=x});
+['pointerdown','touchstart'].forEach(ev=>$('#scrub').addEventListener(ev,()=>{S.scrubbing=true;S.userSeekAt=performance.now()},{passive:true}));
+['pointerup','pointercancel','touchend','touchcancel','change'].forEach(ev=>$('#scrub').addEventListener(ev,()=>{if(!S.scrubbing)return;S.scrubbing=false;S.userSeekAt=performance.now();S.catchUp=0;if(S.playing){S.driftEma=0;S.songStuck=0;S.songClk=null;syncSong(true)}},{passive:true}));
 $('#origAudio').addEventListener('change',e=>{v.muted=!e.target.checked});
 
 /* speeds */
