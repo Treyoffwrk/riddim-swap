@@ -14,8 +14,9 @@ function learnSave(){const L=S.learn;if(!L)return;try{localStorage.setItem(learn
 function learnOpts(){let o={};try{o=JSON.parse(localStorage.getItem('rs-learn-opts')||'{}')}catch(e){}return {build:o.build!==false,together:o.together!==false,auto:o.auto!==false,per:[1,2,3].includes(o.per)?o.per:2}}
 function learnSetOpt(k,v){const o=learnOpts();o[k]=v;try{localStorage.setItem('rs-learn-opts',JSON.stringify(o))}catch(e){}}
 /* song time <-> clip time, the way the Study engine plays them */
-function learnClipT(s){return S.cIn+((s-S.offset)/S.ar-(S.avComp||0))*S.vr}
-function learnSongT(t){return S.offset+((t-S.cIn)/S.vr+(S.avComp||0))*S.ar}
+/* the same mapping as normal playback (parts cut out, speed graph), so each 8-count starts on the music's 1 */
+function learnClipT(s){return songToClip(s)}
+function learnSongT(t){return clipToSong(t)}
 /* the 8-counts, in clip time: [{a,b,beats:[song times]|null}] */
 function learnChunks(){
   const n=srcById(S.cur), A=S.cIn, B=clipEnd(); if(!n||!(B-A>1))return {chunks:[],how:'none'};

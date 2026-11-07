@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-52e9011e4b'</script>
+<script>window.RS_BUILD='rs-0ae930e5bb'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -2893,7 +2893,9 @@ function keptRanges(n){const a=S.cIn,b=clipEnd(),out=[];for(const p of n.pieces|
 function segs(){
   if(S.preview)return [S.preview];
   if(routineOn())return S.seq.map(x=>segOf(x)).filter(Boolean);
-  if(S.study)return [{src:S.cur,s:S.study.a,e:S.study.b,r:S.vr*S.study.rate}];
+  if(S.study){const n=srcById(S.cur),g={src:S.cur,s:S.study.a,e:S.study.b,r:S.vr*S.study.rate};
+    /* with a speed graph, the slowed stretch follows the graph too (its output times stretched by the Study speed) */
+    const k=n&&curveKnots(n,{src:S.cur,s:S.study.a,e:S.study.b,r:S.vr});if(k)g.k=k.map(([s,o])=>[s,o/S.study.rate]);return [g]}
   const n0=srcById(S.cur);
   if(clipCut()){const K=keptRanges(n0);if(K.length)return K.map(([s,e])=>{const g={src:S.cur,s,e,r:S.vr};const k=curveKnots(n0,g);if(k)g.k=k;return g})}
   const g={src:S.cur,s:S.cIn,e:clipEnd(),r:S.vr}; const k=curveKnots(n0,g); if(k)g.k=k;
@@ -2980,7 +2982,19 @@ function primeNext(){
 }
 function segStart(i,L){let t=0;for(let k=0;k<i;k++)t+=segLen(L[k]);return t}
 function tPos(){const L=segs(),i=Math.min(S.segIdx,L.length-1),g=L[i];if(!g)return 0;return segStart(i,L)+toOut(g,v.currentTime)}
-function expected(){if(S.study)return S.offset+((v.currentTime-S.cIn)/S.vr+(S.avComp||0))*S.ar;return S.offset+(S.variant&&S.variant.shift||0)+(tPos()+(S.avComp||0))*S.ar}
+/* Study and Learn: the song goes where it would be in normal playback at this moment of the clip: after any parts cut
+   out, through the speed graph. (They used start + time / speed, so on a clip with a part cut out the song was off by
+   the length of that part, all through Learn.) */
+function normSegs(){const st=S.study;S.study=null;try{return segs()}finally{S.study=st}}
+function clipToSong(t){const L=normSegs();if(!L.length)return S.offset+((t-S.cIn)/S.vr+(S.avComp||0))*S.ar;
+  const n=L.length,tot=segStart(n,L),f=x=>S.offset+(x+(S.avComp||0))*S.ar;
+  if(t<L[0].s)return f((t-L[0].s)/segR(L[0]));if(t>L[n-1].e)return f(tot+(t-L[n-1].e)/segR(L[n-1]));   /* before / after the clip: carried on at its speed */
+  let i=L.findIndex(g=>t>=g.s-1e-3&&t<=g.e+1e-3);if(i<0){i=L.findIndex(g=>g.s>t);if(i<0)i=n-1;t=Math.min(Math.max(t,L[i].s),L[i].e)}
+  return f(segStart(i,L)+toOut(L[i],t))}
+function songToClip(s){const L=normSegs(),T=(s-S.offset)/S.ar-(S.avComp||0);if(!L.length)return S.cIn+T*S.vr;
+  const n=L.length,tot=segStart(n,L);if(T<0)return L[0].s+T*segR(L[0]);if(T>tot)return L[n-1].e+(T-tot)*segR(L[n-1]);
+  let i=0;while(i<n-1&&T>=segStart(i+1,L))i++;return toSrc(L[i],Math.max(0,T-segStart(i,L)))}
+function expected(){if(S.study)return clipToSong(v.currentTime);return S.offset+(S.variant&&S.variant.shift||0)+(tPos()+(S.avComp||0))*S.ar}
 function gotoSeg(i){
   const g=segs()[i]; S.segIdx=i; if(!g)return;
   const P=S.primed; S.primed=null;
@@ -3012,7 +3026,7 @@ function atSegEnd(){
   if(S.segIdx<L.length-1){gotoSeg(S.segIdx+1);return}
   if(S.rec){stopRecording();return}
   if(S.preview){S.preview=null;pause();toStart();renderMoves();return}
-  if(S.loop){if(S.learn)learnLoopDone();toStart();if(v.paused)v.play().catch(()=>{});syncSong(true)}
+  if(S.loop){if(S.learn)learnLoopDone();toStart();if(S.study&&S.playing){alignedStart();return}if(v.paused)v.play().catch(()=>{});syncSong(true)}
   else{pause();toStart()}
 }
 
@@ -3102,16 +3116,45 @@ function syncSong(force){
   if((Math.abs(drift)>(segMode()?0.4:0.25)&&settled)||(Math.abs(S.driftEma)>0.08&&settled)){S.lastFix=now;S.driftEma=0;seekSong(e)}
 }
 
+/* ---- Aligned start (Study and Learn): every loop and every new speed starts with both stopped and in place; the song
+   starts first and the video only when the song is really moving, at the song's spot. Starting both at once, a phone's
+   song player takes a moment to sound after a seek while the video is already moving, so the song came in late at
+   every loop and was then pulled back with jumps (Learn loops every few seconds). ---- */
+function alignedStart(){
+  if(!S.hasA||!S.hasV||!S.liveSong||!S.liveSong.ready){if(v.paused)v.play().catch(()=>{});syncSong(true);return}
+  const id=S.alignId=(S.alignId||0)+1,t0=performance.now();S.aligning={at:t0};
+  v.pause();a.pause();
+  const e=expected()+(S.sndDelay||0)*S.ar;try{seekSong(Math.max(0,e))}catch(err){}setRate(songRate());
+  const g=segs()[S.segIdx];if(g){const r=vNudged(rateAt(g,v.currentTime));v.playbackRate=r}
+  const ready=el=>new Promise(r=>{if(!el.seeking&&el.readyState>=2)return r();let done=false;const f=()=>{if(!done){done=true;r()}};el.addEventListener('seeked',f,{once:true});el.addEventListener('canplay',f,{once:true});setTimeout(f,700)});
+  const gone=()=>id!==S.alignId||!S.playing||!S.study;
+  Promise.all([ready(v),ready(a)]).then(()=>{
+    if(gone()){if(id===S.alignId)S.aligning=null;return}
+    const a0=a.currentTime,st=performance.now();a.play().catch(songFail);
+    const wait=()=>{
+      if(gone()){if(id===S.alignId)S.aligning=null;return}
+      const moving=!a.paused&&a.currentTime>a0+0.004;
+      if(moving||performance.now()-st>1000){
+        /* the video goes where the song is now (with the sound delay), then plays */
+        const sd=S.sndDelay||0,t=songToClip(a.currentTime-sd*S.ar);
+        if(moving&&S.study&&t>=S.study.a&&t<S.study.b&&Math.abs(t-v.currentTime)>0.02){S.catchUp=performance.now();v.currentTime=t}   /* our own move: the song stays put when it lands */
+        v.play().catch(()=>{});S.aligning=null;S.songClk=null;S.songStuck=0;S.driftEma=0;S.vI=0;S.lastFix=performance.now();
+        const L=S.alignLog||(S.alignLog=[]);L.push({wait:Math.round(performance.now()-st),seek:Math.round(st-t0),moving});if(L.length>40)L.shift();
+        if(S.snd)S.snd.aligned=(S.snd.aligned||0)+1}
+      else requestAnimationFrame(wait)};
+    requestAnimationFrame(wait)})}
+
 /* put the video where the song is (the inverse of expected(), with the sound delay) */
 function videoToSong(){
   const sd=S.sndDelay||0, base=S.offset+(S.variant&&S.variant.shift||0);
   S.catchUp=performance.now();
-  if(S.study){const t=S.cIn+((a.currentTime-S.offset)/S.ar-(S.avComp||0)-sd)*S.vr;if(t>=S.study.a&&t<S.study.b)v.currentTime=t;return}
+  if(S.study){const t=songToClip(a.currentTime-sd*S.ar);if(t>=S.study.a&&t<S.study.b)v.currentTime=t;return}
   const T=(a.currentTime-base)/S.ar-(S.avComp||0)-sd, L=segs(), tot=segStart(L.length,L);
   if(T<0||T>=tot-0.05)return;
   seekT(T);
 }
 function syncSteady(force){
+  if(S.aligning){if(performance.now()-S.aligning.at<2500)return;S.aligning=null}
   const e=expected()+(S.rec?0:(S.sndDelay||0)*S.ar), d=songDur(), live=S.playing&&!v.paused&&!S.stalled, now=performance.now(), snd=S.snd||(S.snd={jumps:0,maxLate:0,frames:0,within:0,started:now});
   const setV=n=>{S.vNudge=n;const g=segs()[S.segIdx];if(!g||S.switchPending)return;const r=vNudged(rateAt(g,v.currentTime));if(Math.abs(v.playbackRate-r)>0.006)v.playbackRate=r};
   if(!live||e<0||e>=d){
@@ -3195,10 +3238,11 @@ function play(){
   setPlaying(true);
   if(S.hasA&&!S.hasV&&a.ended)a.currentTime=0;
   unlockSong();
+  if(S.hasV&&S.study&&!S.rec&&S.hasA){S.stalled=false;alignedStart();return}
   if(S.hasV)v.play().then(()=>{S.stalled=false;syncSong(true);recSync(true);primeNext()}).catch(err=>{setPlaying(false);a.pause();
     if(!err||err.name!=='AbortError'){if(healMedia(false))recMsg('Reloaded the video. Tap play again.')}});
 }
-function pause(){S.stopAtT=null;if(S.snd&&!S.snd.endAt&&S.playing)S.snd.endAt=performance.now();setPlaying(false);v.pause();a.pause();recStopSong()}
+function pause(){S.stopAtT=null;S.aligning=null;S.alignId=(S.alignId||0)+1;if(S.snd&&!S.snd.endAt&&S.playing)S.snd.endAt=performance.now();setPlaying(false);v.pause();a.pause();recStopSong()}
 function toggle(){if(S.rec){stopRecording();return}
   if(PR.cd){prCdCancel();return}   /* a tap during the countdown cancels it */
   if(!S.playing&&prCdWanted()){prCdStart();return}
@@ -3254,7 +3298,7 @@ function wire(el){
     if(n&&n.blob&&n.errs<2){n.errs++;refreshSource(n);return}
     if(me())$('#vidName').textContent="This video can't play here";
   });
-  el.addEventListener('seeked',()=>{if(me()){const user=performance.now()-(S.userSeekAt||0)<1200;if(user){S.catchUp=0;S.driftEma=0;syncSong(true)}else if(S.catchUp&&performance.now()-S.catchUp<1500){S.catchUp=0;syncSong(false)}else syncSong(!segMode());recSync(true)}});   /* our own catch-up seek doesn't move the song */
+  el.addEventListener('seeked',()=>{if(me()&&!S.aligning){const user=performance.now()-(S.userSeekAt||0)<1200;if(user){S.catchUp=0;S.driftEma=0;syncSong(true)}else if(S.catchUp&&performance.now()-S.catchUp<1500){S.catchUp=0;syncSong(false)}else syncSong(!segMode());recSync(true)}});   /* our own catch-up seek doesn't move the song */
   /* a short video hiccup no longer stops the song (that was a cut-out); only a stall over 0.6 s pauses it */
   el.addEventListener('waiting',()=>{if(!me()||S.switchPending||segMode())return;
     if(S.rec){S.stalled=true;a.pause();recStopSong();return}
@@ -6622,7 +6666,7 @@ window.addEventListener('unhandledrejection',e=>noteErr('promise: '+((e.reason&&
 function soundReport(){const s=(S.snd&&S.snd.frames>10)?S.snd:S.sndLast;if(!s||!s.frames)return '';
   const secs=(performance.now()-s.started)/1000,pct=Math.round(100*s.within/s.frames);
   const span=((s.endAt||performance.now())-s.started)/1000, fps=span>0.5?Math.round(s.frames/span):0;
-  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.vjumps?`, video caught up ${s.vjumps} time${s.vjumps>1?'s':''}`:''}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).`}
+  return `Last play: song and video within 40 ms ${pct}% of the time, largest gap ${Math.round(s.maxLate*1000)} ms, ${s.jumps} song jump${s.jumps===1?'':'s'}${s.vjumps?`, video caught up ${s.vjumps} time${s.vjumps>1?'s':''}`:''}${s.stalls?`, ${s.stalls} video stall${s.stalls>1?'s':''}`:''} (over ${Math.round(span)} s, screen ${fps} fps).${(()=>{const L=S.alignLog||[];if(!L.length)return '';const w=L.map(x=>x.wait).sort((a,b)=>a-b),k=L.map(x=>x.seek).sort((a,b)=>a-b);return ` Study/Learn starts: ${L.length}, song started after ${w[w.length>>1]} ms (most ${w[w.length-1]} ms), seeking took ${k[k.length>>1]} ms${L.some(x=>!x.moving)?`, song didn't start ${L.filter(x=>!x.moving).length}×`:''}.`})()}`}
 $('#projBtn').addEventListener('click',()=>{$('#sndReport').textContent=soundReport()});
 async function phoneCheck(){
   const L=[],add=(k,v)=>{if(v!=null&&v!=='')L.push(k+': '+v)};
@@ -7576,8 +7620,9 @@ function learnSave(){const L=S.learn;if(!L)return;try{localStorage.setItem(learn
 function learnOpts(){let o={};try{o=JSON.parse(localStorage.getItem('rs-learn-opts')||'{}')}catch(e){}return {build:o.build!==false,together:o.together!==false,auto:o.auto!==false,per:[1,2,3].includes(o.per)?o.per:2}}
 function learnSetOpt(k,v){const o=learnOpts();o[k]=v;try{localStorage.setItem('rs-learn-opts',JSON.stringify(o))}catch(e){}}
 /* song time <-> clip time, the way the Study engine plays them */
-function learnClipT(s){return S.cIn+((s-S.offset)/S.ar-(S.avComp||0))*S.vr}
-function learnSongT(t){return S.offset+((t-S.cIn)/S.vr+(S.avComp||0))*S.ar}
+/* the same mapping as normal playback (parts cut out, speed graph), so each 8-count starts on the music's 1 */
+function learnClipT(s){return songToClip(s)}
+function learnSongT(t){return clipToSong(t)}
 /* the 8-counts, in clip time: [{a,b,beats:[song times]|null}] */
 function learnChunks(){
   const n=srcById(S.cur), A=S.cIn, B=clipEnd(); if(!n||!(B-A>1))return {chunks:[],how:'none'};
