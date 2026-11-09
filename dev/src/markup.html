@@ -351,6 +351,14 @@
           <input type="range" id="inRange" min="0" max="1" step="0.01" value="0" disabled>
           <p class="hint">Drag to the moment the dance should begin. The video shows that frame as you drag, and the song lines up from here.</p>
         </div>
+        <div class="field both">
+          <div class="field-top"><span class="label">Move both starts</span><span class="val" id="bothOut"></span></div>
+          <div class="nudges">
+            <button class="btn sm" data-both="-2">−2s</button><button class="btn sm" data-both="-1">−1s</button><button class="btn sm" data-both="-0.5">−½s</button>
+            <button class="btn sm" data-both="0.5">+½s</button><button class="btn sm" data-both="1">+1s</button><button class="btn sm" data-both="2">+2s</button>
+          </div>
+          <p class="hint" id="bothMsg">Starts the dance and the song earlier (−) or later (+) together, so every move stays on the same part of the music.</p>
+        </div>
         <div class="row" style="justify-content:space-between">
           <span class="label">Ends at <span class="val" id="outVal" style="margin-left:6px">End</span></span>
           <div class="row" style="gap:6px">
@@ -625,6 +633,14 @@
             <button class="btn sm" data-ro="-1">−1s</button><button class="btn sm" data-ro="-0.1">−0.1</button><button class="btn sm" data-ro="-0.02">−0.02</button>
             <button class="btn sm" data-ro="0.02">+0.02</button><button class="btn sm" data-ro="0.1">+0.1</button><button class="btn sm" data-ro="1">+1s</button>
           </div>
+        </div>
+        <div class="field both">
+          <div class="field-top"><span class="label">Move both starts</span><span class="val" id="rbothOut"></span></div>
+          <div class="nudges">
+            <button class="btn sm" data-rboth="-2">−2s</button><button class="btn sm" data-rboth="-1">−1s</button><button class="btn sm" data-rboth="-0.5">−½s</button>
+            <button class="btn sm" data-rboth="0.5">+½s</button><button class="btn sm" data-rboth="1">+1s</button><button class="btn sm" data-rboth="2">+2s</button>
+          </div>
+          <p class="hint" id="rbothMsg">Starts the dance and the song earlier (−) or later (+) together, so every move stays on the same part of the music.</p>
         </div>
         <div class="field song">
           <div class="field-top"><label class="label" for="rARate">Song speed</label><span class="val" id="rARateOut">×1.00</span></div>

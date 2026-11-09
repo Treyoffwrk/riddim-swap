@@ -654,6 +654,7 @@ $$('[data-ro]').forEach(b=>b.addEventListener('click',()=>setROffset(S.rt.offset
 function updateTrim(){
   const d=v.duration||0, e=clipEnd(), ro=routineOn(), sm=segMode();
   $('#inVal').textContent=fmt2(S.cIn);
+  {const bo=$('#bothOut');if(bo)bo.textContent='clip '+fmt(S.cIn)+' · song '+fmt(S.main.offset)}
   const ir=$('#inRange'); ir.max=d||1; if(document.activeElement!==ir)ir.value=S.cIn;
   $('#outVal').textContent=S.cOut!=null?fmt(S.cOut):(d?'End · '+fmt(d):'End');
   $('#clipNote').hidden=!ro;
@@ -679,6 +680,43 @@ $('#inRange').addEventListener('input',e=>{if(S.playing)pause();setIn(+e.target.
 $('#setOut').addEventListener('click',()=>setOut(v.currentTime));
 $('#clearOut').addEventListener('click',()=>{S.cOut=null;updateTrim()});
 $$('[data-in]').forEach(b=>b.addEventListener('click',()=>{if(S.playing)pause();setIn(S.cIn+ +b.dataset.in)}));
+/* ---- Move the start, song and dance together: the clip (or the routine's first move) starts d seconds earlier or later,
+   and the song's start moves by exactly the music that covers, so every moment of the dance keeps its place in the song
+   (through the speed graph, cut parts and an aligned first move). The song can't start before its beginning, nor the
+   clip before its own, so it moves as far as it can and says so. ---- */
+function songAtSrc(t){   /* where the song is (before the sound delay) at clip moment t of the first part, in normal playback */
+  const L=normSegs();if(!L.length)return null;const g=L[0];
+  return S.offset+((t<g.s?(t-g.s)/segR(g):toOut(g,Math.min(t,g.e)))+(S.avComp||0))*S.ar}
+function warpShift(x,s2){   /* an aligned move's warp re-based on a new start (earlier: the stretch before plays at the move's speed) */
+  const W=x.warp,r=rateOf(x);if(!W||W.length<2)return null;
+  if(s2<W[0][0]){const add=(W[0][0]-s2)/r;return [[s2,0],...W.map(([s,o])=>[s,o+add])]}
+  let i=0;while(i<W.length-1&&W[i+1][0]<=s2)i++;const [s0,o0]=W[i],[s1,o1]=W[Math.min(i+1,W.length-1)];const o=s1>s0?o0+(o1-o0)*(s2-s0)/(s1-s0):o0;
+  return [[s2,0],...W.slice(i+1).filter(k=>k[0]>s2).map(([s,o2])=>[s,o2-o])]}
+function shiftBoth(d){
+  if(S.rec)return;if(S.study)studyOff();if(S.playing)pause();
+  const ro=routineOn(),P=slot(),msgEl=$(ro?'#rbothMsg':'#bothMsg');
+  let x=null,m=null;if(ro){x=S.seq[0];m=x&&moveById(x.id);if(!x||!m){msgEl.textContent='Add a move to the routine first.';return}}
+  const n=ro?srcById(m.src):srcById(S.cur);if(!n)return;
+  const start=ro?x.s:S.cIn,end=ro?x.e:clipEnd(),dur=n.dur||n.el.duration||end;
+  const want=start+d,lo=0,hi=end-0.5;let s2=Math.max(lo,Math.min(hi,want));
+  const before={s:start,off:P.offset,warp:ro&&x.warp?x.warp.map(k=>k.slice()):null};
+  const apply=s=>{if(ro){if(x.warp&&warpOk(x)){const w=warpShift({...x,warp:before.warp,s:before.s},s);x.s=s;if(w)x.warp=w}else x.s=s}else S.cIn=+s.toFixed(2)};
+  const restore=()=>{if(ro){x.s=before.s;x.warp=before.warp}else S.cIn=before.s;P.offset=before.off;S.offset=before.off};
+  /* the moment both versions share stays at the same place in the song */
+  const solve=s=>{restore();const ref=Math.max(start,s)+0.01,e0=songAtSrc(ref);apply(s);const e1=songAtSrc(ref);return +(before.off+(e0-e1)).toFixed(3)};
+  let off=solve(s2);
+  if(off<0){let a=s2,b=start;for(let k=0;k<30;k++){const mid=(a+b)/2;if(solve(mid)<0)a=mid;else b=mid}s2=b;off=Math.max(0,solve(s2))}
+  const sd=sDur(ro?(S.rtSong||S.mainSong):S.mainSong);if(sd&&off>sd-0.05){restore();msgEl.textContent='The song would start past its end.';return}
+  P.offset=off;S.offset=off;if(P===S.rt)S.rt.set=true;
+  const moved=+(s2-start).toFixed(2);
+  if(!ro){S.segIdx=0;v.currentTime=S.cIn}else{S.segIdx=0;renderMoves();try{updateSeqStats()}catch(e){}}
+  updateTrim();toStart();syncSong(true);recSync(true);showSlots();
+  const what=ro?'The routine':'The dance';
+  msgEl.textContent=Math.abs(moved)<0.01?(d<0?(start<=0.01?'The clip already starts at its beginning.':"The song already starts at its beginning, so it can't come earlier."):"Can't start any later."):
+    `${what} now starts ${Math.abs(moved)}s ${moved<0?'earlier':'later'} (${fmt2(s2)} in the clip) and the song at ${fmt2(off)}`+(Math.abs(moved-d)>0.01?` (as far as it goes: ${moved<0&&s2<=0.01?'the clip starts there':'the song starts there'}).`:'.');
+  S.bothN=(S.bothN||0)+1;try{autosave(true).catch(()=>{})}catch(e){}}
+$$('[data-both]').forEach(b=>b.addEventListener('click',()=>shiftBoth(+b.dataset.both)));
+$$('[data-rboth]').forEach(b=>b.addEventListener('click',()=>shiftBoth(+b.dataset.rboth)));
 $('#repeat').addEventListener('click',()=>{if(S.study)S.study.loop=!S.study.loop;else S.loop=!S.loop;updateTrim()});   /* during Study/Learn it sets what Repeat goes back to, and they keep looping */
 
 /* ---------- moves ---------- */
@@ -4067,7 +4105,7 @@ if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySele
 /*@look*/
 /*@learn*/
 /*@snip*/
-if(/debug/.test(location.hash))window.__rs={liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;

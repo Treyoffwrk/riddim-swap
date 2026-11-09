@@ -1,5 +1,5 @@
 /* Riddim Swap offline support. Version changes on every build. */
-const VERSION='rs-0ae930e5bb';
+const VERSION='rs-bdc1f12c52';
 const SHELL=['./','./index.html','./mirrorview/','./mirrorview/index.html','./manifest.webmanifest','./vendor/mp4-muxer.js',
   './icons/icon-192.png','./icons/icon-512.png','./icons/maskable-512.png','./icons/apple-touch-icon.png','./icons/favicon-32.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});

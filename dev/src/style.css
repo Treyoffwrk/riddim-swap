@@ -336,6 +336,8 @@ html{-webkit-tap-highlight-color:transparent;overscroll-behavior-x:none}
 /* full screen */
 .fsbtn{position:absolute;top:8px;right:8px;z-index:6;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.16);background:rgba(14,16,20,.7);color:#F3F1EC;display:grid;place-items:center;cursor:pointer;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:transform .25s var(--spring),opacity .3s}
 .fsbtn:active{transform:scale(.9)}
+.field.both .field-top{flex-wrap:wrap;gap:2px 10px}.field.both .field-top .label{white-space:nowrap}
+.field.both .nudges{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}.field.both .nudges .btn{padding-left:0;padding-right:0;min-width:0}
 #audName.loading{color:var(--dance);animation:rsPulse 1.2s ease-in-out infinite}
 @keyframes rsPulse{50%{opacity:.45}}
 .mirbtn{right:60px}.mirbtn[aria-pressed="true"]{background:var(--dance);color:#0E1014;border-color:var(--dance)}
