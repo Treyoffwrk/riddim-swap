@@ -766,6 +766,7 @@ function seqChanged(goStart){
 }
 function addToSeq(id,at){
   if(S.rec||!moveById(id))return;
+  try{rtlPush()}catch(e){}
   if(!S.seq.length&&!S.rt.set){S.rt.offset=S.main.offset;S.rt.ar=S.main.ar;S.rt.vr=S.main.vr;S.rt.set=true}  /* routine starts with your current song settings */
   const e=newEntry(id); if(at==null||at>S.seq.length)at=S.seq.length;
   S.seq.splice(at,0,e); if(S.seq.length===1)S.useSeq=true;
@@ -3647,7 +3648,7 @@ function panelIn(p,dir,from){
    The next page slides in beside the current one and follows the finger. */
 (function(){
   const col=$('.tabs').closest('.col'); if(!col)return; col.classList.add('swipe-col');
-  const KEEP='input[type=range],textarea,select,.spd-graph,.handle,.sheet,[data-noswipe]';
+  const KEEP='input[type=range],textarea,select,.spd-graph,.tle,.cropcv,.handle,.sheet,[data-noswipe]';   /* .tle: the Cut and Routine timelines (dragging a move used to switch tabs) */
   const GAP=16; let sw=null, eatClick=-1e9;
   const cur=()=>tabs.findIndex(x=>x.getAttribute('aria-selected')==='true');
   const panelOf=i=>$('#'+tabs[i].getAttribute('aria-controls'));
@@ -4255,7 +4256,7 @@ if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySele
 /*@look*/
 /*@learn*/
 /*@snip*/
-if(/debug/.test(location.hash))window.__rs={rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={moveById,rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;

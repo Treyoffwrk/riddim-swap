@@ -73,7 +73,10 @@ class TL{
     if(D.kind==='pinch'){const [a,b]=[...this.ptrs.values()];if(!b)return;const d=Math.abs(a.x-b.x)||1;this.pps=D.pps0*d/D.d0;this.userZoom=this.pps>this.minPps()*1.02;this.clampView();this.t0=D.tm-((a.x+b.x)/2)/this.pps;this.clampView();this.follow=false;this.redraw();return}
     const x=this.lx(e),dx=x-D.x0;
     if(Math.abs(dx)>6||Math.abs(this.ly(e)-D.y0)>10)D.moved=true;
-    if(D.kind==='handle'){this.edge(x);this.o.handleMove(D.h,this.T(x));this.redraw();return}
+    /* a move you can drag straight away (picked, or nothing to scroll): it follows the finger, no press-and-hold */
+    if(D.kind==='press'&&D.h&&D.h.kind==='block'&&this.o.blockDrag&&this.o.blockDrag.direct&&Math.abs(dx)>8&&this.o.blockDrag.direct(D.h,this)){
+      clearTimeout(this.hold);D.kind='block';D.lift=true;this.o.blockDrag.start(D.h);D.gx=x;this.redraw();return}
+    if(D.kind==='handle'){if(!D.moved)return;this.edge(x);this.o.handleMove(D.h,this.T(x));this.redraw();return}   /* a little slack first: a tap on a tab doesn't trim */
     if(D.kind==='block'){D.gx=x;this.edge(x);this.o.blockDrag.move(D.h,this.T(x));this.redraw();return}
     if(D.moved){clearTimeout(this.hold);this.t0=D.t00-dx/this.pps;this.clampView();this.follow=false;this.redraw()}
   }
@@ -308,7 +311,15 @@ function revMakeSource(n,file,A,Bt,frames,kd){
 }
 
 /* ======================= Routine: the timeline editor ======================= */
-const RTL={tl:null,drag:null,snap:true};
+const RTL={tl:null,drag:null,snap:true,undo:[]};
+const RTL_MIN=0.25;   /* a trimmed move is at least this long (seconds of the clip): trimming can't shrink it to a sliver */
+/* where a move is drawn: its true place, but at least 10 px wide (so a very short one can be seen and picked) */
+function rtlRect(tl,b){let x0=tl.X(b.a),x1=tl.X(b.b);if(x1-x0<10){const c=(x0+x1)/2;x0=c-5;x1=c+5}return {x0,x1}}
+/* undo for the routine: every move, trim, reorder, split, duplicate, remove or fit can be taken back */
+function rtlPush(){RTL.undo.push(JSON.stringify(S.seq));if(RTL.undo.length>50)RTL.undo.shift();const u=$('#rtlUndo');if(u)u.disabled=false}
+function rtlUndo(){if(!RTL.undo.length)return;S.seq=JSON.parse(RTL.undo.pop());if(!S.seq.some(x=>x.uid===S.sel))S.sel=null;$('#rtlUndo').disabled=!RTL.undo.length;if(S.playing)pause();S.segIdx=0;renderMoves();updateTrim();try{seqChanged&&seqChanged(false)}catch(e){}try{autosave()}catch(e){}}
+/* move the picked move one place earlier or later */
+function rtlShift(i,d){const j=i+d;if(j<0||j>=S.seq.length)return;rtlPush();const [x]=S.seq.splice(i,1);S.seq.splice(j,0,x);S.sel=x.uid;if(S.playing)pause();renderMoves();updateTrim();try{autosave()}catch(e){}}
 function rtlBlocks(){const L=segsFor();let T=0;return S.seq.map((x,i)=>{const g=L[i],len=segLen(g),b={i,x,g,a:T,b:T+len};T+=len;return b})}
 function rtlBeatsOut(){const rs=routineSong(),G=songGrid(rs);if(!G)return null;const out=[];G.beats.forEach(bt=>{const o=(bt-S.rt.offset)/S.rt.ar;out.push({o,down:(G.down||[]).some(d=>Math.abs(d-bt)<0.02)})});return out}
 function rtlSnap(o){
@@ -325,12 +336,14 @@ function rtlInspector(){
   const row=el('div','row rtl-acts');
   const mk=(t,f,cls,dis)=>{const b=el('button','btn sm'+(cls?' '+cls:''),t);b.type='button';b.disabled=!!dis;b.addEventListener('click',f);row.append(b);return b};
   const L=()=>segsFor();
+  mk('◀ Earlier',()=>rtlShift(i,-1),null,i===0);
+  mk('Later ▶',()=>rtlShift(i,1),null,i===S.seq.length-1);
   mk('▶ Play',()=>playRange(segStart(i,L()),segStart(i+1,L())));
   mk('▶ From the one before',()=>playRange(Math.max(0,segStart(i,L())-1.5),segStart(i+1,L())),null,i===0);
-  mk('✂ Split here',()=>rtlSplit(i),null,!(routineOn()&&S.segIdx===i));
-  mk('Fit to beat',()=>{if(fitEntry(x)){renderMoves();updateTrim()}},null,!beatLen());
-  mk('Duplicate',()=>dupSeq(i));
-  mk('Remove',()=>{removeSeq(i);S.sel=null;renderMoves()},'danger');
+  mk('✂ Split here',()=>{rtlPush();rtlSplit(i)},null,!(routineOn()&&S.segIdx===i));
+  mk('Fit to beat',()=>{rtlPush();if(fitEntry(x)){renderMoves();updateTrim()}else RTL.undo.pop()},null,!beatLen());
+  mk('Duplicate',()=>{rtlPush();dupSeq(i)});
+  mk('Remove',()=>{rtlPush();removeSeq(i);S.sel=null;renderMoves()},'danger');
   const wrap=el('div');wrap.append(el('span','len'));
   const ed=editor(x,m,i,wrap);
   /* the trim box brings its own buttons; the inspector already has them, except Reset */
@@ -345,22 +358,28 @@ function initRoutineTL(){
   const cv=$('#rtlCanvas');if(!cv)return;
   RTL.tl=new TL(cv,{
     len:()=>Math.max(1,seqTotal()+(RTL.drag?0:0.5)),
-    hit:(tl,x,y)=>{const Bs=rtlBlocks();const sel=Bs.find(b=>b.x.uid===S.sel);
-      if(sel){if(Math.abs(tl.X(sel.a)-x)<16&&y>16)return {kind:'handle',side:'s',i:sel.i};if(Math.abs(tl.X(sel.b)-x)<16&&y>16)return {kind:'handle',side:'e',i:sel.i}}
-      const t=tl.T(x),b=Bs.find(b=>t>=b.a&&t<b.b);return b?{kind:'block',i:b.i}:{kind:'bg'}},
+    hit:(tl,x,y)=>{const Bs=rtlBlocks();const sel=Bs.find(b=>b.x.uid===S.sel);const H=tl.c.clientHeight||120,top=20,th=H-12-top,mid=top+th/2;
+      /* the trim tabs only (the white tabs on the picked move's ends), so grabbing a move doesn't trim it by mistake */
+      if(sel&&Math.abs(y-mid)<30){const R=rtlRect(tl,sel);if(Math.abs(R.x0-x)<14)return {kind:'handle',side:'s',i:sel.i};if(Math.abs(R.x1-x)<14)return {kind:'handle',side:'e',i:sel.i}}
+      /* a move: the one under the finger; a very short move still has a 28 px target */
+      let best=null,bd=1e9;for(const b of Bs){const R=rtlRect(tl,b),c=(R.x0+R.x1)/2,hw=Math.max(14,(R.x1-R.x0)/2);const d=Math.abs(x-c);if(d<=hw&&d<bd){bd=d;best=b}}
+      return best?{kind:'block',i:best.i}:{kind:'bg'}},
     tap:(t,h)=>{if(h&&h.kind==='block'){const x=S.seq[h.i];S.sel=x.uid;if(S.playing)pause();S.useSeq=true;S.preview=null;updateTrim();seekT(Math.min(t,segStart(h.i+1,segsFor())-0.02));renderMoves()}
       else{S.sel=null;renderMoves()}},
-    handleStart:h=>{const x=S.seq[h.i];RTL.h={s:x.s,e:x.e,start:segStart(h.i,segsFor())};if(S.playing)pause();delete x.warp},
+    handleStart:h=>{rtlPush();const x=S.seq[h.i];RTL.h={s:x.s,e:x.e,start:segStart(h.i,segsFor())};if(S.playing)pause();delete x.warp},
     handleMove:(h,t)=>{const x=S.seq[h.i],m=moveById(x.id),n=m&&srcById(m.src),r=rateOf(x),dur=n&&n.dur||x.e+5;
-      if(h.side==='e'){const end=rtlSnap(t);x.e=+clamp(x.s+(end-RTL.h.start)*r,x.s+0.1,dur).toFixed(3);showFrame(m.src,x.e-0.03)}
+      if(h.side==='e'){const end=rtlSnap(t);x.e=+clamp(x.s+(end-RTL.h.start)*r,x.s+RTL_MIN,dur).toFixed(3);showFrame(m.src,x.e-0.03)}
       else{/* the move's start: the block's end follows; it snaps so the move still ends on the beat when it can */
-        const keepEnd=RTL.h.start+(RTL.h.e-RTL.h.s)/r, dt=t-RTL.h.start;x.s=+clamp(RTL.h.s+dt*r,0,x.e-0.1).toFixed(3);
-        const end=RTL.h.start+(x.e-x.s)/r, se=rtlSnap(end);if(se!==end){x.s=+clamp(x.e-(se-RTL.h.start)*r,0,x.e-0.1).toFixed(3)}showFrame(m.src,x.s)}
+        const keepEnd=RTL.h.start+(RTL.h.e-RTL.h.s)/r, dt=t-RTL.h.start;x.s=+clamp(RTL.h.s+dt*r,0,x.e-RTL_MIN).toFixed(3);
+        const end=RTL.h.start+(x.e-x.s)/r, se=rtlSnap(end);if(se!==end){x.s=+clamp(x.e-(se-RTL.h.start)*r,0,x.e-RTL_MIN).toFixed(3)}showFrame(m.src,x.s)}
       updateSeqStats();rtlInspectorLen()},
     handleEnd:()=>{renderMoves();updateTrim();try{autosave()}catch(e){}},
     blockDrag:{
-      start:h=>{RTL.drag={from:h.i,to:h.i};S.sel=S.seq[h.i].uid},
-      move:(h,t)=>{const Bs=rtlBlocks();let to=Bs.length-1;for(const b of Bs){if(t<(b.a+b.b)/2){to=b.i;break}}RTL.drag.to=to},
+      /* drag straight away: the picked move, or any move when the whole routine fits (nothing to scroll) */
+      direct:(h,tl)=>!tl.zoomed()||S.seq[h.i].uid===S.sel,
+      start:h=>{rtlPush();RTL.drag={from:h.i,to:h.i};S.sel=S.seq[h.i].uid;if(S.playing)pause()},
+      /* where it lands: between the other moves, by which of their middles the finger has passed (to = its new index) */
+      move:(h,t)=>{const Bs=rtlBlocks().filter(b=>b.i!==RTL.drag.from);let to=0;for(const b of Bs)if(t>(b.a+b.b)/2)to++;RTL.drag.to=to},
       end:(h,t,cancel)=>{const D=RTL.drag;RTL.drag=null;if(!D||cancel||D.to===D.from){renderMoves();return}const [x]=S.seq.splice(D.from,1);S.seq.splice(D.to,0,x);renderMoves();updateTrim();try{autosave()}catch(e){}}},
     draw:(c,tl,W,H)=>{
       c.fillStyle='#12151B';c.fillRect(0,0,W,H);
@@ -372,7 +391,7 @@ function initRoutineTL(){
       else tlTimeLabels(c,tl,W,2);
       /* moves */
       const D=RTL.drag;
-      Bs.forEach(b=>{const m=moveById(b.x.id),n=m&&srcById(m.src);let X0=tl.X(b.a),X1=tl.X(b.b);if(X1<0||X0>W)return;
+      Bs.forEach(b=>{const m=moveById(b.x.id),n=m&&srcById(m.src);const RR=rtlRect(tl,b);let X0=RR.x0,X1=RR.x1;if(X1<0||X0>W)return;
         const lifted=D&&D.from===b.i;c.globalAlpha=lifted?0.35:1;
         tlRound(c,X0+1,top,X1-X0-2,th,8);c.save();c.clip();if(n)tlThumbs(c,n,b.x.s,b.x.e,X0,top,X1-X0,th,px=>toSrc(b.g,tl.T(px)-b.a));
         const grd=c.createLinearGradient(0,top,0,bot);grd.addColorStop(0,'rgba(10,11,14,.65)');grd.addColorStop(0.45,'rgba(10,11,14,0)');c.fillStyle=grd;c.fillRect(X0,top,X1-X0,th);
@@ -383,11 +402,12 @@ function initRoutineTL(){
         if(b.x.uid===S.sel&&!D){for(const X of [X0+1.5,X1-1.5]){c.fillStyle='#F3F1EC';tlRound(c,X-6,top+th/2-15,12,30,6);c.fill();c.fillStyle='#12151B';c.fillRect(X-2,top+th/2-8,1.5,16);c.fillRect(X+0.5,top+th/2-8,1.5,16)}}});
       /* dragging a move: it follows your finger; a bar shows where it will land */
       if(D){const b=Bs[D.from],w=Math.max(30,tl.X(b.b)-tl.X(b.a));const gx=(tl.drag&&tl.drag.gx||0)-w/2;
-        const to=Bs[D.to];const ix=tl.X(D.to>D.from?to.b:to.a);c.fillStyle=TLC.sel;c.fillRect(ix-2,top-4,4,th+8);
+        const oth=Bs.filter(q=>q.i!==D.from);const ix=oth.length?tl.X(D.to===0?oth[0].a:oth[Math.min(D.to,oth.length)-1].b):tl.X(b.a);c.fillStyle=TLC.sel;c.fillRect(ix-2,top-4,4,th+8);
         c.globalAlpha=0.9;tlRound(c,gx,top-6,w,th,8);c.fillStyle='#2A2F3B';c.fill();c.strokeStyle=TLC.sel;c.lineWidth=2;c.stroke();c.globalAlpha=1;
         const m=moveById(b.x.id);c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText(String(D.from+1)+(m?' '+m.name:''),gx+7,top);}
       if(routineOn())tlPlayhead(c,tl.X(tPos()),H);
     }});
+  $('#rtlUndo').addEventListener('click',rtlUndo);
   $('#rtlZoomIn').addEventListener('click',()=>RTL.tl.zoom(1.6));$('#rtlZoomOut').addEventListener('click',()=>RTL.tl.zoom(1/1.6));
   const sn=$('#rtlSnap');try{RTL.snap=localStorage.getItem('rs-snap')!=='0'}catch(e){}sn.checked=RTL.snap;sn.addEventListener('change',()=>{RTL.snap=sn.checked;try{localStorage.setItem('rs-snap',RTL.snap?'1':'0')}catch(e){}});
 }
@@ -398,3 +418,4 @@ function tlTick(){const now=performance.now();if(now-tlLast<66)return;tlLast=now
   if(CUT.tl&&!$('#p-clip').hidden){if(S.playing&&CUT.tl.follow)CUT.tl.show(v.currentTime);CUT.tl.redraw()}
   if(RTL.tl&&!$('#p-routine').hidden){if(S.playing&&routineOn()&&RTL.tl.follow)RTL.tl.show(tPos());RTL.tl.redraw()}}
 initCut();initRoutineTL();
+window.__rsRTL={get tl(){return RTL.tl},blocks:()=>rtlBlocks(),rect:(tl,b)=>rtlRect(tl,b)};

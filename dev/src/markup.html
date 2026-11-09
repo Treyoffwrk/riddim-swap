@@ -599,12 +599,12 @@
           <p class="hint" id="fitHint" hidden>Set the song BPM in the Tempo tab to fit moves to the beat.</p>
           <div class="tl" id="seqBar" hidden><div class="tl-blocks" id="seqBlocks"></div><canvas class="tl-canvas" id="seqCanvas"></canvas><i class="tl-head" id="seqHead"></i></div>
           <div class="rtl" id="rtlWrap" hidden>
-            <div class="tle tall"><canvas id="rtlCanvas" role="img" aria-label="The routine as a timeline over the song's beats. Tap a move to pick it, press and hold then drag to move it, drag its white edges to trim, pinch to zoom."></canvas></div>
+            <div class="tle tall"><canvas id="rtlCanvas" role="img" aria-label="The routine as a timeline over the song's beats. Drag a move to a new place, tap it to pick it, drag the white tabs on its ends to trim, pinch to zoom."></canvas></div>
             <div class="tle-bar">
               <label class="check"><input type="checkbox" id="rtlSnap" checked> Snap to beat</label>
-              <span class="tle-zoom"><button class="btn sm" id="rtlZoomOut" aria-label="Zoom out">−</button><button class="btn sm" id="rtlZoomIn" aria-label="Zoom in">+</button></span>
+              <span class="tle-zoom"><button class="btn sm" id="rtlUndo" disabled>Undo</button><button class="btn sm" id="rtlZoomOut" aria-label="Zoom out">−</button><button class="btn sm" id="rtlZoomIn" aria-label="Zoom in">+</button></span>
             </div>
-            <p class="hint" id="seqHint" hidden>Tap a move to pick it. <b>Press and hold</b>, then drag it to a new place. Drag its <b>white edges</b> to trim; with Snap to beat they land on beats and "ands". Moves play back to back. Bars are numbered along the top.</p>
+            <p class="hint" id="seqHint" hidden><b>Drag a move</b> to a new place (or pick it and use ◀ Earlier / Later ▶). Drag the <b>white tabs</b> on a picked move's ends to trim; with Snap to beat they land on beats and "ands". Pinch or − / + to zoom; Undo takes back any change.</p>
             <div class="rtl-inspect" id="rtlInspect" hidden></div>
           </div>
           <div class="empty-note drop" id="seqEmpty">Drop moves here, or tap them above. Use them in any order, as many times as you like.</div>
