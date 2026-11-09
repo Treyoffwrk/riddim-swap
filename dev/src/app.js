@@ -2282,14 +2282,19 @@ function cpSaver(n){const tag=cpTag(n);return async st=>{let h=n.cp&&n.cp.tag===
   await mediaPut(cpKey(n)+'#'+h.chunks,st.recs);
   h={...h,fps:st.fps,n:st.n,start:st.start,cuts:st.cuts,chunks:h.chunks+1,done:st.done,pct:Math.min(99,Math.floor(st.done/st.n*100)),at:Date.now()};
   await mediaPut(cpKey(n),h);n.cp=h}}
-const TRACK_STALL_MS=45000;   /* no progress for this long, with the app on screen: stop and start again from where it was */
+const TRACK_STALL_MS=+window.RB_TRACK_STALL_MS||45000;   /* no progress for this long, with the app on screen: stop and start again from where it was */
+const TRACK_READY_MS=+window.RB_TRACK_READY_MS||60000;   /* getting the tracker ready (not counting a model download that is moving) takes no longer than this */
 async function runTrack(fresh){
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
   S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyStartAt=performance.now(); S.bodyLeft=''; S.bodyPct=0; $('#bodyTrack').disabled=true; $('#bodyFresh').hidden=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   const dlIv=setInterval(()=>{if(!S.bodyBusy||S.bodyT0){clearInterval(dlIv);return}const st=RB.rtmStatus();if(st.state==='loading'&&st.got>0&&!S.rtmCached){$('#bodyInfo').textContent='Downloading the RTMPose model (first time only)… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB':' MB');if(st.total)bar.style.width=Math.min(100,Math.round(st.got/st.total*100))+'%'}},300);
   let wl=null;const lock=async()=>{try{if(navigator.wakeLock&&!document.hidden&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}}catch(e){}};
-  const onVis=()=>{if(!document.hidden&&S.bodyBusy)lock()};document.addEventListener('visibilitychange',onVis);lock();
+  /* back in the app after a while away: iPhone may have broken the tracker's video or graphics chip while it was away,
+     so start this run again straight away from where it got to, with a fresh engine (doesn't count as getting stuck) */
+  let hidAt=0;const onVis=()=>{if(document.hidden){hidAt=performance.now();return}
+    if(S.bodyBusy){lock();if(hidAt&&performance.now()-hidAt>4000&&S.trackRun&&!S.trackRun.user){S.trackRun.back=true;S.trackRun.ac.abort()}}hidAt=0};
+  document.addEventListener('visibilitychange',onVis);lock();
   const pick=S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null;
   let resume=null, tries=0;
   waitStart(n);
@@ -2297,12 +2302,22 @@ async function runTrack(fresh){
     if(fresh)await cpClear(n).catch(()=>{});
     else{try{resume=await cpLoad(n)}catch(e){resume=null}}
     for(;;){
-      const ac=new AbortController(); let lastP=performance.now(), from=null; const carry=!!resume;
-      const wd=setInterval(()=>{if(document.hidden||!S.bodyT0){lastP=performance.now();return}if(performance.now()-lastP>TRACK_STALL_MS)ac.abort()},2000);
-      S.trackRun={ac};
+      const ac=new AbortController(); let lastP=performance.now(), from=null, dlGot=-1; const carry=!!resume;
+      /* the watchdog also covers getting ready (it used to watch only once frames were coming, so a start that never got
+         going waited for ever) */
+      const wd=setInterval(()=>{if(document.hidden){lastP=performance.now();return}
+        if(!S.bodyT0){const st=RB.rtmStatus();if(st.state==='loading'&&st.got!==dlGot){dlGot=st.got;lastP=performance.now();return}
+          if(performance.now()-lastP>TRACK_READY_MS){S.trackRun.ready=true;ac.abort()}return}
+        if(performance.now()-lastP>TRACK_STALL_MS)ac.abort()},2000);
+      S.trackRun={ac};const run=S.trackRun;
+      /* a stop or a stuck run ends this attempt at once, even if the tracker is inside a call that never answers;
+         anything that abandoned run does afterwards is ignored */
+      const gone=()=>ac.signal.aborted;
+      const stopped=new Promise((_,rej)=>ac.signal.addEventListener('abort',()=>rej(Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})),{once:true}));
+      const saver=cpSaver(n);
       try{
-        const B=await RB.track(n.url,{pick,resume,signal:ac.signal,onSave:cpSaver(n),onPartial:B=>waitPartial(n,B),onProgress:p=>{lastP=performance.now();if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);
-          if(carry&&from==null)from=S.bodyPct;$('#bodyInfo').textContent=(from!=null&&from<100?'Carrying on from '+from+'% · ':'')+'Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate();waitUI()}});
+        const B=await Promise.race([stopped,RB.track(n.url,{pick,resume,signal:ac.signal,onSave:st=>gone()&&!run.user?Promise.resolve():saver(st),onPartial:B=>{if(!gone())waitPartial(n,B)},onProgress:p=>{if(gone())return;lastP=performance.now();if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);
+          if(carry&&from==null)from=S.bodyPct;$('#bodyInfo').textContent=(from!=null&&from<100?'Carrying on from '+from+'% · ':'')+'Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate();waitUI()}})]);
         clearInterval(wd);
         try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n-(B.resumed||0));if(el2>5&&!B.resumed)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
         if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
@@ -2316,10 +2331,13 @@ async function runTrack(fresh){
         autosave(true).catch(()=>{});   /* keep the new hits with the project straight away */
         break;
       }catch(e){clearInterval(wd);
-        const stuck=!!(e&&(e.stall||e.name==='AbortError'))&&!(S.trackRun&&S.trackRun.user);
-        if(stuck&&++tries<=2){
-          $('#bodyInfo').textContent='Tracking got stuck at '+(S.bodyPct||0)+'%. Starting it again from there…';
-          S.bodyT0=null; waitUI(); await new Promise(r=>setTimeout(r,800)); resume=await cpLoad(n).catch(()=>null); continue}
+        const user=!!run.user,back=!!run.back,restart=!!run.restart;
+        const stuck=!!(e&&(e.stall||e.name==='AbortError'))&&!user;
+        if(e&&(e.stall||e.name==='AbortError')){if(stuck)S.trackRestarts=(S.trackRestarts||0)+1;try{RB.reset()}catch(err){}}   /* a fresh tracker engine for the next go (also after a stop: you may have stopped it because it was stuck) */
+        if(stuck&&(back||restart||++tries<=3)){
+          $('#bodyInfo').textContent=back?'Back in the app: carrying on tracking from '+(S.bodyPct||0)+'%…':restart?'Starting tracking again from '+(S.bodyPct||0)+'%…':
+            run.ready?'Tracking didn\'t get going. Trying again…':'Tracking got stuck at '+(S.bodyPct||0)+'%. Starting it again from there…';
+          S.bodyT0=null; waitUI(); await new Promise(r=>setTimeout(r,back?300:800)); resume=await cpLoad(n).catch(()=>null); continue}
         throw e}
     }
   }catch(e){
@@ -2342,7 +2360,7 @@ $('#waitChime').addEventListener('change',e=>{try{localStorage.setItem('rs-wait-
 let waitHideT=0;
 function waitStart(n){
   clearTimeout(waitHideT); const W=$('#waitBar'); W.hidden=false; W.classList.remove('ready');
-  $('#waitHead').textContent='Tracking the body'; $('#waitClose').hidden=true; $('#waitBtns').hidden=false; $('#waitCarry').hidden=true; $('#waitChime').parentElement.hidden=false;
+  $('#waitHead').textContent='Tracking the body'; $('#waitClose').hidden=true; $('#waitBtns').hidden=false; $('#waitCtl').hidden=false; $('#waitCarry').hidden=true; $('#waitChime').parentElement.hidden=false;
   /* the chime needs the sound engine started inside a tap (iPhone): this is that tap */
   if($('#waitChime').checked)try{const c=getCtx();if(c.state!=='running')c.resume().catch(()=>{})}catch(e){}
   waitUI();
@@ -2353,6 +2371,9 @@ function waitPartial(n,B){
   if(!B||B.n<6)return; const st=RB.STRIDE;
   S.liveBody={src:n.id,B,from:B.data[0],to:B.data[(B.n-1)*st]}; bodyKey=''; waitUI();
 }
+/* while it tracks: start again from where it got to, or stop (keeps what's done; Carry on tracking picks it up) */
+function trackRestart(){if(S.trackRun&&!S.trackRun.user){S.trackRun.restart=true;S.trackRun.ac.abort()}}
+function trackStop(){if(S.trackRun){S.trackRun.user=true;S.trackRun.ac.abort()}}
 function waitUI(){
   const W=$('#waitBar'); if(W.hidden||W.classList.contains('ready'))return;
   const p=S.bodyPct||0, L=S.liveBody;
@@ -2368,9 +2389,9 @@ function waitUI(){
 }
 function waitDone(n,ok){
   const W=$('#waitBar'); if(TAP.on)tapStop(false); waitPracOff();
-  if(!ok){W.hidden=false;W.classList.remove('ready');$('#waitHead').textContent='Tracking stopped';$('#waitPct').textContent='';$('#waitMsg').textContent=S.bodyErr||'';$('#waitBtns').hidden=true;$('#waitCarry').hidden=!(n.cp);$('#waitClose').hidden=false;$('#waitChime').parentElement.hidden=true;return}
+  if(!ok){W.hidden=false;W.classList.remove('ready');$('#waitHead').textContent='Tracking stopped';$('#waitPct').textContent='';$('#waitMsg').textContent=S.bodyErr||'';$('#waitBtns').hidden=true;$('#waitCtl').hidden=true;$('#waitCarry').hidden=!(n.cp);$('#waitClose').hidden=false;$('#waitChime').parentElement.hidden=true;return}
   W.classList.add('ready'); $('#waitHead').textContent='Ready'; $('#waitPct').textContent='100%'; $('#waitProg').style.width='100%';
-  $('#waitMsg').textContent='The skeleton is on the whole clip. Press play to see it.'; $('#waitBtns').hidden=true; $('#waitClose').hidden=false; $('#waitCarry').hidden=true; $('#waitChime').parentElement.hidden=true;
+  $('#waitMsg').textContent='The skeleton is on the whole clip. Press play to see it.'; $('#waitBtns').hidden=true;$('#waitCtl').hidden=true; $('#waitClose').hidden=false; $('#waitCarry').hidden=true; $('#waitChime').parentElement.hidden=true;
   if($('#waitChime').checked)waitChime();
   S.waitChimed=(S.waitChimed||0)+1;
   waitHideT=setTimeout(()=>{W.hidden=true;W.classList.remove('ready')},12000);
@@ -2380,6 +2401,7 @@ function waitChime(){try{const c=getCtx();if(c.state!=='running')c.resume().catc
   [[784,0],[1175,0.13],[1568,0.26]].forEach(([f,d])=>{const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+d);g.gain.exponentialRampToValueAtTime(0.35,t+d+0.01);g.gain.exponentialRampToValueAtTime(0.001,t+d+0.6);o.connect(g);g.connect(c.destination);o.start(t+d);o.stop(t+d+0.65)})}catch(e){}}
 $('#waitClose').addEventListener('click',()=>{clearTimeout(waitHideT);$('#waitBar').hidden=true;$('#waitBar').classList.remove('ready')});
 $('#waitCarry').addEventListener('click',()=>{$('#waitBar').hidden=true;runTrack(false)});
+$('#waitRestart').addEventListener('click',trackRestart);$('#waitStop').addEventListener('click',trackStop);
 /* practise the tracked part: play from the clip's start and loop back before the end of what's tracked */
 function waitPracOff(){if(!S.waitPrac)return;S.waitPrac=false;if(S.playing)pause();waitUI()}
 $('#waitPractise').addEventListener('click',()=>{

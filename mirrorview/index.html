@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-2e570fd59b'</script>
+<script>window.RS_BUILD='rs-55793aeac1'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -784,6 +784,11 @@ main{padding-bottom:12px}
      download kept for offline use) or 'full' (Faster). Set from Riddim Swap's Track body card; Body uses the same. */
   function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy|rtm)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':q==='accurate'?'heavy':rtmURL()?'rtm':'heavy'}   /* RTMPose is the default (29 Oct: judged the better skeleton on real clips) */
   const rtmURL=()=>root.RB_RTM_URL||CFG.rtmURL;
+  /* drop the tracker engine so the next run builds it afresh (after it got stuck: a graphics chip that came back from the
+     background broken can leave a call that never answers); leftover tracking previews are removed */
+  function reset(){try{runtime&&runtime.task&&runtime.task.close()}catch(e){}try{runtime&&runtime.rtm&&runtime.rtm.session&&runtime.rtm.session.release&&runtime.rtm.session.release()}catch(e){}
+    runtime=null;loading=null;loadedModel='';resets++;gen++;try{document.querySelectorAll('video.rb-trackvid').forEach(e=>{try{e.pause()}catch(x){}e.removeAttribute('src');e.remove()})}catch(e){}}
+  let resets=0,gen=0;
   async function load(){
     const want=modelName();
     if(runtime&&loadedModel===want)return runtime; if(loading&&loading.want===want)return loading;
@@ -834,17 +839,20 @@ main{padding-bottom:12px}
   /* Track every frame of a video. Steps through it frame by frame (seek, wait for that frame, track), so no frame is
      skipped however slow the phone is. Each sample keeps the frame's own media time. */
   async function track(url,opt){
-    opt=opt||{}; const rt=await load();
+    opt=opt||{}; const myGen=gen; const rt=await load();
+    const dead=()=>myGen!==gen;   /* given up on (the engine was reset): this run does nothing more */
     /* shown as a small preview in the corner while it tracks: iPhone stops giving new frames to a video it can't see
        (an invisible one froze part-way, so the same picture was tracked again and again and the skeleton stood still) */
-    const makeVid=()=>{const e=document.createElement('video'); e.muted=true; e.playsInline=true; e.setAttribute('playsinline',''); e.preload='auto';
+    const makeVid=()=>{if(dead())throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'});const e=document.createElement('video'); e.muted=true; e.playsInline=true; e.setAttribute('playsinline',''); e.preload='auto';
       e.className='rb-trackvid';e.setAttribute('aria-hidden','true');
       e.style.cssText='position:fixed;right:10px;bottom:calc(84px + env(safe-area-inset-bottom,0px));height:88px;width:auto;max-width:30vw;border-radius:10px;opacity:1;pointer-events:none;z-index:9999;box-shadow:0 6px 18px rgba(0,0,0,.5);background:#000'; document.body.append(e); e.src=url; return e};
     let v=makeVid();
     let saveNow=null, onVis=null;
     const cleanup=()=>{try{v.pause()}catch(e){}v.removeAttribute('src');try{v.load()}catch(e){}v.remove();if(onVis)document.removeEventListener('visibilitychange',onVis)};
     try{
-      await new Promise((res,rej)=>{v.onloadeddata=res;v.onerror=()=>rej(new Error('This video could not be read for body tracking.'))});
+      /* the clip loading into the tracker's own player gives up after 15 s (after coming back to the app, iPhone sometimes
+         never loads it: tracking waited for ever on "Getting the tracker ready") */
+      await new Promise((res,rej)=>{const to=setTimeout(()=>rej(Object.assign(new Error('The video didn\'t load for tracking'),{stall:true})),15000);v.onloadeddata=()=>{clearTimeout(to);res()};v.onerror=()=>{clearTimeout(to);rej(new Error('This video could not be read for body tracking.'))}});
       const W=v.videoWidth,H=v.videoHeight, sc=Math.min(1,CFG.edge/Math.max(W,H));
       const cv=document.createElement('canvas'); cv.width=Math.round(W*sc); cv.height=Math.round(H*sc); const cx=cv.getContext('2d',{willReadFrequently:false});
       const start=Math.max(0,opt.start||0), end=Math.min(v.duration||0,opt.end||v.duration||0);
@@ -955,6 +963,7 @@ main{padding-bottom:12px}
       FS.fps=fps;
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
+        if(dead())throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'});
         if(opt.signal&&opt.signal.aborted){await saveNow();throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})}
         if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false;FS.chal=0}   /* going backwards: start again from the tap */
         if(isDone(k)){if(slot[k]){if(slot[k].pick){prev=slot[k].pick;lost=0}else lost++}continue}   /* finished in an earlier run */
@@ -1610,7 +1619,7 @@ main{padding-bottom:12px}
     let mask=null;if(B.mask&&B.mask.data&&B.mask.w){const mw=B.mask.w,mh=B.mask.h,md=new Uint8Array(n*mw*mh);let fr=0;rows.forEach((r,k)=>{if(r.i<B.mask.n){const src=B.mask.data.subarray(r.i*mw*mh,(r.i+1)*mw*mh);md.set(src,k*mw*mh);if(src.some(x=>x))fr++}});mask={w:mw,h:mh,n,data:md,frames:fr}}
     const out={...B,n,data,world:per(B.world,WS),hips:per(B.hips,HS),ext:per(B.ext,EXTN*3),mask,cuts:cuts||B.cuts||[],edited:(B.edited||0)+1};
     delete out._room;delete out._up;return out}
-  root.RB={remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={reset,resetCount:()=>resets,remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
