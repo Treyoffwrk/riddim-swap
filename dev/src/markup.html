@@ -433,6 +433,16 @@
               <button class="btn sm" data-sp="y-" aria-label="5% slower">−5%</button><button class="btn sm" data-sp="y+" aria-label="5% faster">+5%</button>
               <button class="btn sm" data-sp="beat">To beat</button>
             </div>
+            <div class="spd-cog-row">
+              <svg id="spdCog" class="spd-cog" viewBox="0 0 160 160" tabindex="0" role="slider" aria-label="Cog: turn to change this point" aria-valuetext="1×"></svg>
+              <div class="spd-cog-side">
+                <div class="spd-cog-mode" role="group" aria-label="What the cog turns">
+                  <button class="btn sm pchip" data-cog="speed" aria-pressed="true">Speed</button><button class="btn sm pchip" data-cog="curve" aria-pressed="false">Curve</button>
+                </div>
+                <b class="spd-cog-val" id="spdCogVal">1×</b>
+                <p class="hint" id="spdCogHint">Turn the cog: clockwise is faster, one turn doubles the speed. It clicks at ½× ¾× 1× 1¼× 1½× 2×.</p>
+              </div>
+            </div>
           </div>
           <div class="spd-acts">
             <button class="btn sm" id="spdDel" disabled>Delete point</button>
@@ -441,6 +451,18 @@
             <button class="btn sm pchip" id="spdSnap" aria-pressed="true" title="While dragging, points snap to dance hits, song beats and round speeds">Snap</button>
           </div>
           <p class="hint" id="spdNote">Tap the graph to add a point, drag a point to move it (it snaps to hits, beats and round speeds), and use the buttons for small steps. Zoom with + or two fingers. Blue ticks are the dance hits, orange ticks the song's beats where they land.</p>
+        </section>
+        <section class="anal clk" id="clkCard" aria-labelledby="h-clk">
+          <div class="spd-top"><h3 id="h-clk">Beat clock <span class="clk-trial">Trial</span></h3></div>
+          <p class="hint">One turn is one 8-count of the song, the 1 at the top. Each slice is a part of the dance. Drag a handle round the rim: the slice you make bigger plays slower and the one next to it faster, and the 8-count still lasts 8 counts, so the song stays in time. Tap a slice to go to it. It writes into the speed graph.</p>
+          <div class="clk-nav">
+            <button class="btn sm" id="clkPrev" aria-label="Previous 8-count">◀</button><b id="clkWhich">—</b><button class="btn sm" id="clkNext" aria-label="Next 8-count">▶</button>
+            <span class="clk-parts" role="group" aria-label="How many parts"><span>Parts</span><button class="btn sm pchip" data-clkn="2" aria-pressed="false">2</button><button class="btn sm pchip" data-clkn="4" aria-pressed="true">4</button><button class="btn sm pchip" data-clkn="8" aria-pressed="false">8</button></span>
+          </div>
+          <div class="clk-wrap"><svg id="clkSvg" viewBox="0 0 300 300" role="img" aria-label="Beat clock: the 8-count as a circle, one slice per part"></svg></div>
+          <div class="clk-chips" id="clkChips"></div>
+          <div class="spd-acts"><button class="btn sm" id="clkUndo" disabled>Undo</button><button class="btn sm" id="clkEven">Back to the beat</button></div>
+          <p class="hint" id="clkMsg"></p>
         </section>
           <div class="field">
             <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>

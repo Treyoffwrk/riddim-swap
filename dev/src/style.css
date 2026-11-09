@@ -309,6 +309,26 @@ html.rs-hosted .mv-only[hidden]{display:none!important}
 .spd-zoom{display:inline-flex;align-items:center;gap:6px}.spd-zoom .btn{min-width:36px;padding:4px 0}.spd-zoom b{min-width:28px;text-align:center}
 .spd-pt{display:grid;gap:6px;padding:8px 10px;border:1px solid #FFD43B55;border-radius:12px;background:#1A1D24}
 .spd-pt-txt{font:700 13px var(--f-mono);color:#FFD43B}
+.spd>*,.clk>*{min-width:0}
+.spd-cog-row{display:flex;align-items:center;gap:12px;margin-top:4px;min-width:0}
+.spd-cog{width:min(132px,38vw);height:min(132px,38vw);flex:0 0 auto;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;border-radius:50%}
+.spd-cog:focus-visible{outline:2px solid #FFD43B;outline-offset:2px}
+.spd-cog-side{display:grid;gap:6px;min-width:0;flex:1 1 0}
+.spd-cog-mode{display:flex;gap:6px;flex-wrap:wrap}.spd-cog-mode .pchip{padding:0 10px}
+.spd-cog-mode .pchip[aria-pressed="true"]{background:#FFD43B;border-color:#FFD43B;color:#14171D}
+.spd-cog-val{font:700 18px var(--f-mono);color:#FFD43B}
+.clk{display:grid;gap:10px}
+.clk-trial{font:700 10px var(--f-body);letter-spacing:.06em;text-transform:uppercase;color:#14171D;background:#FFD43B;border-radius:999px;padding:2px 7px;vertical-align:middle;margin-left:4px}
+.clk-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.clk-nav>b{font:700 14px var(--f-mono);color:var(--ink);min-width:110px;text-align:center}
+.clk-parts{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font:600 13px var(--f-body);color:var(--muted)}
+.clk-parts .pchip{min-width:36px;justify-content:center}
+.clk-wrap{background:#14171D;border:1px solid var(--line);border-radius:14px;padding:8px;display:flex;justify-content:center}
+.clk-wrap svg{width:100%;max-width:330px;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+.clk.off .clk-wrap{opacity:.45}
+.clk-chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:6px}
+.clk-chip{padding:6px 4px;border-radius:10px;border:1px solid var(--line);text-align:center;font:600 12px var(--f-body);color:var(--muted);line-height:1.35}
+.clk-chip b{display:block;font:700 13px var(--f-mono);color:var(--ink)}
 .spd-nudge{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}.spd-nudge .btn{padding-left:0;padding-right:0;min-width:0}
 #spdSnap[aria-pressed="false"]{opacity:.6}
 

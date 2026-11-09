@@ -3477,7 +3477,10 @@ function spdDraw(){
     const p=c.pts[SPD.sel];
     if(p){x.strokeStyle='#FFD43B';x.lineWidth=1.5*dpr;x.fillStyle='#FFD43B';
       for(const hd of [p.hi,p.ho]){const hx=X(p.t+hd[0]),hy=Y(clamp(p.y+hd[1],SPD.min-1,SPD.max+1));x.beginPath();x.moveTo(X(p.t),Y(p.y));x.lineTo(hx,hy);x.stroke();x.beginPath();x.arc(hx,hy,5*dpr,0,7);x.fill()}}
-    c.pts.forEach((q,i)=>{if(q.t<s-0.01||q.t>e+0.01)return;const px=X(q.t),py=Y(q.y),r=(i===SPD.sel?9:7)*dpr;x.fillStyle=i===SPD.sel?'#FFD43B':'#14171D';x.strokeStyle='#FFD43B';x.lineWidth=2.5*dpr;x.beginPath();x.rect(px-r,py-r,2*r,2*r);x.fill();x.stroke()});
+    /* points are little cogs, turned by their speed (one turn per doubling, as the big cog turns) */
+    c.pts.forEach((q,i)=>{if(q.t<s-0.01||q.t>e+0.01)return;const px=X(q.t),py=Y(q.y),r=(i===SPD.sel?12:9)*dpr;
+      x.fillStyle=i===SPD.sel?'#FFD43B':'#14171D';x.strokeStyle='#FFD43B';x.lineWidth=2*dpr;cogPath(x,px,py,r,q.y*2*Math.PI);x.fill();x.stroke();
+      x.fillStyle=i===SPD.sel?'#14171D':'#FFD43B';x.beginPath();x.arc(px,py,r*0.28,0,7);x.fill()});
     /* while dragging: where the point is, in a label up and away from your finger */
     const sp=c.pts[SPD.sel];if(sp&&SPD.drag&&SPD.drag.type==='point'&&SPD.drag.moved){const txt=fmt2(sp.t)+' · '+spdLabel(sp.y)+(SPD.guide&&SPD.guide.kind?' · on '+SPD.guide.kind:'');
       x.font=`800 ${13*dpr}px Figtree,sans-serif`;const tw=x.measureText(txt).width+16*dpr,bx=clamp(X(sp.t)-tw/2,4*dpr,w-tw-4*dpr),by=Math.max(2*dpr,Y(sp.y)-56*dpr);
@@ -3499,6 +3502,7 @@ function spdUI(){
   $('#spdSnap').setAttribute('aria-pressed',String(SPD.snap));
   const sp=c&&c.pts&&c.pts[SPD.sel];$('#spdPt').hidden=!sp||ro;
   if(sp)$('#spdPtTxt').textContent=`Point ${SPD.sel+1} of ${c.pts.length}: ${fmt2(sp.t)} · ${spdLabel(sp.y)}`;
+  if(sp)cogDraw();
   const g=segs()[0], base=S.hasV&&!ro?(clipEnd()-S.cIn)/(S.vr||1):0;
   $('#spdLen').textContent=S.hasV&&!ro&&g?(on?fmt(base)+' → '+fmt(segLen(g)):fmt(base)):'—';
   $('#spdNote').textContent=ro?'The speed graph works on the whole clip. Switch to "Clip" under the video to use it.':'Tap the graph to add a point, drag a point to move it (it snaps to hits, beats and round speeds), and use the buttons below for small steps. Zoom with + or two fingers. Blue ticks: dance hits; orange: song beats.';
@@ -3610,6 +3614,181 @@ let spdKey='';
   if(k!==spdKey){spdKey=k;spdDraw();spdNowText()}}}catch(e){}requestAnimationFrame(spdLoop)})();
 setInterval(()=>{try{spdUI()}catch(e){}},500);
 $('#t-clip').addEventListener('click',()=>setTimeout(()=>{spdUI();spdDraw()},0));
+
+/* ---------- the cog: turn the selected point ----------
+   Speed: clockwise is faster, one turn doubles the speed (log2 +1), clicks at the round speeds when Snap is on.
+   Curve: tilts the curve through the point (its handles), clockwise slopes it down. One undo step per turn. */
+const COG={mode:'speed',rot:0,drag:null,key:''};
+function cogPath(x,cx,cy,r,rot){const n=8,ri=r*0.74;x.beginPath();
+  for(let i=0;i<n*4;i++){const a=rot+i*Math.PI/(n*2),rr=(i%4===1||i%4===2)?r:ri;const px=cx+rr*Math.cos(a),py=cy+rr*Math.sin(a);if(i)x.lineTo(px,py);else x.moveTo(px,py)}x.closePath()}
+function cogPoint(){const n=spdCur(),c=n&&n.curve,p=c&&c.pts&&c.pts[SPD.sel];return p&&!routineOn()?{n,c,p}:null}
+/* the curve's tilt at a point, as an angle on screen (radians, up is positive) */
+function cogScale(){const G=spdGeo();return {kx:(G.w-G.pad.l-G.pad.r)/((G.ve-G.vs)||1),ky:(G.h-G.pad.t-G.pad.b)/(SPD.max-SPD.min)}}
+function cogTilt(p){const {kx,ky}=cogScale(),h=p.ho&&p.ho[0]>1e-6?p.ho:(p.hi&&p.hi[0]<-1e-6?p.hi:[1,0]);return Math.atan((h[1]/h[0])*ky/kx)}
+function cogSetTilt(c,i,th){const p=c.pts[i],P=c.pts,{kx,ky}=cogScale(),m=Math.tan(clamp(th,-1.4,1.4))*kx/ky;
+  const L=i<P.length-1?(P[i+1].t-p.t)/3:0.3,Lb=i>0?(p.t-P[i-1].t)/3:0.3;const ho0=p.ho&&p.ho[0]>1e-6?p.ho[0]:L,hi0=p.hi&&p.hi[0]<-1e-6?p.hi[0]:-Lb;
+  p.auto=false;p.ho=[ho0,m*ho0];p.hi=[hi0,m*hi0]}
+function cogDraw(){
+  const el_=$('#spdCog'),q=cogPoint();if(!el_||!q)return;const {p}=q,tilt=COG.mode==='curve'?cogTilt(p):null;
+  const k=[COG.mode,COG.rot.toFixed(3),p.y.toFixed(4),tilt==null?'':tilt.toFixed(3)].join('|');if(k===COG.key)return;COG.key=k;
+  const C=80,R=70,ri=56,n=12;let teeth='';
+  for(let i=0;i<n*4;i++){const a=COG.rot+i*Math.PI/(n*2),rr=(i%4===1||i%4===2)?R:ri;teeth+=(i?'L':'M')+(C+rr*Math.cos(a)).toFixed(1)+' '+(C+rr*Math.sin(a)).toFixed(1)}
+  let spokes='';for(let i=0;i<5;i++){const a=COG.rot+i*2*Math.PI/5;spokes+=`<line x1="${(C+20*Math.cos(a)).toFixed(1)}" y1="${(C+20*Math.sin(a)).toFixed(1)}" x2="${(C+48*Math.cos(a)).toFixed(1)}" y2="${(C+48*Math.sin(a)).toFixed(1)}" stroke="#3A4152" stroke-width="7" stroke-linecap="round"/>`}
+  const mark=COG.rot-Math.PI/2,mx=C+63*Math.cos(mark),my=C+63*Math.sin(mark);
+  let needle='';if(tilt!=null){const dx=46*Math.cos(tilt),dy=-46*Math.sin(tilt);needle=`<line x1="${(C-dx).toFixed(1)}" y1="${(C-dy).toFixed(1)}" x2="${(C+dx).toFixed(1)}" y2="${(C+dy).toFixed(1)}" stroke="#FFD43B" stroke-width="5" stroke-linecap="round"/>`}
+  el_.innerHTML=`<path d="${teeth}Z" fill="#232833" stroke="#FFD43B" stroke-width="2" stroke-linejoin="round"/><circle cx="${C}" cy="${C}" r="50" fill="#1A1D24"/>${spokes}${needle}<circle cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="5" fill="#FFD43B"/><circle cx="${C}" cy="${C}" r="13" fill="#FFD43B"/><circle cx="${C}" cy="${C}" r="5" fill="#14171D"/>`;
+  const val=COG.mode==='speed'?spdLabel(p.y):(Math.abs(tilt)<0.02?'Flat':(tilt>0?'Rising ':'Falling ')+Math.round(Math.abs(tilt)*180/Math.PI)+'°');
+  $('#spdCogVal').textContent=val;el_.setAttribute('aria-valuetext',val);
+  $$('[data-cog]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.cog===COG.mode)));
+  $('#spdCogHint').textContent=COG.mode==='speed'?'Turn the cog: clockwise is faster, one turn doubles the speed. It clicks at ½× ¾× 1× 1¼× 1½× 2×.':'Turn the cog to tilt the curve through this point: clockwise slopes it down, anticlockwise up.';
+}
+/* turn by da radians (clockwise positive) */
+function cogTurn(da,fine){
+  const q=cogPoint();if(!q)return;const {c,p}=q,D=COG.drag;COG.rot+=da;
+  if(COG.mode==='speed'){
+    const raw=(D?D.raw:p.y)+da/(2*Math.PI);if(D)D.raw=raw;let y=clamp(raw,SPD.min,SPD.max);
+    if(SPD.snap&&!fine){const ny=SPD_SNAP_Y.reduce((a,s)=>Math.abs(y-s)<Math.abs(y-a)?s:a);if(Math.abs(y-ny)<0.035){y=ny;if(D&&D.snapY!==ny){D.snapY=ny;try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}}}else if(D)D.snapY=null}
+    p.y=y;
+  } else {const th=(D&&D.th!=null?D.th:cogTilt(p))-da;if(D)D.th=clamp(th,-1.4,1.4);cogSetTilt(c,SPD.sel,th)}
+  spdAutoAll(c);spdChanged();cogDraw();
+}
+$$('[data-cog]').forEach(b=>b.addEventListener('click',()=>{COG.mode=b.dataset.cog;COG.key='';cogDraw()}));
+(function(){
+  const el_=$('#spdCog');const ang=ev=>{const r=el_.getBoundingClientRect();return Math.atan2(ev.clientY-(r.top+r.height/2),ev.clientX-(r.left+r.width/2))};
+  el_.addEventListener('pointerdown',ev=>{if(!cogPoint())return;ev.preventDefault();el_.setPointerCapture(ev.pointerId);COG.drag={a:ang(ev),pushed:false,raw:cogPoint().p.y,th:null,snapY:null}});
+  el_.addEventListener('pointermove',ev=>{const D=COG.drag;if(!D)return;const a=ang(ev);let da=a-D.a;if(da>Math.PI)da-=2*Math.PI;if(da<-Math.PI)da+=2*Math.PI;D.a=a;if(Math.abs(da)<1e-4)return;
+    if(!D.pushed){spdPush();D.pushed=true}cogTurn(da)});
+  const end=()=>{COG.drag=null;spdUI()};el_.addEventListener('pointerup',end);el_.addEventListener('pointercancel',end);
+  /* keyboard: arrows turn it a step (5% of speed, or 5° of tilt) */
+  el_.addEventListener('keydown',ev=>{const k=ev.key,s=k==='ArrowUp'||k==='ArrowRight'?1:k==='ArrowDown'||k==='ArrowLeft'?-1:0;if(!s||!cogPoint())return;ev.preventDefault();spdPush();
+    cogTurn(COG.mode==='speed'?s*2*Math.PI*Math.log2(1.05):s*5*Math.PI/180,true)});
+})();
+
+/* ---------- beat clock (trial) ----------
+   One 8-count of the song as a circle (the 1 at the top). The clip between where that 8-count starts and ends is split
+   into parts at moments of the dance (cuts). Dragging a cut round the rim moves where that moment lands in the song;
+   the parts either side change speed to match, and the 8-count's two ends stay exactly where they were, both in the clip
+   and in the song, so nothing outside it moves. It writes into the speed graph: the curve is split exactly at the two
+   ends (the curve outside is untouched), the points between are replaced by one per part, and their speeds are solved
+   (through the same time map playback uses) so each part takes exactly its share of the 8-count. */
+const BCLK={m:null,N:4,drag:null,msg:'',key:''};
+const CLK_MIN=0.25;   /* the shortest part, in beats */
+function clkBeats(){const G=S.hasA?liveGrid():null;if(!G||!G.beats||G.beats.length<10)return null;const so=S.liveSong;
+  const bt=(G.tapped?G.beats:(so&&so.an&&so.an.grid)||G.beats).slice(),d0=(G.down||[])[0];let i0=0;
+  if(d0!=null){let bd=1e9;bt.forEach((t,k)=>{if(Math.abs(t-d0)<bd){bd=Math.abs(t-d0);i0=k}})}return {bt,i0:((i0%8)+8)%8}}
+/* the song's 8-counts that lie wholly inside the clip: {A,B (clip), beats: 9 song times} */
+function clkWindows(){const B=clkBeats();if(!B)return [];const {bt,i0}=B,out=[];
+  for(let k=i0;k+8<bt.length;k+=8){const A=songToClip(bt[k]),E=songToClip(bt[k+8]);if(A>=S.cIn-1e-3&&E<=clipEnd()+1e-3&&E>A)out.push({A,B:E,beats:bt.slice(k,k+9)})}return out}
+const clkPos=(W,s)=>{const b=W.beats;if(s<=b[0])return (s-b[0])/(b[1]-b[0]);for(let i=1;i<9;i++)if(s<=b[i])return i-1+(s-b[i-1])/(b[i]-b[i-1]);return 8+(s-b[8])/(b[8]-b[7])};
+const clkTime=(W,u)=>{const b=W.beats,i=clamp(Math.floor(u),0,7);return b[i]+(u-i)*(b[i+1]-b[i])};
+function clkKey(W){return W.A.toFixed(2)+'|'+BCLK.N}
+/* the cuts (clip moments between the parts): saved with the curve, or where the beats land now */
+function clkCuts(n,W){const sv=n&&n.curve&&n.curve.clk&&n.curve.clk[clkKey(W)];
+  if(sv&&sv.length===BCLK.N-1&&sv.every((t,i)=>t>W.A&&t<W.B&&(!i||t>sv[i-1])))return sv.slice();
+  const out=[];for(let j=1;j<BCLK.N;j++)out.push(songToClip(clkTime(W,8*j/BCLK.N)));return out}
+function clkWhy(){if(!S.hasV)return 'Add a clip first.';if(routineOn())return 'The beat clock works on the whole clip. Switch to "Clip" under the video to use it.';
+  if(clipCut())return 'For now the beat clock works on clips with no parts cut out.';if(!clkBeats())return 'Add a song with a beat to use the beat clock.';
+  if(!clkWindows().length)return 'This clip is shorter than one 8-count of the song.';return ''}
+function clkCur(){const L=clkWindows();if(!L.length)return null;
+  if(BCLK.m==null||BCLK.m>=L.length){const s=clipToSong(v.currentTime);const i=L.findIndex(W=>s<W.beats[8]);BCLK.m=i<0?L.length-1:i}return {W:L[BCLK.m],i:BCLK.m,n:L.length}}
+/* split the curve exactly at clip time t (de Casteljau), so the curve on either side keeps its exact shape */
+function clkSplit(c,t){spdClampH(c);const P=c.pts,ex=P.find(q=>Math.abs(q.t-t)<1e-3);if(ex){ex.auto=false;return ex}
+  if(t<P[0].t||t>P[P.length-1].t){/* past an end the curve is flat at the end point's speed: keep it flat */
+    const first=t<P[0].t,E=first?P[0]:P[P.length-1],q={t,y:E.y,auto:false,hi:[-0.3,0],ho:[0.3,0]};E.auto=false;
+    if(first)E.hi=[-(E.t-t)/3,0];else E.ho=[(t-E.t)/3,0];P.push(q);P.sort((a,b)=>a.t-b.t);return q}
+  let i=0;while(i<P.length-2&&P[i+1].t<t)i++;const p=P[i],q=P[i+1];
+  const X=[p.t,p.t+p.ho[0],q.t+q.hi[0],q.t],Y=[p.y,p.y+p.ho[1],q.y+q.hi[1],q.y];
+  const bz=(A,u)=>{const w=1-u;return w*w*w*A[0]+3*w*w*u*A[1]+3*w*u*u*A[2]+u*u*u*A[3]};
+  let lo=0,hi=1;for(let k=0;k<50;k++){const m=(lo+hi)/2;if(bz(X,m)<t)lo=m;else hi=m}const u=(lo+hi)/2,L=(a,b)=>a+(b-a)*u;
+  const x01=L(X[0],X[1]),x12=L(X[1],X[2]),x23=L(X[2],X[3]),x012=L(x01,x12),x123=L(x12,x23),x=L(x012,x123);
+  const y01=L(Y[0],Y[1]),y12=L(Y[1],Y[2]),y23=L(Y[2],Y[3]),y012=L(y01,y12),y123=L(y12,y23),y=L(y012,y123);
+  p.auto=false;q.auto=false;p.ho=[x01-p.t,y01-p.y];q.hi=[x23-q.t,y23-q.y];
+  const nq={t,y,auto:false,hi:[x012-x,y012-y],ho:[x123-x,y123-y]};P.splice(i+1,0,nq);return nq}
+/* the song positions P (in beats, P[0]=0 … P[N]=8) for the cut moments: write the curve. false if it can't */
+function clkApply(n,W,cuts,P){
+  const N=cuts.length+1,E=[W.A,...cuts,W.B],T=[];for(let i=0;i<N;i++)T.push((clkTime(W,P[i+1])-clkTime(W,P[i]))/S.ar);
+  if(T.some(x=>!(x>0)))return false;
+  const c=spdEnsure(n),before=JSON.stringify(c);
+  /* a graph that's off plays at the plain clip speed: start from flat so nothing else moves */
+  if(!c.on||!c.pts.length){c.pts=[{t:S.cIn,y:0,auto:true},{t:clipEnd(),y:0,auto:true}];spdAutoAll(c);c.on=true}
+  const pa=clkSplit(c,W.A),pb=clkSplit(c,W.B);
+  c.pts=c.pts.filter(q=>q===pa||q===pb||q.t<W.A-1e-4||q.t>W.B+1e-4);
+  /* leave the ends along the curve's own slope (smooth), or flat at the clip's start and end */
+  const mA=c.pts[0]!==pa&&pa.hi[0]<-1e-6?pa.hi[1]/pa.hi[0]:0,mB=c.pts[c.pts.length-1]!==pb&&pb.ho[0]>1e-6?pb.ho[1]/pb.ho[0]:0;
+  /* each part: a flat stretch at its own speed (two points, flat handles), easing into the next across the cut */
+  const mids=[],F=0.15;for(let i=0;i<N;i++){const len=E[i+1]-E[i],y=clamp(Math.log2(len/T[i]/S.vr),SPD.min,SPD.max);
+    const q1={t:+(E[i]+F*len).toFixed(4),y,auto:false},q2={t:+(E[i+1]-F*len).toFixed(4),y,auto:false};mids.push([q1,q2]);c.pts.push(q1,q2)}
+  c.pts.sort((a,b)=>a.t-b.t);
+  const ia=c.pts.indexOf(pa),ib=c.pts.indexOf(pb);
+  for(let k=ia+1;k<ib;k++){const q=c.pts[k];q.hi=[-(q.t-c.pts[k-1].t)/2,0];q.ho=[(c.pts[k+1].t-q.t)/2,0]}
+  const La=(c.pts[ia+1].t-pa.t)/2,Lb=(pb.t-c.pts[ib-1].t)/2;pa.ho=[La,mA*La];pb.hi=[-Lb,-mB*Lb];spdAutoAll(c);
+  /* solve each part's speed through playback's own time map */
+  const g={src:n.id,s:S.cIn,e:clipEnd(),r:S.vr};let worst=1;
+  for(let it=0;it<24;it++){g.k=curveKnots(n,g);worst=0;
+    const D=mids.map((q,i)=>toOut(g,E[i+1])-toOut(g,E[i]));
+    D.forEach((d,i)=>{worst=Math.max(worst,Math.abs(d-T[i]));const y=clamp(mids[i][0].y+Math.log2(d/T[i]),SPD.min,SPD.max);mids[i][0].y=mids[i][1].y=y});
+    if(worst<4e-4)break;spdAutoAll(c)}
+  g.k=curveKnots(n,g);worst=Math.max(...mids.map((q,i)=>Math.abs(toOut(g,E[i+1])-toOut(g,E[i])-T[i])));
+  if(!(worst<0.003)){n.curve=JSON.parse(before);knotMemo=null;return false}
+  c.clk=c.clk||{};c.clk[clkKey(W)]=cuts.map(t=>+t.toFixed(4));
+  SPD.sel=-1;return true}
+/* where each cut lands now, in beats */
+function clkNow(W,cuts){return [0,...cuts.map(t=>clkPos(W,clipToSong(t))),8]}
+function clkVisible(){return S.hasV&&$('#clkCard').offsetParent!==null}
+function clkDraw(){
+  if(!clkVisible())return;const why=clkWhy();$('#clkCard').classList.toggle('off',!!why);
+  const svg=$('#clkSvg'),cur=why?null:clkCur();
+  $$('[data-clkn]').forEach(b=>{b.setAttribute('aria-pressed',String(+b.dataset.clkn===BCLK.N));b.disabled=!!why});
+  $('#clkPrev').disabled=!cur||cur.i<=0;$('#clkNext').disabled=!cur||cur.i>=cur.n-1;$('#clkEven').disabled=!cur;$('#clkUndo').disabled=!SPD.undo.length||!!why;
+  $('#clkWhich').textContent=cur?`8-count ${cur.i+1} of ${cur.n}`:'—';
+  $('#clkMsg').textContent=why||BCLK.msg;
+  const C=150,RO=112,RI=50,pt=(u,r)=>{const a=u/8*2*Math.PI-Math.PI/2;return [C+r*Math.cos(a),C+r*Math.sin(a)]},f=z=>z.toFixed(1);
+  let h='';
+  if(!cur){h=`<circle cx="${C}" cy="${C}" r="${RO}" fill="none" stroke="#3A4152" stroke-width="2" stroke-dasharray="4 6"/>`;svg.innerHTML=h;$('#clkChips').innerHTML='';return}
+  const n=spdCur(),{W}=cur,cuts=clkCuts(n,W),E=[W.A,...cuts,W.B],P=BCLK.drag&&BCLK.drag.P?BCLK.drag.P:clkNow(W,cuts);
+  const sp=E.slice(0,-1).map((t,i)=>{const o=(clipToSong(E[i+1])-clipToSong(t))/S.ar;return (E[i+1]-t)/(o||1)/(S.vr||1)});
+  const col=s=>s<0.97?['#4DABF7',Math.min(1,0.3+(1-s)*1.4)]:s>1.03?['#FF922B',Math.min(1,0.3+(s-1)*0.9)]:['#5C6474',0.55];
+  const wedge=(u0,u1)=>{const [a,b]=pt(u0,RO),[c2,d]=pt(u1,RO),[e,g]=pt(u1,RI),[k,l]=pt(u0,RI),L=(u1-u0)>4?1:0;return `M${f(a)} ${f(b)}A${RO} ${RO} 0 ${L} 1 ${f(c2)} ${f(d)}L${f(e)} ${f(g)}A${RI} ${RI} 0 ${L} 0 ${f(k)} ${f(l)}Z`};
+  for(let i=0;i<E.length-1;i++){const [cl,o]=col(sp[i]);h+=`<path data-s="${i}" d="${wedge(P[i],P[i+1])}" fill="${cl}" fill-opacity="${o.toFixed(2)}" stroke="#14171D" stroke-width="2"/>`;
+    if(P[i+1]-P[i]>0.6){const [x,y]=pt((P[i]+P[i+1])/2,(RO+RI)/2);h+=`<text x="${f(x)}" y="${f(y)}" text-anchor="middle" dominant-baseline="central" fill="#F3F1EC" style="font:700 12px var(--f-mono);pointer-events:none">${sp[i].toFixed(2)}×</text>`}}
+  for(let k=0;k<16;k++){const u=k/2,[x1,y1]=pt(u,RO+3),[x2,y2]=pt(u,RO+(k%2?8:13));h+=`<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${k%2?'#5C6474':'#9AA3B5'}" stroke-width="${k%2?1:2}"/>`;
+    if(!(k%2)){const [x,y]=pt(u,RO+25);h+=`<text x="${f(x)}" y="${f(y)}" text-anchor="middle" dominant-baseline="central" fill="${k?'#9AA3B5':'#F3F1EC'}" style="font:700 13px var(--f-body)">${k/2+1}</text>`}}
+  /* the playhead */
+  const ph=clkPos(W,clipToSong(v.currentTime));if(ph>=0&&ph<=8){const [x1,y1]=pt(ph,RI-6),[x2,y2]=pt(ph,RO+2);h+=`<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${tok('--dance')}" stroke-width="3" stroke-linecap="round" style="pointer-events:none"/>`}
+  const [zx,zy]=pt(0,RO);h+=`<circle cx="${f(zx)}" cy="${f(zy)}" r="6" fill="#F3F1EC"/>`;
+  for(let j=1;j<E.length-1;j++){const [x,y]=pt(P[j],RO),on=BCLK.drag&&BCLK.drag.j===j;h+=`<circle data-h="${j}" cx="${f(x)}" cy="${f(y)}" r="22" fill="transparent"/><circle cx="${f(x)}" cy="${f(y)}" r="${on?14:12}" fill="#F3F1EC" stroke="#FFD43B" stroke-width="3" style="pointer-events:none"/>`}
+  h+=`<text x="${C}" y="${C-9}" text-anchor="middle" dominant-baseline="central" fill="#F3F1EC" style="font:800 15px var(--f-body);pointer-events:none">8 counts</text><text x="${C}" y="${C+11}" text-anchor="middle" dominant-baseline="central" fill="#9AA3B5" style="font:600 11px var(--f-body);pointer-events:none">song locked</text>`;
+  svg.innerHTML=h;
+  $('#clkChips').innerHTML=sp.map((s,i)=>`<div class="clk-chip"><b>${s.toFixed(2)}×</b>Part ${i+1}<br>${(P[i+1]-P[i]).toFixed(P[i+1]-P[i]<1?2:1).replace(/\.0+$/,'')} ${Math.abs(P[i+1]-P[i]-1)<0.01?'count':'counts'}</div>`).join('');
+}
+function clkSet(P,j){const n=spdCur(),cur=clkCur();if(!n||!cur)return false;const ok=clkApply(n,cur.W,clkCuts(n,cur.W),P);
+  if(ok){BCLK.msg='';spdChanged()}else BCLK.msg='That’s as far as it goes: the speed graph goes from ¼× to 4×.';BCLK.key='';return ok}
+(function(){
+  const svg=$('#clkSvg');const posAt=ev=>{const r=svg.getBoundingClientRect(),x=(ev.clientX-r.left)/r.width*300-150,y=(ev.clientY-r.top)/r.height*300-150;return ((Math.atan2(y,x)+Math.PI/2)/(2*Math.PI)*8+8)%8};
+  svg.addEventListener('pointerdown',ev=>{if(clkWhy())return;const cur=clkCur();if(!cur)return;const t=ev.target,hj=t.getAttribute&&t.getAttribute('data-h'),si=t.getAttribute&&t.getAttribute('data-s');
+    if(hj){ev.preventDefault();svg.setPointerCapture(ev.pointerId);if(S.playing)pause();const n=spdCur();spdEnsure(n);BCLK.drag={j:+hj,P:clkNow(cur.W,clkCuts(n,cur.W)),pushed:false};clkDraw();return}
+    if(si!=null){const n=spdCur(),E=[cur.W.A,...clkCuts(n,cur.W),cur.W.B];if(S.playing)pause();S.segIdx=0;v.currentTime=E[+si]+0.001;BCLK.key=''}});
+  svg.addEventListener('pointermove',ev=>{const D=BCLK.drag;if(!D)return;let u=posAt(ev);const lo=D.P[D.j-1]+CLK_MIN,hi=D.P[D.j+1]-CLK_MIN;
+    u=[u-8,u,u+8].reduce((a,x)=>Math.abs(x-D.P[D.j])<Math.abs(a-D.P[D.j])?x:a);   /* past the 1 the angle wraps: take the reading nearest the handle */
+    if(SPD.snap){const sn=Math.round(u*2)/2;if(Math.abs(sn-u)<0.18)u=sn}
+    u=clamp(u,lo,hi);if(Math.abs(u-D.P[D.j])<1e-3)return;
+    if(!D.pushed){spdPush();D.pushed=true}
+    const P=D.P.slice();P[D.j]=u;if(clkSet(P,D.j))D.P=P;BCLK.key='';clkDraw()});
+  const end=()=>{if(!BCLK.drag)return;BCLK.drag=null;BCLK.key='';clkDraw();spdUI()};svg.addEventListener('pointerup',end);svg.addEventListener('pointercancel',end);
+  $('#clkPrev').addEventListener('click',()=>{const c=clkCur();if(!c)return;BCLK.m=Math.max(0,c.i-1);const W=clkWindows()[BCLK.m];if(S.playing)pause();S.segIdx=0;v.currentTime=W.A+0.001;BCLK.msg='';BCLK.key='';clkDraw()});
+  $('#clkNext').addEventListener('click',()=>{const c=clkCur();if(!c)return;BCLK.m=Math.min(c.n-1,c.i+1);const W=clkWindows()[BCLK.m];if(S.playing)pause();S.segIdx=0;v.currentTime=W.A+0.001;BCLK.msg='';BCLK.key='';clkDraw()});
+  $$('[data-clkn]').forEach(b=>b.addEventListener('click',()=>{BCLK.N=+b.dataset.clkn;BCLK.msg='';BCLK.key='';clkDraw()}));
+  /* every cut back onto its own beat (the parts' even share of the 8-count) */
+  $('#clkEven').addEventListener('click',()=>{const c=clkCur();if(!c)return;spdEnsure(spdCur());spdPush();const P=[];for(let j=0;j<=BCLK.N;j++)P.push(8*j/BCLK.N);
+    if(!clkSet(P))SPD.undo.pop();clkDraw();spdUI()});
+  $('#clkUndo').addEventListener('click',()=>{$('#spdUndo').click();BCLK.msg='';BCLK.key='';clkDraw()});
+})();
+let clkLast=0;
+(function clkLoop(){try{const now=performance.now();if(now-clkLast>60&&clkVisible()){clkLast=now;
+  if(S.playing&&!BCLK.drag){const L=clkWindows(),s=clipToSong(v.currentTime),i=L.findIndex(W=>s>=W.beats[0]&&s<W.beats[8]);if(i>=0&&i!==BCLK.m)BCLK.m=i}
+  const n=spdCur(),r=$('#clkSvg').getBoundingClientRect();
+  const k=[SPD.ver,BCLK.m,BCLK.N,BCLK.msg,n&&n.curve?JSON.stringify(n.curve.pts):'',Math.round(v.currentTime*20),S.cIn,clipEnd(),S.vr,S.offset,S.ar,routineOn(),clipCut(),liveGrid()&&liveGrid().beats.length,Math.round(r.width),SPD.undo.length].join('|');
+  if(k!==BCLK.key){BCLK.key=k;clkDraw()}}}catch(e){}requestAnimationFrame(clkLoop)})();
 
 /* ---------- motion: panel slide, swipe between modes, stuck video bar, full screen ---------- */
 const RM=()=>window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -4161,7 +4340,7 @@ if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySele
 /*@look*/
 /*@learn*/
 /*@snip*/
-if(/debug/.test(location.hash))window.__rs={rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={BCLK,clkWindows,clkCuts,clkNow,clkSet,clkPos,clkTime,clkCur,COG,cogTurn,cogTilt,clipToSong,songToClip,rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
