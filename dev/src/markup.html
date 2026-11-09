@@ -424,13 +424,23 @@
             <button class="btn sm" data-spd="flat">Normal</button>
           </div>
           <div class="spd-graph" id="spdGraph"><canvas id="spdCanvas" role="img" aria-label="Speed graph: speed of the clip over time"></canvas></div>
-          <div class="spd-read"><span>Speed now <b id="spdNow">1.00×</b></span><span>Length <b id="spdLen">—</b></span></div>
+          <div class="spd-read"><span>Speed now <b id="spdNow">1.00×</b></span><span>Length <b id="spdLen">—</b></span>
+            <span class="spd-zoom" role="group" aria-label="Zoom the graph"><span>Zoom</span><button class="btn sm" id="spdZoomOut" aria-label="Zoom out">−</button><b id="spdZoomTxt">1×</b><button class="btn sm" id="spdZoomIn" aria-label="Zoom in">+</button></span></div>
+          <div class="spd-pt" id="spdPt" hidden>
+            <span class="spd-pt-txt" id="spdPtTxt"></span>
+            <div class="spd-nudge">
+              <button class="btn sm" data-sp="t-" aria-label="One frame earlier">◀</button><button class="btn sm" data-sp="t+" aria-label="One frame later">▶</button>
+              <button class="btn sm" data-sp="y-" aria-label="5% slower">−5%</button><button class="btn sm" data-sp="y+" aria-label="5% faster">+5%</button>
+              <button class="btn sm" data-sp="beat">To beat</button>
+            </div>
+          </div>
           <div class="spd-acts">
             <button class="btn sm" id="spdDel" disabled>Delete point</button>
             <button class="btn sm" id="spdSmooth" disabled>Smooth point</button>
             <button class="btn sm" id="spdUndo" disabled>Undo</button>
+            <button class="btn sm pchip" id="spdSnap" aria-pressed="true" title="While dragging, points snap to dance hits, song beats and round speeds">Snap</button>
           </div>
-          <p class="hint" id="spdNote">Blue ticks are the dance hits and orange ticks are the song's beats, where they land with this curve. Drag along the top strip to move through the clip.</p>
+          <p class="hint" id="spdNote">Tap the graph to add a point, drag a point to move it (it snaps to hits, beats and round speeds), and use the buttons for small steps. Zoom with + or two fingers. Blue ticks are the dance hits, orange ticks the song's beats where they land.</p>
         </section>
           <div class="field">
             <label class="check"><input type="checkbox" id="origAudio"> Play the clip's own sound too</label>
