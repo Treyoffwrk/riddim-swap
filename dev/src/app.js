@@ -477,7 +477,7 @@ function createSource(f,meta){
   const n={id:meta.id||('v'+num),num,el:ve,url:null,cIn:meta.cIn||0,cOut:meta.cOut??null,dur:0,pieces:Array.isArray(meta.pieces)?meta.pieces.map(p=>p.rev?{s:+p.s,e:+p.e,on:!!p.on,rev:true}:{s:+p.s,e:+p.e,on:!!p.on}):null,
     name:meta.name||(f?f.name.replace(/\.[^.]+$/,''):'')||('Video '+num),
     key:meta.key||(f?mediaKey(f):null), fname:meta.fname||(f&&f.name), size:meta.size||(f&&f.size), missing:!f, blob:f||null, errs:0,
-    motion:meta.motion||null, curve:meta.curve||null, kd:+meta.kd||0};
+    motion:meta.motion||null, curve:meta.curve||null, crop:meta.crop||null, kd:+meta.kd||0};
   if(f){n.url=URL.createObjectURL(f);ve.src=n.url;ve.load()}
   S.sources.push(n); return n;
 }
@@ -1521,7 +1521,7 @@ function songMeta(so){return so?{name:so.name,key:so.key,fname:so.fname,size:so.
 function snapshot(){
   return {v:1,
     sources:S.sources.map(n=>({id:n.id,num:n.num,name:n.name,key:n.key,fname:n.fname,size:n.size,
-      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,kd:n.kd||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
+      cIn:n.id===S.cur?S.cIn:n.cIn,cOut:n.id===S.cur?S.cOut:n.cOut,motion:n.motion||null,curve:n.curve||null,crop:n.crop&&n.crop.keys&&n.crop.keys.length?n.crop:null,kd:n.kd||null,pieces:n.pieces&&n.pieces.some(p=>!p.on)||n.pieces&&n.pieces.length>1?n.pieces:null})),
     beatSrc:S.beatSrc, blind:S.blind?{key:S.blind.key,ratings:S.blind.ratings,at:S.blind.at,revealed:!!S.blind.revealed}:null,
     cur:S.cur, moves:S.moves, seq:S.seq, main:S.main, rt:S.rt, loop:S.study?!!S.study.loop:S.loop,   /* Study and Learn turn Repeat on for themselves: save yours */ useSeq:S.useSeq,
     dBase:S.dBase, sBase:S.sBase, origAudio:$('#origAudio').checked,
@@ -2272,7 +2272,7 @@ function hitsFromBody(n){
    itself again from where it was (twice); if it still stops, or the app was closed, Carry on tracking picks up from there.
    The screen is kept on while it tracks, since a locked phone stops it. */
 const cpKey=n=>'bodypart:'+n.key;
-function cpTag(n){const pk=S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null;return RB.modelName()+'|'+(pk?[pk.t,pk.x,pk.y].map(x=>(+x||0).toFixed(3)).join(','):'')}
+function cpTag(n){const pk=S.bodyPick&&S.bodyPick.src===n.id?S.bodyPick:null;return RB.modelName()+'|'+(cropOf(n)?'crop:'+cropOf(n).keys.map(k=>[k.t,k.x,k.y,k.w,k.h].map(q=>(+q).toFixed(3)).join(',')).join(';')+'|':'')+(pk?[pk.t,pk.x,pk.y].map(x=>(+x||0).toFixed(3)).join(','):'')}
 function cpOf(n){if(!n||!n.key)return null;if(n.cp===undefined){n.cp=null;mediaGet(cpKey(n)).then(h=>{if(h&&h.chunks&&n.cp===null){n.cp=h;enable();dockUpdate()}}).catch(()=>{})}return n.cp}
 async function cpClear(n){const h=n.cp||await mediaGet(cpKey(n));n.cp=null;await mediaDel(cpKey(n));if(h&&h.chunks)for(let i=0;i<h.chunks;i++)await mediaDel(cpKey(n)+'#'+i)}
 async function cpLoad(n){const h=await mediaGet(cpKey(n));if(!h||!h.chunks)return null;n.cp=h;if(h.tag!==cpTag(n))return null;
@@ -2286,6 +2286,7 @@ const TRACK_STALL_MS=+window.RB_TRACK_STALL_MS||45000;   /* no progress for this
 const TRACK_READY_MS=+window.RB_TRACK_READY_MS||60000;   /* getting the tracker ready (not counting a model download that is moving) takes no longer than this */
 async function runTrack(fresh){
   const n=srcById(S.cur); if(!n||n.missing||!n.url||S.bodyBusy)return;
+  if(CROP.on)cropSet(false);
   S.bodyBusy=true; S.bodyErr=''; S.bodyT0=null; S.bodyStartAt=performance.now(); S.bodyLeft=''; S.bodyPct=0; $('#bodyTrack').disabled=true; $('#bodyFresh').hidden=true; $('#bodyProg').hidden=false; const bar=$('#bodyProg i'); bar.style.width='0';
   $('#bodyInfo').textContent='Loading the body tracker (first time needs a connection)…';
   const dlIv=setInterval(()=>{if(!S.bodyBusy||S.bodyT0){clearInterval(dlIv);return}const st=RB.rtmStatus();if(st.state==='loading'&&st.got>0&&!S.rtmCached){$('#bodyInfo').textContent='Downloading the RTMPose model (first time only)… '+rtmMB(st.got)+(st.total?' of '+rtmMB(st.total)+' MB':' MB');if(st.total)bar.style.width=Math.min(100,Math.round(st.got/st.total*100))+'%'}},300);
@@ -2316,7 +2317,7 @@ async function runTrack(fresh){
       const stopped=new Promise((_,rej)=>ac.signal.addEventListener('abort',()=>rej(Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})),{once:true}));
       const saver=cpSaver(n);
       try{
-        const B=await Promise.race([stopped,RB.track(n.url,{pick,resume,signal:ac.signal,onSave:st=>gone()&&!run.user?Promise.resolve():saver(st),onPartial:B=>{if(!gone())waitPartial(n,B)},onProgress:p=>{if(gone())return;lastP=performance.now();if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);
+        const B=await Promise.race([stopped,RB.track(n.url,{pick,resume,crop:cropOf(n),signal:ac.signal,onSave:st=>gone()&&!run.user?Promise.resolve():saver(st),onPartial:B=>{if(!gone())waitPartial(n,B)},onProgress:p=>{if(gone())return;lastP=performance.now();if(!S.bodyT0)S.bodyT0={t:performance.now(),p};S.bodyPct=Math.round(p*100);bar.style.width=S.bodyPct+'%';S.bodyLeft=etaText(S.bodyT0,p);
           if(carry&&from==null)from=S.bodyPct;$('#bodyInfo').textContent=(from!=null&&from<100?'Carrying on from '+from+'% · ':'')+'Tracking the body on every frame… '+S.bodyPct+'%'+(S.bodyLeft?' · '+S.bodyLeft:'');dockUpdate();waitUI()}})]);
         clearInterval(wd);
         try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n-(B.resumed||0));if(el2>5&&!B.resumed)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
@@ -3827,6 +3828,77 @@ $('#stage').addEventListener('pointerdown',e=>{
   S.bodyPick={src:n.id,t:el.currentTime,x,y}; S.bodyPicking=false; $('#bodyPick').setAttribute('aria-pressed','false');
   $('#pickMsg').textContent='Got it. Tracking that dancer…'; $('#bodyTrack').click();
 },true);
+/* ---------- Crop to a dancer ----------
+   Draw a box around the dancer with your finger; the tracker then looks only inside it (read at full resolution), so it
+   follows the dancer you mean in a group and sees them bigger. The box can change over the clip: set boxes at different
+   moments and it moves smoothly between them (before the first and after the last it stays put). Kept with the clip. */
+const CROP={on:false,drag:null};
+function cropOf(n){return n&&n.crop&&n.crop.keys&&n.crop.keys.length?n.crop:null}
+function cropCur(){const n=srcById(S.cur);return n&&!n.missing?n:null}
+function cropT(){const el=curVid();return el?el.currentTime:0}
+function cropKeyAt(n,t){const c=cropOf(n);if(!c)return -1;return c.keys.findIndex(k=>Math.abs(k.t-t)<0.06)}
+function cropGeo(){const cv=$('#cropCv'),r=cv.getBoundingClientRect(),el=curVid(),dpr=window.devicePixelRatio||1;
+  if(cv.width!==Math.round(r.width*dpr)||cv.height!==Math.round(r.height*dpr)){cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr)}
+  const R=RB.containRect(r.width,r.height,(el&&el.videoWidth)||16,(el&&el.videoHeight)||9);
+  /* box (0-1 of the frame) to the screen, and back; shown flipped when the clip is mirrored */
+  const toS=b=>({x:R.x+(S.mirror?1-b.x-b.w:b.x)*R.w,y:R.y+b.y*R.h,w:b.w*R.w,h:b.h*R.h});
+  const toN=(px,py)=>{const x=(px-R.x)/R.w,y=(py-R.y)/R.h;return {x:Math.max(0,Math.min(1,S.mirror?1-x:x)),y:Math.max(0,Math.min(1,y))}};
+  return {cv,r,R,dpr,toS,toN}}
+function cropDraw(){const cv=$('#cropCv');if(!cv)return;const show=CROP.on;cv.hidden=!show;if(!show)return;
+  const G=cropGeo(),x=cv.getContext('2d'),{dpr}=G;x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,G.r.width,G.r.height);
+  const n=cropCur(),t=cropT(),b=n&&cropOf(n)?RB.cropBox(n.crop,t):null,onKey=n?cropKeyAt(n,t)>=0:false;
+  x.fillStyle='rgba(8,9,12,.55)';x.fillRect(0,0,G.r.width,G.r.height);
+  if(b){const s=G.toS(b);x.clearRect(s.x,s.y,s.w,s.h);x.strokeStyle=onKey?'#FFD43B':'rgba(255,212,59,.8)';x.lineWidth=2.5;x.setLineDash(onKey?[]:[7,5]);x.strokeRect(s.x,s.y,s.w,s.h);x.setLineDash([]);
+    if(onKey){x.fillStyle='#FFD43B';for(const [cx2,cy2] of [[s.x,s.y],[s.x+s.w,s.y],[s.x,s.y+s.h],[s.x+s.w,s.y+s.h]]){x.beginPath();x.arc(cx2,cy2,7,0,7);x.fill()}}
+    x.font='800 12px Figtree,sans-serif';x.textBaseline='bottom';x.fillStyle='#FFD43B';x.fillText(onKey?'Box at '+fmt2(t):'Between boxes (drag to set one here)',Math.max(4,s.x),Math.max(14,s.y-4))}
+  else{x.font='800 14px Figtree,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillStyle='#F3F1EC';x.fillText('Drag a box around the dancer',G.r.width/2,G.r.height/2)}
+  x.textAlign='left'}
+function cropUI(){const n=cropCur(),c=cropOf(n);
+  $('#cropBtn').setAttribute('aria-pressed',String(CROP.on));$('#cropBtn').disabled=!n||S.bodyBusy||routineOn();
+  $('#cropBtn').textContent=CROP.on?'Done cropping':c?'Crop: '+c.keys.length+' box'+(c.keys.length>1?'es':''):'Crop to a dancer';
+  $('#cropBar').hidden=!CROP.on;
+  if(CROP.on){const t=cropT(),i=n?cropKeyAt(n,t):-1;$('#cropDel').disabled=i<0;$('#cropClear').disabled=!c;
+    const L=$('#cropKeys');L.textContent='';if(c)c.keys.forEach((k,j)=>{const b=document.createElement('button');b.type='button';b.className='btn sm'+(j===i?' on':'');b.textContent=fmt(k.t);b.title='Go to this box';
+      b.addEventListener('click',()=>{if(S.playing)pause();const el=curVid();S.segIdx=0;el.currentTime=k.t;setTimeout(()=>{cropUI();cropDraw()},120)});L.appendChild(b)});
+    $('#cropMsg').textContent=!c?'Pause where you can see the dancer and drag a box around them (leave room for arms and legs).':
+      c.keys.length===1?'One box for the whole clip. If they move, go to another moment and drag the box there too: it moves smoothly between boxes.':
+      `${c.keys.length} boxes: it moves smoothly between them. Drag the box to set one here, or tap a time to check a box.`}
+  const st=$('#cropState');if(st)st.textContent=c&&!CROP.on?(n.body?'Tracking looked only inside your box.':'Tracking will look only inside your box.'):'';}
+function cropSet(on){CROP.on=!!on&&!!cropCur();if(CROP.on){if(S.playing)pause();S.bodyPicking=false;window.scrollTo({top:0,behavior:'smooth'})}
+  else{const n=cropCur();if(n&&cropOf(n))$('#pickMsg').textContent=n.body?'Track again with the crop: tap Track body.':'';try{autosave(true).catch(()=>{})}catch(e){}}
+  cropUI();cropDraw()}
+$('#cropBtn').addEventListener('click',()=>cropSet(!CROP.on));
+$('#cropDone').addEventListener('click',()=>cropSet(false));
+$('#cropDel').addEventListener('click',()=>{const n=cropCur(),i=n?cropKeyAt(n,cropT()):-1;if(i<0)return;n.crop.keys.splice(i,1);if(!n.crop.keys.length)n.crop=null;cropUI();cropDraw()});
+$('#cropClear').addEventListener('click',()=>{const n=cropCur();if(!n)return;n.crop=null;cropUI();cropDraw()});
+(function(){const cv=$('#cropCv');
+  const pt=e=>{const r=cv.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]};
+  cv.addEventListener('pointerdown',e=>{if(!CROP.on)return;e.preventDefault();e.stopPropagation();cv.setPointerCapture(e.pointerId);if(S.playing)pause();
+    const n=cropCur();if(!n)return;const G=cropGeo(),[px,py]=pt(e),t=cropT(),b=cropOf(n)?RB.cropBox(n.crop,t):null;let mode='draw',corner=null;
+    if(b){const s=G.toS(b),cs=[[s.x,s.y,'tl'],[s.x+s.w,s.y,'tr'],[s.x,s.y+s.h,'bl'],[s.x+s.w,s.y+s.h,'br']];
+      for(const [qx,qy,nm] of cs)if(Math.hypot(qx-px,qy-py)<24){mode='size';corner=nm;break}
+      if(mode==='draw'&&px>=s.x&&px<=s.x+s.w&&py>=s.y&&py<=s.y+s.h)mode='move'}
+    CROP.drag={mode,corner,x0:px,y0:py,b0:b?{...b}:null,moved:false,t}});
+  cv.addEventListener('pointermove',e=>{const D=CROP.drag;if(!D||!CROP.on)return;const [px,py]=pt(e);if(!D.moved&&Math.hypot(px-D.x0,py-D.y0)<5)return;D.moved=true;
+    const n=cropCur(),G=cropGeo();if(!n)return;let nb;
+    if(D.mode==='draw'){const a=G.toN(D.x0,D.y0),c=G.toN(px,py);nb={x:Math.min(a.x,c.x),y:Math.min(a.y,c.y),w:Math.abs(c.x-a.x),h:Math.abs(c.y-a.y)}}
+    else{const a=G.toN(D.x0,D.y0),c=G.toN(px,py),dx=c.x-a.x,dy=c.y-a.y,b=D.b0;
+      if(D.mode==='move')nb={x:Math.max(0,Math.min(1-b.w,b.x+dx)),y:Math.max(0,Math.min(1-b.h,b.y+dy)),w:b.w,h:b.h};
+      else{/* the corner you hold moves; the opposite one stays (on screen: mirrored clips swap left and right) */
+        let x0=b.x,y0=b.y,x1=b.x+b.w,y1=b.y+b.h;const L=D.corner[1]==='l'!==!!S.mirror,T=D.corner[0]==='t';
+        if(L)x0=Math.min(x1-0.04,x0+dx);else x1=Math.max(x0+0.04,x1+dx);if(T)y0=Math.min(y1-0.04,y0+dy);else y1=Math.max(y0+0.04,y1+dy);
+        nb={x:Math.max(0,x0),y:Math.max(0,y0),w:Math.min(1,x1)-Math.max(0,x0),h:Math.min(1,y1)-Math.max(0,y0)}}}
+    if(nb.w<0.03||nb.h<0.03)return;
+    if(!n.crop)n.crop={keys:[]};let i=cropKeyAt(n,D.t);const k={t:+D.t.toFixed(3),x:+nb.x.toFixed(4),y:+nb.y.toFixed(4),w:+nb.w.toFixed(4),h:+nb.h.toFixed(4)};
+    if(i>=0)n.crop.keys[i]=k;else{n.crop.keys.push(k);n.crop.keys.sort((p,q)=>p.t-q.t)}
+    cropUI();cropDraw()});
+  const end=()=>{if(CROP.drag){CROP.drag=null;cropUI();cropDraw()}};cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end)})();
+/* keep the box on the video as it plays or you move through the clip */
+(function cropLoop(){try{if(CROP.on){const k=cropT().toFixed(2)+'|'+S.mirror;if(k!==CROP.k){CROP.k=k;cropDraw();cropUI()}}}catch(e){}requestAnimationFrame(cropLoop)})();
+window.addEventListener('resize',()=>{if(CROP.on)cropDraw()});
+setInterval(()=>{try{if(!CROP.on)cropUI()}catch(e){}},1000);
+window.__rsCrop=CROP;
+
 /* the Hip moves graph: tilt and sway over the clip, the song's beats, the playhead */
 function hipGraph(){
   const card=$('#hipCard'), n=srcById(S.cur), B=n&&bodyOf(n), show=!!(B&&S.hasV&&!routineOn()&&!$('#p-clip').hidden);

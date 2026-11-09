@@ -2,7 +2,7 @@
 
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-55793aeac1'</script>
+<script>window.RS_BUILD='rs-0e365dc072'</script>
 <meta charset="utf-8"/><meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
 <meta content="#0b0e0d" name="theme-color"/><meta content="MirrorView — see movement through time. A local-first movement practice studio." name="description"/>
 <title>Riddim Swap · Body</title>
@@ -784,6 +784,22 @@ main{padding-bottom:12px}
      download kept for offline use) or 'full' (Faster). Set from Riddim Swap's Track body card; Body uses the same. */
   function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy|rtm)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':q==='accurate'?'heavy':rtmURL()?'rtm':'heavy'}   /* RTMPose is the default (29 Oct: judged the better skeleton on real clips) */
   const rtmURL=()=>root.RB_RTM_URL||CFG.rtmURL;
+  /* Crop: a box (0-1 of the frame) around the dancer you want, which can change over time (boxes at moments, moving
+     smoothly between them). crop = {keys:[{t,x,y,w,h}]}; before the first box and after the last it stays put. */
+  function cropBox(crop,t){const K=crop&&crop.keys;if(!K||!K.length)return null;
+    let b;if(t<=K[0].t)b=K[0];else if(t>=K[K.length-1].t)b=K[K.length-1];
+    else{let i=0;while(i<K.length-2&&K[i+1].t<=t)i++;const a=K[i],c=K[i+1],u=(t-a.t)/((c.t-a.t)||1),L=(p,q)=>p+(q-p)*u;b={x:L(a.x,c.x),y:L(a.y,c.y),w:L(a.w,c.w),h:L(a.h,c.h)}}
+    const x=Math.max(0,Math.min(0.98,b.x)),y=Math.max(0,Math.min(0.98,b.y));return {x,y,w:Math.max(0.02,Math.min(1-x,b.w)),h:Math.max(0.02,Math.min(1-y,b.h))}}
+  /* the box is drawn from the video at full resolution into a picture the same size as the whole frame's (the pose
+     tracker stops for good if the picture's size changes between frames), fitted inside it with black around it;
+     map / inv convert between that picture (0-1) and the whole frame (0-1) */
+  let kcv=null,kcx=null;
+  function cropDraw(v,b,W,H,CW,CH){
+    if(!kcv){kcv=document.createElement('canvas');kcx=kcv.getContext('2d',{willReadFrequently:false})}
+    if(kcv.width!==CW||kcv.height!==CH){kcv.width=CW;kcv.height=CH}
+    const sw=b.w*W,sh=b.h*H,k=Math.min(CW/sw,CH/sh),dw=sw*k,dh=sh*k,ox=(CW-dw)/2,oy=(CH-dh)/2;
+    kcx.fillStyle='#000';kcx.fillRect(0,0,CW,CH);kcx.imageSmoothingQuality='high';kcx.drawImage(v,b.x*W,b.y*H,sw,sh,ox,oy,dw,dh);
+    return {cv:kcv,map:(x,y)=>[b.x+(x*CW-ox)/dw*b.w,b.y+(y*CH-oy)/dh*b.h],inv:(X,Y)=>[(ox+(X-b.x)/b.w*dw)/CW,(oy+(Y-b.y)/b.h*dh)/CH]}}
   /* drop the tracker engine so the next run builds it afresh (after it got stuck: a graphics chip that came back from the
      background broken can leave a call that never answers); leftover tracking previews are removed */
   function reset(){try{runtime&&runtime.task&&runtime.task.close()}catch(e){}try{runtime&&runtime.rtm&&runtime.rtm.session&&runtime.rtm.session.release&&runtime.rtm.session.release()}catch(e){}
@@ -988,6 +1004,8 @@ main{padding-bottom:12px}
         if(mt==null&&hasRVFC){clockMiss++;if(clockMiss<=3&&clockHits>clockMiss*2){skipped.add(k);unsaved.push(k);if(opt.onProgress)opt.onProgress(Math.min(1,(++done)/want.length));continue}}
         else if(mt!=null){clockMiss=0;clockHits++}
         let P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
+        /* your crop box at this moment: the tracker looks only inside it, read from the video at full resolution */
+        const cb=cropBox(opt.crop,want[k]);
         let sig=sigOf();
         if(same(sig,lastSig)&&!(mt!=null&&hasRVFC)){
           /* the frame clock didn't confirm a new frame and the picture is unchanged: probably stuck */
@@ -1005,9 +1023,10 @@ main{padding-bottom:12px}
         /* the frame is copied: start decoding the next one now; the decoder works while the tracker runs */
         {const nk=nextTodo(oi);if(nk>=0&&!(opt.signal&&opt.signal.aborted))pending={k:nk,p:seekTo(want[nk])}}
         const s=performance.now(); let cands=[], mk=null;
-        const PR={};const D0=performance.now();rt.task.detect(cv,r=>{const D1=performance.now();PR.det=D1-D0;
+        const CD=cb?cropDraw(v,cb,W,H,cv.width,cv.height):null,src=CD?CD.cv:cv;
+        const PR={};const D0=performance.now();rt.task.detect(src,r=>{const D1=performance.now();PR.det=D1-D0;
           const L=r.landmarks||[], Wl=r.worldLandmarks||[];
-          cands=L.map((pts,i)=>({pts:pts.map(q=>[q.x,q.y,q.visibility??0]),w:Wl[i]?Wl[i].map(q=>[q.x,q.y,q.z]):null,i}));
+          cands=L.map((pts,i)=>({pts:pts.map(q=>{if(!CD)return [q.x,q.y,q.visibility??0];const [X,Y]=CD.map(q.x,q.y);return [X,Y,q.visibility??0]}),w:Wl[i]?Wl[i].map(q=>[q.x,q.y,q.z]):null,i}));
           if(cands.length>1||(prev&&prev.app)||root.RB_DEBUG_ALL)cands.forEach(c=>{c.app=looks(cx,cv.width,cv.height,c.pts)});
           PR.look=performance.now()-D1;
           const DBG=root.RB_DEBUG_ALL?{k,t:want[k],cands:cands.map(c=>({pts:c.pts,app:c.app}))}:null;if(DBG)root.RB_DEBUG_ALL.push(DBG);
@@ -1019,7 +1038,10 @@ main{padding-bottom:12px}
             else if(m){try{const src=m.getAsFloat32Array(),sw=m.width,sh=m.height;mk=new Uint8Array(mw*mh);
               for(let y=0;y<mh;y++){const y0=Math.floor(y*sh/mh),y1=Math.max(y0+1,Math.floor((y+1)*sh/mh));
                 for(let x=0;x<mw;x++){const x0=Math.floor(x*sw/mw),x1=Math.max(x0+1,Math.floor((x+1)*sw/mw));let a=0,c=0;
-                  for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}}
+                  for(let yy=y0;yy<y1;yy+=2)for(let xx=x0;xx<x1;xx+=2){a+=src[yy*sw+xx];c++}mk[y*mw+x]=Math.round(255*Math.min(1,a/(c||1)))}}}catch(e){mk=null}}
+            /* a mask of the crop: placed back where the box is on the whole frame */
+            if(mk&&CD){const full=new Uint8Array(mw*mh);for(let y=0;y<mh;y++){const fy=(y+0.5)/mh;if(fy<cb.y||fy>=cb.y+cb.h)continue;
+                for(let x=0;x<mw;x++){const fx=(x+0.5)/mw;if(fx<cb.x||fx>=cb.x+cb.w)continue;const [u,w2]=CD.inv(fx,fy);const cx2=Math.min(mw-1,Math.max(0,Math.floor(u*mw))),cy2=Math.min(mh-1,Math.max(0,Math.floor(w2*mh)));full[y*mw+x]=mk[cy2*mw+cx2]}}mk=full}}
           (r.segmentationMasks||[]).forEach(m=>{if(m&&m.close)try{m.close()}catch(e){}});PR.mask=performance.now()-M0;
           cands.chosen=ch;if(DBG)DBG.ch=ch?ch.i:-1;
         });
@@ -1031,7 +1053,11 @@ main{padding-bottom:12px}
         if(ch){if(prev&&!ch.vel){const a=geom(prev.pts,asp),b2=geom(ch.pts,asp),k2=1+lost,nv=[(b2.hp[0]-a.hp[0])/k2,(b2.hp[1]-a.hp[1])/k2],ov=prev.vel||nv;ch.vel=[0.6*ov[0]+0.4*nv[0],0.6*ov[1]+0.4*nv[1]]}
           ch.before=prev?{pts:prev.pts,vel:prev.vel||null}:null;learnLooks(prev,ch);
           prev=ch;lost=0;if(opt.pick&&!pickPose)pickPose=ch}else lost++;
-        let wb=null;if(ch&&rt.rtm){try{const Rr=await visWait(rtmRefine(rt.rtm,cv,ch.pts),CFG.rtmWait,'RTMPose stopped answering');if(Rr){wb=Rr.wb;ch.pts=Rr.pts}}catch(e){if(e&&e.stall)throw e;rt.rtm.errors=(rt.rtm.errors||0)+1}}
+        let wb=null;if(ch&&rt.rtm){try{
+          /* with a crop, RTMPose reads the dancer from the crop (sharper than the whole frame), and its points are placed back */
+          const inC=CD?ch.pts.map(p=>{const [u,w2]=CD.inv(p[0],p[1]);return [u,w2,p[2]]}):ch.pts;
+          const Rr=await visWait(rtmRefine(rt.rtm,CD?src:cv,inC),CFG.rtmWait,'RTMPose stopped answering');
+          if(Rr){wb=Rr.wb;let np=Rr.pts;if(CD){for(let q=0;q<wb.length;q+=3){const [X,Y]=CD.map(wb[q],wb[q+1]);wb[q]=X;wb[q+1]=Y}np=np.map(p=>{const [X,Y]=CD.map(p[0],p[1]);return [X,Y,p[2]]})}ch.pts=np}}catch(e){if(e&&e.stall)throw e;rt.rtm.errors=(rt.rtm.errors||0)+1}}
         const row=new Float32Array(STRIDE); row[0]=t; const wr=new Float32Array(WS).fill(NaN);
         if(ch){for(let j=0;j<N;j++){row[1+j*3]=ch.pts[j][0];row[2+j*3]=ch.pts[j][1];row[3+j*3]=ch.pts[j][2]}
           if(ch.w)WJ.forEach((j,u)=>{wr[u*3]=ch.w[j][0];wr[u*3+1]=ch.w[j][1];wr[u*3+2]=ch.w[j][2]})}
@@ -1619,7 +1645,7 @@ main{padding-bottom:12px}
     let mask=null;if(B.mask&&B.mask.data&&B.mask.w){const mw=B.mask.w,mh=B.mask.h,md=new Uint8Array(n*mw*mh);let fr=0;rows.forEach((r,k)=>{if(r.i<B.mask.n){const src=B.mask.data.subarray(r.i*mw*mh,(r.i+1)*mw*mh);md.set(src,k*mw*mh);if(src.some(x=>x))fr++}});mask={w:mw,h:mh,n,data:md,frames:fr}}
     const out={...B,n,data,world:per(B.world,WS),hips:per(B.hips,HS),ext:per(B.ext,EXTN*3),mask,cuts:cuts||B.cuts||[],edited:(B.edited||0)+1};
     delete out._room;delete out._up;return out}
-  root.RB={reset,resetCount:()=>resets,remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={cropBox,reset,resetCount:()=>resets,remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/
 
