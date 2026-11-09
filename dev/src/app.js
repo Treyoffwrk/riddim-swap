@@ -714,6 +714,7 @@ function shiftBoth(d){
   const what=ro?'The routine':'The dance';
   msgEl.textContent=Math.abs(moved)<0.01?(d<0?(start<=0.01?'The clip already starts at its beginning.':"The song already starts at its beginning, so it can't come earlier."):"Can't start any later."):
     `${what} now starts ${Math.abs(moved)}s ${moved<0?'earlier':'later'} (${fmt2(s2)} in the clip) and the song at ${fmt2(off)}`+(Math.abs(moved-d)>0.01?` (as far as it goes: ${moved<0&&s2<=0.01?'the clip starts there':'the song starts there'}).`:'.');
+  if(Math.abs(moved)>=0.01&&!ro&&curveOf(n))msgEl.textContent+=' Your speed graph stays on the same moves'+(moved<0?', and the new lead-in plays at the speed it had at the old start.':' (its points before the new start are kept, for if you move back).');
   S.bothN=(S.bothN||0)+1;try{autosave(true).catch(()=>{})}catch(e){}}
 $$('[data-both]').forEach(b=>b.addEventListener('click',()=>shiftBoth(+b.dataset.both)));
 $$('[data-rboth]').forEach(b=>b.addEventListener('click',()=>shiftBoth(+b.dataset.rboth)));
@@ -4105,7 +4106,7 @@ if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySele
 /*@look*/
 /*@learn*/
 /*@snip*/
-if(/debug/.test(location.hash))window.__rs={addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;
