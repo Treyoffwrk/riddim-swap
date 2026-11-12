@@ -47,11 +47,21 @@
   function modelName(){if(root.RB_MODEL&&/^(lite|full|heavy|rtm)$/.test(root.RB_MODEL))return root.RB_MODEL;let q=null;try{q=localStorage.getItem('rs-track-q')}catch(e){}return q==='fast'?'full':q==='accurate'?'heavy':rtmURL()?'rtm':'heavy'}   /* RTMPose is the default (29 Oct: judged the better skeleton on real clips) */
   const rtmURL=()=>root.RB_RTM_URL||CFG.rtmURL;
   /* Crop: a box (0-1 of the frame) around the dancer you want, which can change over time (boxes at moments, moving
-     smoothly between them). crop = {keys:[{t,x,y,w,h}]}; before the first box and after the last it stays put. */
+     smoothly between them). crop = {keys:[{t,x,y,w,h,sw}]}; before the first box and after the last it stays put.
+     sw: this box is on a different dancer from the box before it (found when tracking): the box doesn't slide across
+     to it (sliding through the gap between two dancers left nobody in the box), it stays on the first dancer and jumps
+     at this box's time, and tracking starts afresh there, like a cut. */
   function cropBox(crop,t){const K=crop&&crop.keys;if(!K||!K.length)return null;
     let b;if(t<=K[0].t)b=K[0];else if(t>=K[K.length-1].t)b=K[K.length-1];
-    else{let i=0;while(i<K.length-2&&K[i+1].t<=t)i++;const a=K[i],c=K[i+1],u=(t-a.t)/((c.t-a.t)||1),L=(p,q)=>p+(q-p)*u;b={x:L(a.x,c.x),y:L(a.y,c.y),w:L(a.w,c.w),h:L(a.h,c.h)}}
+    else{let i=0;while(i<K.length-2&&K[i+1].t<=t)i++;const a=K[i],c=K[i+1],u=(t-a.t)/((c.t-a.t)||1),L=(p,q)=>p+(q-p)*u;b=c.sw?a:{x:L(a.x,c.x),y:L(a.y,c.y),w:L(a.w,c.w),h:L(a.h,c.h)}}
     const x=Math.max(0,Math.min(0.98,b.x)),y=Math.max(0,Math.min(0.98,b.y));return {x,y,w:Math.max(0.02,Math.min(1-x,b.w)),h:Math.max(0.02,Math.min(1-y,b.h))}}
+  /* which stretch between dancer switches t is in (0 before the first switch) */
+  function cropSeg(crop,t){const K=crop&&crop.keys;if(!K)return 0;let s=0;for(let i=1;i<K.length;i++)if(K[i].sw&&K[i].t<=t+1e-6)s++;return s}
+  /* is a point (0-1 of the frame) inside the box (with a margin) */
+  const inBoxXY=(x,y,b,m)=>{m=m||0;return x>=b.x-m&&x<=b.x+b.w+m&&y>=b.y-m&&y<=b.y+b.h+m};
+  const hipXY=P=>[(P[23][0]+P[24][0])/2,(P[23][1]+P[24][1])/2];
+  /* how much two boxes overlap (intersection over union) */
+  const boxIoU=(a,b)=>{const ix=Math.max(0,Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x)),iy=Math.max(0,Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y)),i=ix*iy;return i/((a.w*a.h+b.w*b.h-i)||1)};
   /* the box is drawn from the video at full resolution into a picture the same size as the whole frame's (the pose
      tracker stops for good if the picture's size changes between frames), fitted inside it with black around it;
      map / inv convert between that picture (0-1) and the whole frame (0-1) */
@@ -167,6 +177,9 @@
         order=[];for(let k=anchor;k<want.length;k++)order.push(k);for(let k=anchor-1;k>=0;k--)order.push(k)}
       const slot=new Array(want.length).fill(null); let ms=0, n=0, done=0, multi=0;
       let prev=null, lost=0, pickPose=null, clockMiss=0, clockHits=0, switches=0; const FS={fps:0,lost:0,chal:0};
+      /* the crop box (a copy: which boxes switch dancer is worked out below) */
+      const crop=opt.crop&&opt.crop.keys&&opt.crop.keys.length?{keys:opt.crop.keys.map(q=>({t:+q.t,x:+q.x,y:+q.y,w:+q.w,h:+q.h})).sort((a,b)=>a.t-b.t)}:null;
+      let lastSeg=null, cropSwitches=0;
       /* stuck-picture guard: a tiny copy of each frame; if the picture hasn't changed although we moved to a new frame, the
          video is stuck: wait and ask again, then wake it with a short play; if it still won't move, leave a gap (no pose)
          rather than tracking the old picture again */
@@ -235,15 +248,40 @@
       let mask=null; const withMask=final?masks.filter(Boolean).length:0;
       if(withMask){const md=new Uint8Array(rows.length*mw*mh);masks.forEach((m,i)=>{if(m)md.set(m,i*mw*mh)});mask={w:mw,h:mh,n:rows.length,data:md,frames:withMask}}
       return {v:2,cleanV:2,cuts:cutTimes,ext,model:rt.model==='rtm'?'rtmpose-wholebody + pose_landmarker_full 0.10.18':'pose_landmarker_'+(rt.model||'full')+' 0.10.18',w:W,h:H,fps,n:rows.length,data:C.data,world:C.world,hips:hipSeries(C.data,C.world,rows.length,asp),
-        clean:C.report,multi,switches,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null,resumed,revived,partial:!final};
+        clean:C.report,multi,switches,cropSw:crop?crop.keys.map(q=>!!q.sw):null,cropSwitches,mask,seen,missed:Math.max(0,want.length-rows.length),stale,kicks,reloads,rtmMs:rt.rtm&&rt.rtm.n?rt.rtm.ms/rt.rtm.n:undefined,rtmEp:rt.rtm?rt.rtm.ep:undefined,rtmErrors:rt.rtm?rt.rtm.errors||0:undefined,msPerFrame:n?ms/n:0,delegate:rt.delegate,start,end,pick:opt.pick||null,resumed,revived,partial:!final};
       };
       let lastPartial=R?-1e9:performance.now();   /* carrying on: show what was kept straight away */
       FS.fps=fps;
+      /* crop boxes on different dancers: at each box's time, who is in it, and who is in the box before it (held where it
+         was). Two different people: you moved the box to another dancer, so the box jumps there (it doesn't slide through
+         the gap) and tracking starts afresh, like a cut. Nobody in one of them, or the same person: the box follows them. */
+      if(crop&&crop.keys.length>1){
+        const peopleIn=async(t,b0)=>{const b=cropBox({keys:[b0]},0);const mt=await seekTo(t);if(mt===undefined)return [];
+          const CD=cropDraw(v,b,W,H,cv.width,cv.height);let out=[];
+          rt.task.detect(CD.cv,r=>{out=(r.landmarks||[]).map(pts=>({pts:pts.map(q=>{const [X,Y]=CD.map(q.x,q.y);return [X,Y,q.visibility??0]})}));(r.segmentationMasks||[]).forEach(m=>{if(m&&m.close)try{m.close()}catch(e){}})});
+          return out.filter(c=>{const [x,y]=hipXY(c.pts);return inBoxXY(x,y,b,0.02)})};
+        for(let i=1;i<crop.keys.length;i++){const a=crop.keys[i-1],c=crop.keys[i];c.sw=false;
+          if(c.t<start||c.t>end||boxIoU(a,c)>0.5)continue;
+          /* who is in the box before it (held where it was) at this box's time: found within ±0.5 s (this tracker misses
+             fast, dark-clad dancers in some frames) */
+          let op=null,at=c.t;
+          for(const df of [0,2,-2,5,-5,9,-9,14,-14]){const t=Math.max(start,Math.min(end-0.5/fps,c.t+df/fps));const P=await peopleIn(t,a);
+            if(root.RB_PLANDBG)root.RB_PLANDBG.push(['old',+t.toFixed(3),P.length]);if(P.length){op=frontmost(P,asp,a);at=t;break}}
+          if(!op)continue;   /* nobody there: the dancer has moved on, the box follows them */
+          /* they're still there and not in the new box: the new box is on someone else (or nobody) */
+          const [hx,hy]=hipXY(op.pts),nb=cropBox({keys:[c]},0);
+          if(!inBoxXY(hx,hy,nb,0.02)){c.sw=true;continue}
+          /* in both: someone else in the new box (further from its middle than the one you were following)? */
+          const P=await peopleIn(at,c),np=P.length?frontmost(P,asp,c):null;
+          if(np){const g1=geom(np.pts,asp),g2=geom(op.pts,asp);c.sw=Math.hypot(g1.hp[0]-g2.hp[0],g1.hp[1]-g2.hp[1])>0.6*Math.max(g1.T,g2.T)}}
+        if(root.RB_CROPPLAN)root.RB_CROPPLAN.push(crop.keys.map(q=>!!q.sw))}
       let pending=null;   /* the next frame's seek, started while the tracker works on this one */
       for(let oi=0;oi<order.length;oi++){const k=order[oi];
         if(dead())throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'});
         if(opt.signal&&opt.signal.aborted){await saveNow();throw Object.assign(new Error('Tracking was stopped'),{name:'AbortError'})}
-        if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false;FS.chal=0}   /* going backwards: start again from the tap */
+        if(k===anchor-1){prev=pickPose?{...pickPose,vel:pickPose.vel?[-pickPose.vel[0],-pickPose.vel[1]]:null}:null;lost=0;crossed=false;FS.chal=0;lastSeg=crop?cropSeg(crop,want[anchor]):null}   /* going backwards: start again from the tap */
+        /* the crop box jumped to another dancer: start afresh, like a cut (a dancer you chose counts only before it) */
+        if(crop){const sg=cropSeg(crop,want[k]);if(lastSeg!=null&&sg!==lastSeg){prev=null;lost=0;crossed=true;FS.chal=0;FS.others=null;cutAt.add(k<anchor?k+1:k);cropSwitches++}lastSeg=sg}
         if(isDone(k)){if(slot[k]){if(slot[k].pick){prev=slot[k].pick;lost=0}else lost++}continue}   /* finished in an earlier run */
         /* the app is in the background: iPhone stops the video and the tracker, so keep what's done and wait to come back */
         if(document.hidden){await saveNow();pending=null;await new Promise(r=>{const f=()=>{if(!document.hidden){document.removeEventListener('visibilitychange',f);r()}};document.addEventListener('visibilitychange',f)});await new Promise(r=>setTimeout(r,400));seekFails=Math.max(seekFails,2)}
@@ -267,7 +305,7 @@
         else if(mt!=null){clockMiss=0;clockHits++}
         let P1=performance.now();cx.drawImage(v,0,0,cv.width,cv.height);
         /* your crop box at this moment: the tracker looks only inside it, read from the video at full resolution */
-        const cb=cropBox(opt.crop,want[k]);
+        const cb=cropBox(crop,want[k]);FS.box=cb;
         let sig=sigOf();
         if(same(sig,lastSig)&&!(mt!=null&&hasRVFC)){
           /* the frame clock didn't confirm a new frame and the picture is unchanged: probably stuck */
@@ -360,21 +398,27 @@
   }
   /* how much someone stands out as the dancer: size (nearer the camera is bigger), how clearly the body is seen, and a
      little for being central */
-  function promOf(c,asp){const g=geom(c.pts,asp),vis=(c.pts[11][2]+c.pts[12][2]+c.pts[23][2]+c.pts[24][2])/4,centre=1-Math.min(1,Math.abs(g.hp[0]-0.5)*1.2);return g.T*vis*(0.8+0.2*centre)}
-  function frontmost(cands,asp){let b=null,bs=-1;for(const c of cands){const p=promOf(c,asp);if(p>bs){bs=p;b=c}}return b}
+  /* (with a crop box: central in the box, not in the frame) */
+  function promOf(c,asp,box){const g=geom(c.pts,asp),vis=(c.pts[11][2]+c.pts[12][2]+c.pts[23][2]+c.pts[24][2])/4,centre=1-Math.min(1,box?Math.abs(g.hp[0]-(box.x+box.w/2))/box.w*1.2:Math.abs(g.hp[0]-0.5)*1.2);return g.T*vis*(0.8+0.2*centre)}
+  function frontmost(cands,asp,box){let b=null,bs=-1;for(const c of cands){const p=promOf(c,asp,box);if(p>bs){bs=p;b=c}}return b}
   /* one frame's decision. F carries {fps, lost, chal (frames someone further forward has stood out), sticky, pick}.
      Returns {ch, sw}: sw = now following someone else (the skeleton must not blend the two) */
   function follow(cands,prev,F,asp){
     const FC=CFG.follow,fr=s=>Math.max(1,Math.round(s*(F.fps||30))),lostMax=fr(FC.lostMax);
     if(F.pick){F.chal=0;return {ch:choose(cands,prev,F.pick,asp,F.lost,F.sticky,lostMax),sw:false}}
+    /* with a crop box, the box is what you asked for: a dancer last seen outside the box isn't waited for (not even one
+       you chose); whoever is in the box is followed at once (12 Nov: the box moved to another dancer and tracking waited
+       for the first dancer to come into it) */
+    if(F.box&&prev){const [hx,hy]=hipXY(prev.pts);if(!inBoxXY(hx,hy,F.box,0.03)){F.chal=0;F.others=null;
+      if(!cands.length)return {ch:null,sw:false};return {ch:frontmost(cands,asp,F.box),sw:true}}}
     if(prev&&(F.lost<lostMax||F.sticky)){
       const m=choose(cands,prev,null,asp,F.lost,F.sticky,lostMax);
       if(F.sticky)return {ch:m,sw:false};
       if(m){
         F.others=cands.filter(c=>c!==m).map(c=>{const g=geom(c.pts,asp);return [g.hp[0],g.hp[1],g.T]});{const g=geom(m.pts,asp);F.others.at=[g.hp[0],g.hp[1],g.T]}
         /* someone clearly further forward (not just their own body found twice) for a while takes over */
-        const gm=geom(m.pts,asp),pm=promOf(m,asp);let o=null,po=0;
-        for(const c of cands){if(c===m)continue;const g=geom(c.pts,asp);if(Math.hypot(g.hp[0]-gm.hp[0],g.hp[1]-gm.hp[1])<0.5*gm.T)continue;const p=promOf(c,asp);if(p>po){po=p;o=c}}
+        const gm=geom(m.pts,asp),pm=promOf(m,asp,F.box);let o=null,po=0;
+        for(const c of cands){if(c===m)continue;const g=geom(c.pts,asp);if(Math.hypot(g.hp[0]-gm.hp[0],g.hp[1]-gm.hp[1])<0.5*gm.T)continue;const p=promOf(c,asp,F.box);if(p>po){po=p;o=c}}
         /* (the count is in time: frames where they weren't found count too, unless they're gone for longer than hold) */
         if(o&&po>FC.front*pm){F.chalMiss=0;if(++F.chal>=fr(FC.hold)){F.chal=0;return {ch:o,sw:true}}}
         else if(o)F.chal=0;else if(F.chal&&(F.chalMiss=(F.chalMiss||0)+1)<=fr(FC.hold))F.chal++;else F.chal=0;
@@ -383,18 +427,19 @@
       /* the followed dancer has gone (left the shot, or a cut that wasn't spotted): if someone else is dancing, follow them;
          at once if they're clearly further forward than the dancer was */
       if(!cands.length)return {ch:null,sw:false};
-      const b=frontmost(cands,asp),gb=geom(b.pts,asp);
-      /* the one who was next to the dancer when they went is most likely just passing in front of them: wait for the dancer */
-      const near=(F.others||[]).some(o=>Math.hypot(gb.hp[0]-o[0],gb.hp[1]-o[1])<Math.min(2,0.6+0.1*F.lost)*o[2]);
+      const b=frontmost(cands,asp,F.box),gb=geom(b.pts,asp);
+      /* the one who was next to the dancer when they went is most likely just passing in front of them: wait for the dancer
+         (with a crop box, only people who were inside the box as it is now count) */
+      const near=(F.others||[]).filter(o=>!F.box||inBoxXY(o[0],o[1]/asp,F.box,0.03)).some(o=>Math.hypot(gb.hp[0]-o[0],gb.hp[1]-o[1])<Math.min(2,0.6+0.1*F.lost)*o[2]);
       if(near&&Math.hypot(gb.hp[0]-F.others.at[0],gb.hp[1]-F.others.at[1])<FC.hide*F.others.at[2])return {ch:null,sw:false};
       /* someone who was already dancing alongside only takes over if they're clearly further forward, or the dancer stays gone a little longer
          (a dancer missed for a moment comes back; one who left doesn't);
          new people (a cut that wasn't spotted) take over quickly */
-      const further=promOf(b,asp)>FC.front*promOf(prev,asp);
+      const further=promOf(b,asp,F.box)>FC.front*promOf(prev,asp,F.box);
       if(near&&!further&&F.lost+1<fr(FC.alongside))return {ch:null,sw:false};
       if(F.lost+1<fr(FC.lostSwitch)&&!further)return {ch:null,sw:false};
       return {ch:b,sw:true}}
-    F.chal=0;return {ch:frontmost(cands,asp),sw:false};
+    F.chal=0;return {ch:frontmost(cands,asp,F.box),sw:false};
   }
   function choose(cands,prev,pick,asp,lost,sticky,lostMax){
     if(!cands.length)return null;lostMax=lostMax||45;
@@ -907,6 +952,6 @@
     let mask=null;if(B.mask&&B.mask.data&&B.mask.w){const mw=B.mask.w,mh=B.mask.h,md=new Uint8Array(n*mw*mh);let fr=0;rows.forEach((r,k)=>{if(r.i<B.mask.n){const src=B.mask.data.subarray(r.i*mw*mh,(r.i+1)*mw*mh);md.set(src,k*mw*mh);if(src.some(x=>x))fr++}});mask={w:mw,h:mh,n,data:md,frames:fr}}
     const out={...B,n,data,world:per(B.world,WS),hips:per(B.hips,HS),ext:per(B.ext,EXTN*3),mask,cuts:cuts||B.cuts||[],edited:(B.edited||0)+1};
     delete out._room;delete out._up;return out}
-  root.RB={cropBox,reset,resetCount:()=>resets,remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
+  root.RB={cropBox,cropSeg,reset,resetCount:()=>resets,remapTrack,CFG,follow,promOf,rtmPrefetch,rtmCached,rtmStatus,CLEAN0,CLEAN_OLD,extAt,EXTI,modelName,load,track,coverage,poseAt,framesOf,draw,drawPelvis,drawMeter,learnLooks,containRect,toMirrorView,cutout,cutDancer,live,hasCutout,maskUsable,maskIndex,maskCanvas,partMask,STRIDE,N,WJ,WS,HS,choose,clean,hipSeries,hipsAt,upgrade};
 })(typeof window!=='undefined'?window:globalThis);
 /*BODY-END*/

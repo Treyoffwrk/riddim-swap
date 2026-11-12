@@ -2324,6 +2324,8 @@ async function runTrack(fresh){
         try{const q=/rtmpose/.test(B.model)?'rtm':/heavy/.test(B.model)?'accurate':'fast',el2=(performance.now()-(S.bodyStartAt||performance.now()))/Math.max(1,B.n-(B.resumed||0));if(el2>5&&!B.resumed)localStorage.setItem('rs-trk-ms-'+q,String(Math.round(el2)))}catch(e){}
         if(n.body&&n.body.model!==B.model){n.bodyAlt=n.body;if(n.key)mediaPut('bodyalt:'+n.key,n.body).catch(()=>{})}   /* the trial: keep the other tracker's skeleton to compare */
         n.body=B; if(n.key)await mediaPut('body:'+n.key,B).catch(()=>{});
+        /* the crop boxes the tracker found on another dancer (⇄): kept with the clip, the box is drawn jumping there */
+        if(B.cropSw&&cropOf(n)&&n.crop.keys.length===B.cropSw.length){n.crop.keys.forEach((q,i)=>{if(B.cropSw[i])q.sw=true;else delete q.sw});try{autosave(true).catch(()=>{})}catch(e){}}
         await cpClear(n).catch(()=>{});
         RB.rtmCached().then(c=>{if(c)S.rtmCached=true}).catch(()=>{});
         const got=hitsFromBody(n);
@@ -4013,6 +4015,8 @@ $('#stage').addEventListener('pointerdown',e=>{
    follows the dancer you mean in a group and sees them bigger. The box can change over the clip: set boxes at different
    moments and it moves smoothly between them (before the first and after the last it stays put). Kept with the clip. */
 const CROP={on:false,drag:null};
+/* which boxes are on another dancer (⇄) is found when tracking; after any change to the boxes it's found again next time */
+function cropUnsw(n){if(n&&n.crop&&n.crop.keys)n.crop.keys.forEach(q=>{delete q.sw})}
 function cropOf(n){return n&&n.crop&&n.crop.keys&&n.crop.keys.length?n.crop:null}
 function cropCur(){const n=srcById(S.cur);return n&&!n.missing?n:null}
 function cropT(){const el=curVid();return el?el.currentTime:0}
@@ -4038,18 +4042,19 @@ function cropUI(){const n=cropCur(),c=cropOf(n);
   $('#cropBtn').textContent=CROP.on?'Done cropping':c?'Crop: '+c.keys.length+' box'+(c.keys.length>1?'es':''):'Crop to a dancer';
   $('#cropBar').hidden=!CROP.on;
   if(CROP.on){const t=cropT(),i=n?cropKeyAt(n,t):-1;$('#cropDel').disabled=i<0;$('#cropClear').disabled=!c;
-    const L=$('#cropKeys');L.textContent='';if(c)c.keys.forEach((k,j)=>{const b=document.createElement('button');b.type='button';b.className='btn sm'+(j===i?' on':'');b.textContent=fmt(k.t);b.title='Go to this box';
+    const L=$('#cropKeys');L.textContent='';if(c)c.keys.forEach((k,j)=>{const b=document.createElement('button');b.type='button';b.className='btn sm'+(j===i?' on':'');b.textContent=fmt(k.t)+(k.sw?' ⇄':'');b.title=k.sw?'Go to this box (another dancer: the box jumps here)':'Go to this box';
       b.addEventListener('click',()=>{if(S.playing)pause();const el=curVid();S.segIdx=0;el.currentTime=k.t;setTimeout(()=>{cropUI();cropDraw()},120)});L.appendChild(b)});
     $('#cropMsg').textContent=!c?'Pause where you can see the dancer and drag a box around them (leave room for arms and legs).':
       c.keys.length===1?'One box for the whole clip. If they move, go to another moment and drag the box there too: it moves smoothly between boxes.':
-      `${c.keys.length} boxes: it moves smoothly between them. Drag the box to set one here, or tap a time to check a box.`}
+      `${c.keys.length} boxes: it moves smoothly between them. Drag the box to set one here, or tap a time to check a box.`+
+      (c.keys.some(k=>k.sw)?' ⇄ = a box on another dancer: the box jumps there and tracking starts afresh on them.':'')}
   const st=$('#cropState');if(st)st.textContent=c&&!CROP.on?(n.body?'Tracking looked only inside your box.':'Tracking will look only inside your box.'):'';}
 function cropSet(on){CROP.on=!!on&&!!cropCur();if(CROP.on){if(S.playing)pause();S.bodyPicking=false;window.scrollTo({top:0,behavior:'smooth'})}
   else{const n=cropCur();if(n&&cropOf(n))$('#pickMsg').textContent=n.body?'Track again with the crop: tap Track body.':'';try{autosave(true).catch(()=>{})}catch(e){}}
   cropUI();cropDraw()}
 $('#cropBtn').addEventListener('click',()=>cropSet(!CROP.on));
 $('#cropDone').addEventListener('click',()=>cropSet(false));
-$('#cropDel').addEventListener('click',()=>{const n=cropCur(),i=n?cropKeyAt(n,cropT()):-1;if(i<0)return;n.crop.keys.splice(i,1);if(!n.crop.keys.length)n.crop=null;cropUI();cropDraw()});
+$('#cropDel').addEventListener('click',()=>{const n=cropCur(),i=n?cropKeyAt(n,cropT()):-1;if(i<0)return;n.crop.keys.splice(i,1);if(!n.crop.keys.length)n.crop=null;cropUnsw(n);cropUI();cropDraw()});
 $('#cropClear').addEventListener('click',()=>{const n=cropCur();if(!n)return;n.crop=null;cropUI();cropDraw()});
 (function(){const cv=$('#cropCv');
   const pt=e=>{const r=cv.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]};
@@ -4071,7 +4076,7 @@ $('#cropClear').addEventListener('click',()=>{const n=cropCur();if(!n)return;n.c
     if(nb.w<0.03||nb.h<0.03)return;
     if(!n.crop)n.crop={keys:[]};let i=cropKeyAt(n,D.t);const k={t:+D.t.toFixed(3),x:+nb.x.toFixed(4),y:+nb.y.toFixed(4),w:+nb.w.toFixed(4),h:+nb.h.toFixed(4)};
     if(i>=0)n.crop.keys[i]=k;else{n.crop.keys.push(k);n.crop.keys.sort((p,q)=>p.t-q.t)}
-    cropUI();cropDraw()});
+    cropUnsw(n);cropUI();cropDraw()});
   const end=()=>{if(CROP.drag){CROP.drag=null;cropUI();cropDraw()}};cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end)})();
 /* keep the box on the video as it plays or you move through the clip */
 (function cropLoop(){try{if(CROP.on){const k=cropT().toFixed(2)+'|'+S.mirror;if(k!==CROP.k){CROP.k=k;cropDraw();cropUI()}}}catch(e){}requestAnimationFrame(cropLoop)})();
