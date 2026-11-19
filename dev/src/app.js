@@ -61,7 +61,7 @@ function warpOk(x){
   return S.rt.alignOn===true&&!(S.variant&&S.variant.noWarp)&&x.warp&&x.warp.length>1&&Math.abs((x.warpR||0)-rateOf(x))<1e-6
     &&Math.abs(x.warp[0][0]-x.s)<1e-3&&Math.abs(x.warp[x.warp.length-1][0]-x.e)<1e-3;
 }
-function segOf(x,noWarp){const m=moveById(x.id);if(!m)return null;const g={src:m.src,s:x.s,e:x.e,r:rateOf(x)};if(!noWarp&&warpOk(x))g.k=x.warp;return g}
+function segOf(x,noWarp){const m=moveById(x.id);if(!m)return null;const g={src:m.src,s:x.s,e:x.e,r:rateOf(x)};if(!noWarp&&warpOk(x))g.k=x.warp;else{const k=curveKnots(x,g);if(k)g.k=k}return g}
 function segLen(g){return g.k?g.k[g.k.length-1][1]:(g.e-g.s)/segR(g)}
 function toOut(g,t){
   if(!g.k)return clamp(t-g.s,0,g.e-g.s)/segR(g);
@@ -788,7 +788,7 @@ function removeSeq(i){
   if(S.rec)return; pause(); const [x]=S.seq.splice(i,1); if(x&&S.sel===x.uid)S.sel=null; seqChanged(true);
 }
 function dupSeq(i){
-  if(S.rec)return; pause(); const x=S.seq[i]; S.seq.splice(i+1,0,{uid:'e'+(++uidCount),id:x.id,s:x.s,e:x.e,sp:x.sp}); seqChanged(true);
+  if(S.rec)return; pause(); const x=S.seq[i]; const y={uid:'e'+(++uidCount),id:x.id,s:x.s,e:x.e,sp:x.sp};if(x.curve)y.curve=JSON.parse(JSON.stringify(x.curve));S.seq.splice(i+1,0,y); seqChanged(true);
 }
 /* play part of the routine: from T, stopping at stopT */
 function playRange(T,stopT){
@@ -808,6 +808,10 @@ function beatLen(r){return S.sBase?60*(r||S.rt.vr)/(S.sBase*S.rt.ar):null}
 function fitEntry(x){
   const b=beatLen(rateOf(x)), m=moveById(x.id); if(!b||!m)return false;
   const n=srcById(m.src), max=n&&n.dur?n.dur:x.e+10;
+  /* with its own speed graph: the end that makes it play a whole number of beats (measured on how it really plays) */
+  if(curveOf(x)){const bo=60/(S.sBase*S.rt.ar),L=e=>{const g={src:m.src,s:x.s,e,r:rateOf(x)};const k=curveKnots(x,g);return k?k[k.length-1][1]:(e-x.s)/g.r};
+    let k=Math.max(1,Math.round(L(x.e)/bo));while(k>1&&L(max)<k*bo)k--;let lo=x.s+0.05,hi=max;for(let it=0;it<40;it++){const md=(lo+hi)/2;if(L(md)<k*bo)lo=md;else hi=md}
+    x.e=+hi.toFixed(3);return true}
   let k=Math.max(1,Math.round((x.e-x.s)/b)); while(k>1&&x.s+k*b>max)k--;
   x.e=+Math.min(max,x.s+k*b).toFixed(3); return true;
 }
@@ -816,7 +820,7 @@ function playLen(x){const g=segOf(x);return g?segLen(g):(x.e-x.s)/rateOf(x)}
 function seqTotal(){return S.seq.reduce((t,x)=>t+playLen(x),0)}
 function updateSeqStats(){
   scheduleFit();
-  $('#seqLen').textContent=S.seq.length?'· '+S.seq.length+' moves · '+fmt(seqTotal()):'';
+  $('#seqLen').textContent=S.seq.length?S.seq.length+(S.seq.length===1?' move · ':' moves · ')+fmt(seqTotal()):'';
   const tot=seqTotal()||1;
   [...$('#seqBlocks').children].forEach((b,i)=>{const x=S.seq[i];if(x)b.style.flexGrow=String(playLen(x)/tot*100)});
   const each=S.rt.spMode==='each';
@@ -892,7 +896,7 @@ function editor(x,m,i,li){
   const n=srcById(m.src), dur=n&&n.dur||m.e+3;
   const lo=Math.max(0,m.s-3), hi=Math.min(dur,m.e+3);
   const mk=(label,key)=>{
-    const row=el('div','ed-row'), top=el('div','ed-top'), val=el('span','val',fmt2(x[key]));
+    const row=el('div','ed-row trim'), top=el('div','ed-top'), val=el('span','val',fmt2(x[key]));
     top.append(el('span','label',label),val);
     const r=el('input'); r.type='range'; r.min=lo; r.max=hi; r.step=0.01; r.value=x[key]; r.setAttribute('aria-label',label);
     const nud=el('div','ed-nudge');
@@ -903,7 +907,7 @@ function editor(x,m,i,li){
       updateSeqStats(); updateTrim(); showFrame(m.src,key==='s'?x.s:x.e-0.03);
     };
     r.addEventListener('input',()=>apply(+r.value));
-    [-0.1,-0.02,0.02,0.1].forEach(d=>nud.append(iconBtn(label+' '+(d>0?'+':'')+d,(d>0?'+':'−')+Math.abs(d),()=>apply(x[key]+d))));
+    [-0.1,-0.02,0.02,0.1].forEach(d=>nud.append(iconBtn(label+' '+(d>0?'+':'')+d,(d>0?'+':'−')+Math.abs(d),()=>{try{rtlPush()}catch(e){}delete x.warp;apply(x[key]+d)})));
     row.append(top,r,nud); return row;
   };
   const acts=el('div','ed-acts');
@@ -1010,6 +1014,8 @@ function showTab(t,focus,opt){
   if(prevI>=0&&nextI>=0&&prevI!==nextI&&!(opt&&opt.noAnim))panelIn($('#'+t.getAttribute('aria-controls')),nextI>prevI?1:-1,opt&&opt.from);
   tabs.forEach(x=>{const on=x===t;x.setAttribute('aria-selected',on);x.tabIndex=on?0:-1;$('#'+x.getAttribute('aria-controls')).hidden=!on});
   if(focus)t.focus();
+  /* the speed graph lives in Clip; in Routine it's lent to the picked move's panel */
+  try{if(t.id==='t-routine')rtlInspector();else spdHost(null)}catch(e){}
   try{localStorage.setItem('rs-tab',t.id)}catch(e){}
 }
 tabs.forEach((t,i)=>{
@@ -3243,9 +3249,10 @@ async function alignRoutine(){
   for(let i=0;i<need.length;i++){prog.hidden=false;fitMsg('Finding dance hits in '+need[i].name+' ('+(i+1)+'/'+need.length+')…');
     const r=await analyzeVideo(need[i],p=>{bar.style.width=Math.round(((i+p)/need.length)*100)+'%'});if(r)need[i].motion=r}
   prog.hidden=true;
-  const grid=RA.grid(G.beats,G.down); let T=0, pinned=0, strong=0, maxQ=0;
+  const grid=RA.grid(G.beats,G.down); let T=0, pinned=0, strong=0, maxQ=0, own=0;
   for(const x of S.seq){
     const m=moveById(x.id); if(!m)continue; const r=rateOf(x), mb=motionIn(m.src,x.s,x.e)||[];
+    if(curveOf(x)){delete x.warp;delete x.warpR;T+=playLen(x);own++;continue}   /* its own speed graph: kept as you drew it */
     const S0=S.rt.offset+T*S.rt.ar;
     x.warp=RA.warpMove(mb,x.s,x.e,r,S0,S.rt.ar,grid,{maxStretch:S.rt.maxStretch||0.2}); x.warpR=r;
     for(let i=1;i<x.warp.length;i++){const q=((x.warp[i][0]-x.warp[i-1][0])/((x.warp[i][1]-x.warp[i-1][1])||1))/r;maxQ=Math.max(maxQ,Math.abs(q-1))}
@@ -3253,7 +3260,7 @@ async function alignRoutine(){
   }
   S.rt.alignOn=true; S.rt.set=true;
   renderMoves(); updateTrim(); refreshFit();
-  fitMsg(pinned+' of '+strong+' strong hits pinned to the beat · biggest speed change ±'+Math.round(maxQ*100)+'%.'+(S.seq.length>1?' Changing a move’s trim, speed or the song start undoes its alignment; align again after editing.':''));
+  fitMsg(pinned+' of '+strong+' strong hits pinned to the beat · biggest speed change ±'+Math.round(maxQ*100)+'%.'+(own?' '+own+(own===1?' move keeps its':' moves keep their')+' own speed graph.':'')+(S.seq.length>1?' Changing a move’s trim, speed or the song start undoes its alignment; align again after editing.':''));
 }
 $('#alignBtn').addEventListener('click',alignRoutine);
 $('#alignClear').addEventListener('click',()=>{S.seq.forEach(x=>{delete x.warp;delete x.warpR});S.rt.alignOn=false;fitMsg('');renderMoves();updateTrim();refreshFit()});
@@ -3436,7 +3443,7 @@ function spdRateAt(c,t,vr){return clamp((vr||1)*Math.pow(2,spdY(c,t)),0.2,4)}
 let knotMemo=null;
 function curveKnots(n,g){
   const c=curveOf(n); if(!c||!(g.e>g.s))return null;
-  const key=n.id+'|'+g.s+'|'+g.e+'|'+g.r+'|'+JSON.stringify(c.pts);
+  const key=(n.uid||n.id)+'|'+g.s+'|'+g.e+'|'+g.r+'|'+JSON.stringify(c.pts);
   if(!(knotMemo instanceof Map))knotMemo=new Map(); if(knotMemo.has(key))return knotMemo.get(key);
   const ts=new Set(); const step=1/40; for(let t=g.s;t<g.e;t+=step)ts.add(+t.toFixed(4)); ts.add(g.e);
   c.pts.forEach(p=>{if(p.t>g.s&&p.t<g.e)ts.add(+p.t.toFixed(4))});
@@ -3444,16 +3451,31 @@ function curveKnots(n,g){
   for(let i=1;i<T.length;i++){const a=T[i-1],b=T[i];o+=(b-a)/spdRateAt(c,(a+b)/2,g.r);k.push([b,o])}
   if(knotMemo.size>64)knotMemo.clear(); knotMemo.set(key,k); return k;
 }
-function spdCur(){return srcById(S.cur)}
+/* what the speed graph edits: the clip (Clip mode), or in a routine the picked move: its own graph, over its own part of
+   the clip, on top of its speed (each move keeps its own; it drives the move's time map, so the song stays in step) */
+function spdT(){
+  if(routineOn()){const i=S.seq.findIndex(x=>x.uid===S.sel),x=S.seq[i],m=x&&moveById(x.id);if(!m)return null;
+    const g=segOf(x)||{src:m.src,s:x.s,e:x.e,r:rateOf(x)};return {mv:true,i,x,h:x,src:srcById(m.src),s:x.s,e:x.e,r:rateOf(x),g,a:segStart(i,segsFor()),key:'m'+x.uid}}
+  const n=srcById(S.cur);if(!n)return null;return {mv:false,h:n,src:n,s:S.cIn,e:clipEnd(),r:S.vr,g:segs()[0],a:0,key:'c'+n.id}}
+function spdS(){const T=spdT();return T?T.s:0}
+function spdE(){const T=spdT();return T?T.e:1}
+function spdCur(){const T=spdT();return T&&T.h}
+/* the routine song's beats (Routine) or the song's (Clip), as moments of the clip / move, where they land with its speed */
+function spdBeatSrc(T){const out=[];if(!T||!T.g)return out;const tot=segLen(T.g);
+  if(T.mv){for(const b of rtlBeatsOut()||[]){const o=b.o-T.a;if(o<0||o>tot)continue;out.push(toSrc(T.g,o))}return out}
+  const G=liveGrid();if(!G||routineOn())return out;for(const b of G.beats){const o=(b-S.offset)/S.ar;if(o<0||o>tot)continue;out.push(toSrc(T.g,o))}return out}
 function spdEnsure(n){if(!n.curve)n.curve={on:false,pts:[]};return n.curve}
-function spdPush(){const n=spdCur();if(!n||!n.curve)return;SPD.undo.push(JSON.stringify(n.curve));if(SPD.undo.length>40)SPD.undo.shift();$('#spdUndo').disabled=false}
-function spdChanged(){SPD.ver++;knotMemo=null;if(S.playing)syncSong(true);drawHitStrip();scheduleFit();spdDraw();spdUI()}
+function spdPush(){const T=spdT(),n=T&&T.h;if(!n)return;spdEnsure(n);
+  if(T.mv&&n.warp){delete n.warp;delete n.warpR;$('#spdNote').textContent='This move was aligned to the beat: its speed graph replaces that alignment (Undo brings it back only by aligning again).'}
+  SPD.undo.push(JSON.stringify(n.curve));if(SPD.undo.length>40)SPD.undo.shift();$('#spdUndo').disabled=false}
+function spdChanged(){SPD.ver++;knotMemo=null;if(S.playing)syncSong(true);drawHitStrip();scheduleFit();spdDraw();spdUI();
+  if(routineOn()){try{updateSeqStats();RTL.tl&&RTL.tl.redraw()}catch(e){}try{autosave()}catch(e){}}}
 function spdSetPts(pts){const n=spdCur();if(!n)return;const c=spdEnsure(n);c.pts=pts.sort((a,b)=>a.t-b.t);spdAutoAll(c);spdChanged()}
 /* geometry */
 function spdGeo(){
   const cv=$('#spdCanvas'),{w,h,dpr}=sizeCanvas(cv);
   const pad={l:44*dpr,r:14*dpr,t:36*dpr,b:22*dpr};
-  const s=S.cIn,e=clipEnd()||1;
+  const s=spdS(),e=spdE()||1;
   /* zoomed in: a window of the clip around SPD.vc (the selected point or the playhead) */
   const z=SPD.zoom||1,W=(e-s)/z,c=SPD.vc!=null?SPD.vc:(s+e)/2,vs=z>1?clamp(c-W/2,s,Math.max(s,e-W)):s,ve=z>1?vs+W:e;
   return {cv,w,h,dpr,pad,s,e,vs,ve,
@@ -3465,13 +3487,13 @@ function spdGeo(){
 const spdLabel=y=>{const r=Math.pow(2,y);return (r>=0.995&&r<=1.005?'1':r.toFixed(2))+'×'};
 /* where a point can snap: the dance hits, and the song's beats where they land with this curve; speeds: ½× ¾× 1× 1¼× 1½× 2× */
 const SPD_SNAP_Y=[0.5,0.75,1,1.25,1.5,2].map(r=>Math.log2(r));
-function spdSnapTimes(){const n=spdCur(),out=[];if(n&&n.motion)for(const b of hitsOf(n))out.push({t:b.t,kind:'hit'});
-  const G=liveGrid(),g0=segs()[0];if(G&&g0&&!routineOn()){const tot=segLen(g0);for(const b of G.beats){const o=(b-S.offset)/S.ar;if(o<0||o>tot)continue;out.push({t:toSrc(g0,o),kind:'beat'})}}
+function spdSnapTimes(){const T=spdT(),n=T&&T.src,out=[];if(n&&n.motion)for(const b of hitsOf(n))out.push({t:b.t,kind:'hit'});
+  for(const t of spdBeatSrc(T))out.push({t,kind:'beat'});
   return out}
 function spdFollow(t){if((SPD.zoom||1)<=1)return;const G=spdGeo();if(t<G.vs+(G.ve-G.vs)*0.08||t>G.ve-(G.ve-G.vs)*0.08)SPD.vc=t}
 window.__rsSPD=SPD;SPD.geo=()=>spdGeo();SPD.snapTimes=()=>spdSnapTimes();
 function spdSave(){try{localStorage.setItem('rs-spd',JSON.stringify({snap:SPD.snap}))}catch(e){}}
-function spdVisible(){const p=$('#p-clip');return S.hasV&&p&&!p.hidden&&$('#spdCard').offsetParent!==null}
+function spdVisible(){return S.hasV&&$('#spdCard').offsetParent!==null&&!!spdT()}
 function spdDraw(){
   if(!spdVisible())return;
   const G0=spdGeo(),{cv,w,h,dpr,pad,X,Y,vs,ve}=G0,s=vs,e=ve,x=cv.getContext('2d'); x.clearRect(0,0,w,h);
@@ -3492,9 +3514,9 @@ function spdDraw(){
     if(SPD.guide.y!=null){x.strokeStyle='#FFD43B';x.beginPath();x.moveTo(pad.l,Y(SPD.guide.y));x.lineTo(w-pad.r,Y(SPD.guide.y));x.stroke()}
     x.restore()}
   /* dance hits (blue, bottom) and song beats where they land with this curve (orange, top) */
-  if(n&&n.motion){x.fillStyle=tok('--dance');for(const b of hitsOf(n)){if(b.t<s||b.t>e)continue;x.fillRect(X(b.t)-dpr,h-pad.b-10*dpr,2*dpr,10*dpr)}}
-  const G=liveGrid(), g0=segs()[0];
-  if(G&&g0&&!routineOn()){x.fillStyle=tok('--song-hot');const tot=segLen(g0);for(const b of G.beats){const o=(b-S.offset)/S.ar;if(o<0||o>tot)continue;const t=toSrc(g0,o);x.fillRect(X(t)-dpr*0.75,pad.t-24*dpr,1.5*dpr,10*dpr)}}
+  const TT=spdT(),hs=TT&&TT.src;
+  if(hs&&hs.motion){x.fillStyle=tok('--dance');for(const b of hitsOf(hs)){if(b.t<s||b.t>e)continue;x.fillRect(X(b.t)-dpr,h-pad.b-10*dpr,2*dpr,10*dpr)}}
+  x.fillStyle=tok('--song-hot');for(const t of spdBeatSrc(TT)){if(t<s||t>e)continue;x.fillRect(X(t)-dpr*0.75,pad.t-24*dpr,1.5*dpr,10*dpr)}
   /* the curve */
   x.lineJoin='round'; x.lineCap='round';
   if(c){x.strokeStyle=on?'#F3F1EC':'#7C8494';x.lineWidth=3*dpr;x.beginPath();
@@ -3514,11 +3536,14 @@ function spdDraw(){
       x.fillStyle='#F3F1EC';x.textAlign='left';x.textBaseline='middle';x.fillText(txt,bx+8*dpr,by+12*dpr)}
   } else {x.strokeStyle='#7C8494';x.lineWidth=3*dpr;x.setLineDash([2*dpr,7*dpr]);x.beginPath();x.moveTo(pad.l,Y(0));x.lineTo(w-pad.r,Y(0));x.stroke();x.setLineDash([])}
   /* playhead */
-  const t=v.currentTime; if(t>=s-0.01&&t<=e+0.01){const px=X(clamp(t,s,e));x.strokeStyle=tok('--dance');x.lineWidth=2*dpr;x.beginPath();x.moveTo(px,0);x.lineTo(px,h-pad.b);x.stroke();
+  const t=v.currentTime; if(t>=s-0.01&&t<=e+0.01&&!(TT&&TT.mv&&(!routineOn()||S.segIdx!==TT.i))){const px=X(clamp(t,s,e));x.strokeStyle=tok('--dance');x.lineWidth=2*dpr;x.beginPath();x.moveTo(px,0);x.lineTo(px,h-pad.b);x.stroke();
     x.fillStyle=tok('--dance');x.beginPath();x.moveTo(px-6*dpr,0);x.lineTo(px+6*dpr,0);x.lineTo(px,8*dpr);x.fill()}
 }
 function spdUI(){
-  const n=spdCur(), c=n&&n.curve, on=!!curveOf(n), ro=routineOn();
+  const T=spdT(), n=T&&T.h, c=n&&n.curve, on=!!curveOf(n), ro=!T;
+  /* a different clip or move: its own undo, nothing selected, zoomed out */
+  if(T&&T.key!==SPD.tk){SPD.tk=T.key;SPD.undo=[];SPD.sel=-1;SPD.zoom=1;SPD.vc=null}
+  $('#spdCard').classList.toggle('mv',!!(T&&T.mv));$('#h-spd').textContent=T&&T.mv?'Speed graph · '+(moveById(T.x.id)||{}).name:'Speed graph';
   $('#spdOn').checked=!!(c&&c.on); $('#spdOnTxt').textContent=c&&c.on?'On':'Off'; $('#spdOn').disabled=!S.hasV||ro;
   $('#spdCard').classList.toggle('off',!on);
   $$('[data-spd]').forEach(b=>b.disabled=!S.hasV||ro);
@@ -3529,15 +3554,15 @@ function spdUI(){
   const sp=c&&c.pts&&c.pts[SPD.sel];$('#spdPt').hidden=!sp||ro;
   if(sp)$('#spdPtTxt').textContent=`Point ${SPD.sel+1} of ${c.pts.length}: ${fmt2(sp.t)} · ${spdLabel(sp.y)}`;
   if(sp)cogDraw();
-  const g=segs()[0], base=S.hasV&&!ro?(clipEnd()-S.cIn)/(S.vr||1):0;
-  $('#spdLen').textContent=S.hasV&&!ro&&g?(on?fmt(base)+' → '+fmt(segLen(g)):fmt(base)):'—';
-  $('#spdNote').textContent=ro?'The speed graph works on the whole clip. Switch to "Clip" under the video to use it.':'Tap the graph to add a point, drag a point to move it (it snaps to hits, beats and round speeds), and use the buttons below for small steps. Zoom with + or two fingers. Blue ticks: dance hits; orange: song beats.';
+  const g=T&&T.g, base=S.hasV&&!ro?(T.e-T.s)/(T.r||1):0;
+  $('#spdLen').textContent=S.hasV&&!ro&&g?(on?fmt2(base)+' → '+fmt2(segLen(g)):fmt2(base)):'—';
+  $('#spdNote').textContent=ro?'Pick a move on the routine timeline to draw its speed graph.':T.mv?'This move\'s own speed graph, on top of its speed. Tap to add a point, drag to shape it; it snaps to the move\'s dance hits (blue) and the routine song\'s beats (orange). The song keeps going: everything after this move moves with it.':'Tap the graph to add a point, drag a point to move it (it snaps to hits, beats and round speeds), and use the buttons below for small steps. Zoom with + or two fingers. Blue ticks: dance hits; orange: song beats.';
 }
-function spdNowText(){const n=spdCur(),c=curveOf(n);const r=c&&!routineOn()?spdRateAt(c,v.currentTime,S.vr):(routineOn()?curRate():S.vr);$('#spdNow').textContent=r.toFixed(2)+'×'}
+function spdNowText(){const T=spdT();if(!T){$('#spdNow').textContent='—';return}const c=curveOf(T.h),t=clamp(v.currentTime,T.s,T.e);const r=c?spdRateAt(c,t,T.r):T.r;$('#spdNow').textContent=r.toFixed(2)+'×'}
 /* presets */
 function spdPreset(kind){
   const n=spdCur(); if(!n||!S.hasV)return; const c=spdEnsure(n); spdPush();
-  const s=S.cIn,e=clipEnd(),d=e-s,t=clamp(v.currentTime,s,e);
+  const s=spdS(),e=spdE(),d=e-s,t=clamp(v.currentTime,s,e);
   let pts;
   if(kind==='flat')pts=[{t:s,y:0},{t:e,y:0}];
   else if(kind==='up')pts=[{t:s,y:-1},{t:e,y:1}];
@@ -3547,7 +3572,7 @@ function spdPreset(kind){
 }
 $$('[data-spd]').forEach(b=>b.addEventListener('click',()=>spdPreset(b.dataset.spd)));
 $('#spdOn').addEventListener('change',e=>{const n=spdCur();if(!n)return;const c=spdEnsure(n);spdPush();c.on=e.target.checked;
-  if(c.on&&!c.pts.length){c.pts=[{t:S.cIn,y:0,auto:true},{t:clipEnd(),y:0,auto:true}];spdAutoAll(c)}spdChanged()});
+  if(c.on&&!c.pts.length){c.pts=[{t:spdS(),y:0,auto:true},{t:spdE(),y:0,auto:true}];spdAutoAll(c)}spdChanged()});
 $('#spdDel').addEventListener('click',()=>{const n=spdCur();const c=n&&n.curve;if(!c||!c.pts[SPD.sel])return;spdPush();c.pts.splice(SPD.sel,1);SPD.sel=-1;spdAutoAll(c);spdChanged()});
 $('#spdSmooth').addEventListener('click',()=>{const n=spdCur();const c=n&&n.curve;const p=c&&c.pts[SPD.sel];if(!p)return;spdPush();p.auto=true;spdAutoAll(c);spdChanged()});
 $('#spdUndo').addEventListener('click',()=>{const n=spdCur();if(!n||!SPD.undo.length)return;n.curve=JSON.parse(SPD.undo.pop());SPD.sel=-1;spdChanged()});
@@ -3558,7 +3583,7 @@ $('#spdZoomIn').addEventListener('click',()=>spdZoom(2));$('#spdZoomOut').addEve
 $('#spdSnap').addEventListener('click',()=>{SPD.snap=!SPD.snap;spdSave();spdUI()});
 /* the selected point, a step at a time: a frame earlier / later, 5% slower / faster, onto the nearest beat or hit */
 function spdNudge(kind){const n=spdCur(),c=n&&n.curve,P=c&&c.pts,i=SPD.sel,p=P&&P[i];if(!p)return;spdPush();
-  const lo=i>0?P[i-1].t+0.05:S.cIn,hi=i<P.length-1?P[i+1].t-0.05:clipEnd();
+  const lo=i>0?P[i-1].t+0.05:spdS(),hi=i<P.length-1?P[i+1].t-0.05:spdE();
   if(kind==='t-'||kind==='t+')p.t=+clamp(p.t+(kind==='t+'?1:-1)/30,lo,Math.max(lo,hi)).toFixed(4);
   else if(kind==='y-'||kind==='y+'){const r=Math.pow(2,p.y)*(kind==='y+'?1.05:1/1.05);p.y=clamp(Math.abs(r-1)<0.012?0:Math.log2(r),SPD.min,SPD.max)}
   else if(kind==='beat'){const T=spdSnapTimes().filter(x=>x.t>=lo&&x.t<=hi);if(!T.length){$('#spdNote').textContent='No beat or hit between this point\'s neighbours.';return}
@@ -3580,10 +3605,11 @@ $$('[data-sp]').forEach(b=>b.addEventListener('click',()=>spdNudge(b.dataset.sp)
     if(!what&&px>=G.pad.l-6*G.dpr)what={type:'add'};
     return {G,px,py,c,n,what};
   }
-  function seekTo(G,px){if(S.playing)pause();const t=clamp(G.T(px),S.cIn,clipEnd());S.segIdx=0;v.currentTime=t;spdDraw();spdNowText()}
+  function seekTo(G,px){if(S.playing)pause();const T=spdT();if(!T)return;const t=clamp(G.T(px),T.s,T.e);
+    if(T.mv){seekT(T.a+Math.min(toOut(T.g,t),segLen(T.g)-0.01))}else{S.segIdx=0;v.currentTime=t}spdDraw();spdNowText()}
   const CSS=G=>G.dpr;   /* px per CSS px */
   cv.addEventListener('pointerdown',ev=>{
-    if(!S.hasV||routineOn()||tch.size>=2)return;
+    if(!S.hasV||!spdT()||tch.size>=2)return;
     const H=hit(ev); if(!H.what)return; ev.preventDefault(); cv.setPointerCapture(ev.pointerId);
     const {G,n,what}=H;
     if(what.type==='scrub'){SPD.drag={type:'scrub'};seekTo(G,H.px);return}
@@ -3603,7 +3629,7 @@ $$('[data-sp]').forEach(b=>b.addEventListener('click',()=>spdNudge(b.dataset.sp)
       /* a few pixels of slack first, so selecting a point doesn't nudge it; then it moves with the finger, keeping the
          gap it had when grabbed (it doesn't jump under the finger), and snaps to hits, beats and round speeds */
       if(!D.moved){if(Math.hypot(px-D.x0,py-D.y0)<6*G.dpr)return;D.moved=true;if(!D.pushed){spdPush();D.pushed=true}}
-      const i=SPD.sel,P=c.pts,lo=i>0?P[i-1].t+0.05:S.cIn,hi=i<P.length-1?P[i+1].t-0.05:clipEnd();
+      const i=SPD.sel,P=c.pts,lo=i>0?P[i-1].t+0.05:spdS(),hi=i<P.length-1?P[i+1].t-0.05:spdE();
       let t=clamp(G.T(px)+D.dt,lo,Math.max(lo,hi)),y=clamp(G.V(py)+D.dy,SPD.min,SPD.max);SPD.guide=null;
       if(SPD.snap){const tol=12*G.dpr*(G.ve-G.vs)/((G.w-G.pad.l-G.pad.r)||1);let best=null;
         for(const s of spdSnapTimes()){if(s.t<lo||s.t>hi)continue;const d=Math.abs(s.t-t);if(d<tol&&(!best||d<best.d))best={...s,d}}
@@ -3620,8 +3646,8 @@ $$('[data-sp]').forEach(b=>b.addEventListener('click',()=>spdNudge(b.dataset.sp)
   });
   const end=ev=>{const D=SPD.drag;SPD.drag=null;SPD.guide=null;
     if(D&&D.type==='add'&&ev&&ev.type==='pointerup'){const G=spdGeo(),r=cv.getBoundingClientRect(),px=(ev.clientX-r.left)*G.dpr,py=(ev.clientY-r.top)*G.dpr;
-      if(Math.hypot(px-D.x0,py-D.y0)<10*G.dpr){const n=spdCur(),c=spdEnsure(n);spdPush();if(!c.pts.length)c.pts=[{t:S.cIn,y:0,auto:true},{t:clipEnd(),y:0,auto:true}];
-        let t=clamp(G.T(D.x0),S.cIn,clipEnd()),y=clamp(G.V(D.y0),SPD.min,SPD.max);if(Math.abs(y)<0.08)y=0;
+      if(Math.hypot(px-D.x0,py-D.y0)<10*G.dpr){const n=spdCur(),c=spdEnsure(n);spdPush();if(!c.pts.length)c.pts=[{t:spdS(),y:0,auto:true},{t:spdE(),y:0,auto:true}];
+        let t=clamp(G.T(D.x0),spdS(),spdE()),y=clamp(G.V(D.y0),SPD.min,SPD.max);if(Math.abs(y)<0.08)y=0;
         if(c.pts.some(q=>Math.abs(q.t-t)<0.05))return;
         c.pts.push({t,y,auto:true});c.pts.sort((a,b)=>a.t-b.t);c.on=true;SPD.sel=c.pts.findIndex(p=>p.t===t);spdAutoAll(c);spdChanged();return}}
     spdDraw();spdUI()};
@@ -3636,7 +3662,7 @@ $$('[data-sp]').forEach(b=>b.addEventListener('click',()=>spdNudge(b.dataset.sp)
 let spdKey='';
 (function spdLoop(){try{if(spdVisible()){const n=spdCur(),c=$('#spdCanvas').getBoundingClientRect();
   if(S.playing&&!SPD.drag)spdFollow(v.currentTime);
-  const k=[SPD.ver,SPD.sel,SPD.zoom,SPD.vc,JSON.stringify(SPD.guide),n&&n.curve?JSON.stringify(n.curve):'',Math.round(c.width),Math.round(c.height),Math.round(v.currentTime*15),S.cIn,clipEnd(),S.vr,S.offset,S.ar,n&&n.motion&&hitsOf(n).length,liveGrid()&&liveGrid().beats.length].join('|');
+  const k=[SPD.ver,SPD.sel,SPD.zoom,SPD.vc,JSON.stringify(SPD.guide),n&&n.curve?JSON.stringify(n.curve):'',Math.round(c.width),Math.round(c.height),Math.round(v.currentTime*15),spdS(),spdE(),S.vr,S.segIdx,S.rt.offset,S.rt.ar,S.offset,S.ar,n&&n.motion&&hitsOf(n).length,liveGrid()&&liveGrid().beats.length].join('|');
   if(k!==spdKey){spdKey=k;spdDraw();spdNowText()}}}catch(e){}requestAnimationFrame(spdLoop)})();
 setInterval(()=>{try{spdUI()}catch(e){}},500);
 $('#t-clip').addEventListener('click',()=>setTimeout(()=>{spdUI();spdDraw()},0));
@@ -3647,7 +3673,7 @@ $('#t-clip').addEventListener('click',()=>setTimeout(()=>{spdUI();spdDraw()},0))
 const COG={mode:'speed',rot:0,drag:null,key:''};
 function cogPath(x,cx,cy,r,rot){const n=8,ri=r*0.74;x.beginPath();
   for(let i=0;i<n*4;i++){const a=rot+i*Math.PI/(n*2),rr=(i%4===1||i%4===2)?r:ri;const px=cx+rr*Math.cos(a),py=cy+rr*Math.sin(a);if(i)x.lineTo(px,py);else x.moveTo(px,py)}x.closePath()}
-function cogPoint(){const n=spdCur(),c=n&&n.curve,p=c&&c.pts&&c.pts[SPD.sel];return p&&!routineOn()?{n,c,p}:null}
+function cogPoint(){const n=spdCur(),c=n&&n.curve,p=c&&c.pts&&c.pts[SPD.sel];return p?{n,c,p}:null}
 /* the curve's tilt at a point, as an angle on screen (radians, up is positive) */
 function cogScale(){const G=spdGeo();return {kx:(G.w-G.pad.l-G.pad.r)/((G.ve-G.vs)||1),ky:(G.h-G.pad.t-G.pad.b)/(SPD.max-SPD.min)}}
 function cogTilt(p){const {kx,ky}=cogScale(),h=p.ho&&p.ho[0]>1e-6?p.ho:(p.hi&&p.hi[0]<-1e-6?p.hi:[1,0]);return Math.atan((h[1]/h[0])*ky/kx)}
@@ -4440,7 +4466,7 @@ if(/debug/.test(location.hash)&&!/closed/.test(location.hash))document.querySele
 /*@look*/
 /*@learn*/
 /*@snip*/
-if(/debug/.test(location.hash))window.__rs={BCLK,clkWindows,clkCuts,clkNow,clkSet,clkPos,clkTime,clkCur,COG,cogTurn,cogTilt,clipToSong,songToClip,moveById,rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,v:()=>v};
+if(/debug/.test(location.hash))window.__rs={BCLK,clkWindows,clkCuts,clkNow,clkSet,clkPos,clkTime,clkCur,COG,cogTurn,cogTilt,clipToSong,songToClip,moveById,rateAt,addToSeq,syncSlot,rateOf,shiftBoth,liveGrid,get learn(){return S.learn},learnChunks,learnLoopDone,learnOn,learnOff,learnOpts,get snip(){return S.snip},SNIP,snipOn,snipOff,cpLoad,cpOf,cpTag,get TAP(){return TAP},tapResult,get liveBody(){return S.liveBody},learnCount,LOOK,STORE,PACKS,hitsOf,CUT,RTL,clipCut,segMode,seqTotal,segsFor,expected,CUE,lane,riddimEvents,dancerEvents,heardNow,songNow,countAt,setDelay,patWindow,hipPatterns,movePattern,renderMoves,compareTry,compareText,studyOn,studyOff,hipHits,hipSync,UPD,checkUpdate,get audioCtx(){return ctx},get songBuf(){return buf},S,RA,segs,tPos,srcById,routineOn,segLen,toOut,toSrc,spdRateAt,curveOf,SPD,curRate,seekT,warpOk,v:()=>v};
 /* ---------- frame loop ---------- */
 const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeatsEl=$('#dBeats'), sBeatsEl=$('#sBeats');
 let lastSeg=-1;

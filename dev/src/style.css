@@ -729,3 +729,40 @@ details.more .field{margin-top:8px}
 
 #cutRev{display:inline-flex;align-items:center;gap:5px}
 #cutRev .bi{width:16px;height:16px}
+
+/* routine editor (19 Nov): header on one line, a toolbar like Clip's, cut-a-moment bar, the picked move's panel */
+.rt-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.rt-head h3{margin:0}
+.rt-head #seqLen{font-family:var(--f-body);white-space:nowrap}
+.rt-head .rt-hacts{margin-left:auto;gap:4px;flex-wrap:nowrap}
+.tle-bar .btn.ghost{border-color:var(--line)}
+.rtl-cutbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 0;padding:8px 10px;border-radius:12px;background:rgba(255,77,94,.10);border:1px solid rgba(255,77,94,.45)}
+.rtl-cutbar .rtl-cuttxt{flex:1 1 140px;font-size:14px}
+.rtl-cutbar .rtl-cuttxt b{font-family:var(--f-mono,monospace)}
+#rtlCutMode[aria-pressed="true"]{background:#FF4D5E;border-color:#FF4D5E;color:#fff}
+.rtl-opts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;margin-top:8px}
+.rtl-opts #rtlMsg{flex:1 1 160px;margin:0}
+.rtl-help{margin-top:6px}
+.rtl-inspect{padding:10px 12px 12px}
+.rtl-head{flex-wrap:nowrap;align-items:center}
+.rtl-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.rtl-head .rpos{color:var(--muted);font-size:12px;white-space:nowrap}
+.rtl-head .hlen{margin-left:auto;white-space:nowrap;font-family:var(--f-mono,monospace);font-size:12px}
+.rtl-head .rtl-x{min-width:36px;padding:0;flex:none}
+.rtl-tools{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.rtl-tools .btn{padding:0 4px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rtl-pane{display:grid;grid-template-columns:1fr 1fr;margin-bottom:8px}
+.rtl-panebox > .spd{margin:0;border:0;padding:0;background:none}
+.rtl-ed{border-top:0;padding:0;margin:0;gap:6px}
+.rtl-ed .ed-row.trim{grid-template-columns:minmax(92px,auto) 1fr;align-items:center;gap:8px}
+.rtl-ed .ed-row.trim input[type=range]{display:none}
+.rtl-ed .ed-row.trim .ed-top{flex-direction:column;align-items:flex-start;gap:0}
+.rtl-ed .ed-row.trim .ed-top .val{font-size:15px}
+.rtl .tle-bar{flex-wrap:nowrap}
+.rtl .tle-bar .tle-zoom .btn{min-width:38px}
+.rtl .tle-bar #rtlUndo{font-size:18px}
+.rtl-tools{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rtl-ed .ed-row.trim{grid-template-columns:minmax(84px,auto) minmax(0,1fr)}
+.rtl-ed .ed-nudge{grid-template-columns:repeat(4,minmax(0,1fr))}
+.rtl-ed .ed-nudge .btn{min-width:0;padding:0 2px}
+#seqWrap,.rtl,.rtl-inspect{min-width:0}

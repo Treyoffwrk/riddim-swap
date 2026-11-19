@@ -327,56 +327,108 @@ function rtlSnap(o){
   let best=o,bd=1e9;for(let k=0;k<B.length;k++){const c=[B[k].o];if(B[k+1])c.push((B[k].o+B[k+1].o)/2);for(const t of c){const d=Math.abs(t-o);if(d<bd){bd=d;best=t}}}
   const beat=B.length>1?(B[B.length-1].o-B[0].o)/(B.length-1):0.6;return bd<beat*0.5?best:o;   /* Snap to beat on: always the nearest beat or "and" */
 }
+/* the speed graph card: at home in Clip, lent to the picked move's panel in Routine */
+function spdHost(where){const card=$('#spdCard'),home=$('#spdHome');if(!card||!home)return;
+  if(where){if(card.parentNode!==where)where.append(card)}else if(home.nextElementSibling!==card)home.after(card);
+  try{spdUI();spdDraw()}catch(e){}}
+/* the picked move: what you can do with it, its trim and its own speed graph */
 function rtlInspector(){
-  const box=$('#rtlInspect');if(!box)return;box.textContent='';
+  const box=$('#rtlInspect');if(!box)return;spdHost(null);box.textContent='';
   const i=S.seq.findIndex(x=>x.uid===S.sel);if(i<0){box.hidden=true;return}
   const x=S.seq[i],m=moveById(x.id);if(!m){box.hidden=true;return}
   box.hidden=false;
-  const head=el('div','rtl-head');head.append(el('b',null,(i+1)+' · '+m.name),el('span','hlen',lenText(x,m)));
-  const row=el('div','row rtl-acts');
-  const mk=(t,f,cls,dis)=>{const b=el('button','btn sm'+(cls?' '+cls:''),t);b.type='button';b.disabled=!!dis;b.addEventListener('click',f);row.append(b);return b};
+  const head=el('div','rtl-head');const nm=el('b',null,m.name);const pos=el('span','rpos',(i+1)+' of '+S.seq.length);
+  const cl=el('button','btn sm ghost rtl-x','✕');cl.type='button';cl.setAttribute('aria-label','Close');cl.addEventListener('click',()=>{S.sel=null;renderMoves()});
+  head.append(nm,pos,el('span','hlen',lenText(x,m)),cl);
+  const grid=el('div','rtl-tools');
+  const mk=(t,f,cls,dis,lbl)=>{const b=el('button','btn sm'+(cls?' '+cls:''),t);b.type='button';b.disabled=!!dis;if(lbl)b.setAttribute('aria-label',lbl);b.addEventListener('click',f);grid.append(b);return b};
   const L=()=>segsFor();
   mk('◀ Earlier',()=>rtlShift(i,-1),null,i===0);
   mk('Later ▶',()=>rtlShift(i,1),null,i===S.seq.length-1);
   mk('▶ Play',()=>playRange(segStart(i,L()),segStart(i+1,L())));
-  mk('▶ From the one before',()=>playRange(Math.max(0,segStart(i,L())-1.5),segStart(i+1,L())),null,i===0);
-  mk('✂ Split here',()=>{rtlPush();rtlSplit(i)},null,!(routineOn()&&S.segIdx===i));
-  mk('Fit to beat',()=>{rtlPush();if(fitEntry(x)){renderMoves();updateTrim()}else RTL.undo.pop()},null,!beatLen());
+  mk('▶ Join',()=>playRange(Math.max(0,segStart(i,L())-1.5),segStart(i+1,L())),null,i===0,'Play the end of the move before, then this one');
   mk('Duplicate',()=>{rtlPush();dupSeq(i)});
+  mk('Fit to beat',()=>{rtlPush();if(fitEntry(x)){renderMoves();updateTrim()}else RTL.undo.pop()},null,!beatLen());
+  mk('Reset trim',()=>{rtlPush();x.s=m.s;x.e=m.e;delete x.warp;renderMoves();updateTrim()},null,Math.abs(x.s-m.s)<0.005&&Math.abs(x.e-m.e)<0.005);
   mk('Remove',()=>{rtlPush();removeSeq(i);S.sel=null;renderMoves()},'danger');
+  /* two panes: its trim, or its own speed graph */
+  const tabs=el('div','seg rtl-pane');tabs.setAttribute('role','group');tabs.setAttribute('aria-label','Edit');
+  const pane=el('div','rtl-panebox');
+  const has=!!curveOf(x);
+  [['trim','Trim'],['speed','Speed graph'+(has?' •':'')]].forEach(([k,t])=>{const b=el('button',null,t);b.type='button';b.dataset.pane=k;b.setAttribute('aria-pressed',String((RTL.pane||'trim')===k));
+    b.addEventListener('click',()=>{RTL.pane=k;rtlInspector()});tabs.append(b)});
+  box.append(head,grid,tabs,pane);
+  if((RTL.pane||'trim')==='speed'){spdHost(pane);return}
   const wrap=el('div');wrap.append(el('span','len'));
-  const ed=editor(x,m,i,wrap);
-  /* the trim box brings its own buttons; the inspector already has them, except Reset */
-  const ea=ed.querySelector('.ed-acts');if(ea){const rs=[...ea.querySelectorAll('button')].find(b=>/Reset/.test(b.textContent));if(rs){rs.textContent='Undo trims';row.append(rs)}ea.remove()}
-  box.append(head,row,ed);
+  const ed=editor(x,m,i,wrap);ed.classList.add('rtl-ed');
+  const ea=ed.querySelector('.ed-acts');if(ea)ea.remove();
+  pane.append(ed);
 }
+/* split the move under the playhead in two (an aligned move keeps its timing in both halves) */
 function rtlSplit(i){
-  const x=S.seq[i];if(!x||!routineOn()||S.segIdx!==i)return;const t=v.currentTime;if(t-x.s<0.15||x.e-t<0.15){recMsg('Move a little further into the move first.');return}
-  const y=JSON.parse(JSON.stringify(x));y.uid=++uidCount;x.e=+t.toFixed(3);y.s=+t.toFixed(3);delete x.warp;delete y.warp;S.seq.splice(i+1,0,y);S.sel=y.uid;renderMoves();updateTrim();try{autosave()}catch(e){}
+  const x=S.seq[i];if(!x||!routineOn()||S.segIdx!==i)return false;const t=v.currentTime;if(t-x.s<0.15||x.e-t<0.15){rtlNote('Move a little further into the move first.');return false}
+  const W=warpOk(x)?x.warp:null;
+  const y=JSON.parse(JSON.stringify(x));y.uid='e'+(++uidCount);x.e=+t.toFixed(3);y.s=+t.toFixed(3);
+  if(W){x.warp=warpSub(W,x.s,x.e);y.warp=warpSub(W,y.s,y.e)}else{delete x.warp;delete y.warp}
+  S.seq.splice(i+1,0,y);S.sel=y.uid;renderMoves();updateTrim();try{autosave()}catch(e){}return true
 }
+function rtlNote(t){const m=$('#rtlMsg');if(m)m.textContent=t||''}
+/* an aligned move's time map for part of it: [a,b] of the clip, outputs from 0 */
+function warpSub(W,a,b){const at=t=>{if(t<=W[0][0])return W[0][1];for(let k=1;k<W.length;k++)if(t<=W[k][0]){const [s1,o1]=W[k-1],[s2,o2]=W[k];return o1+(t-s1)*(o2-o1)/((s2-s1)||1)}return W[W.length-1][1]};
+  const o0=at(a),out=[[a,0]];for(const k of W)if(k[0]>a+1e-4&&k[0]<b-1e-4)out.push([k[0],k[1]-o0]);out.push([b,at(b)-o0]);return out}
+/* cut a moment out of the routine: [a,b] of routine time, across moves too. What's either side stays exactly as it
+   played (speed, speed graph, alignment); the song keeps going, so everything after comes in earlier */
+function rtlCutRange(a,b){
+  if(!(b-a>0.02))return 0;const Bs=rtlBlocks(),out=[];let gone=0;
+  for(const bl of Bs){const x=bl.x;
+    if(bl.b<=a+1e-3||bl.a>=b-1e-3){out.push(x);continue}
+    const len=bl.b-bl.a,oa=Math.max(0,a-bl.a),ob=Math.min(len,b-bl.a),sa=toSrc(bl.g,oa),sb=toSrc(bl.g,ob),W=warpOk(x)?x.warp:null;
+    gone+=ob-oa;
+    if(oa>0.04&&sa-x.s>=0.05){const L=JSON.parse(JSON.stringify(x));L.e=+sa.toFixed(3);if(W)L.warp=warpSub(W,x.s,L.e);else{delete L.warp;delete L.warpR}out.push(L)}
+    if(len-ob>0.04&&x.e-sb>=0.05){const R=JSON.parse(JSON.stringify(x));R.uid='e'+(++uidCount);R.s=+sb.toFixed(3);if(W)R.warp=warpSub(W,R.s,x.e);else{delete R.warp;delete R.warpR}out.push(R)}}
+  S.seq=out;if(!S.seq.some(x=>x.uid===S.sel))S.sel=null;return gone}
+function rtlCutUI(){const C=RTL.cut,bar=$('#rtlCutBar'),btn=$('#rtlCutMode');if(!bar)return;bar.hidden=!C;btn.setAttribute('aria-pressed',String(!!C));btn.textContent=C?'Cutting…':'Cut a moment';
+  if(C)$('#rtlCutTxt').innerHTML='Cut <b>'+(C.b-C.a).toFixed(2)+'s</b> · '+fmt2(C.a)+' → '+fmt2(C.b);
+  const sp=$('#rtlSplit');if(sp)sp.disabled=!routineOn()||!S.seq.length||!!C}
+function rtlCutStart(){if(!S.seq.length)return;if(S.playing)pause();const T=seqTotal(),t=clamp(routineOn()?tPos():0,0,T);
+  const L=Math.min(1,T/4);let a=t,b=t+L;if(b>T){b=T;a=Math.max(0,T-L)}RTL.cut={a,b};S.sel=null;renderMoves();rtlCutUI();rtlNote('Drag the red edges (or the band) over what to cut, then Cut it out.');RTL.tl&&RTL.tl.redraw()}
+function rtlCutEnd(){RTL.cut=null;rtlCutUI();RTL.tl&&RTL.tl.redraw()}
+/* a move's label on the timeline: its name when it fits, else short */
+function rtlLabel(c,m,w){if(!m||w<18)return '';const nm=m.name;if(c.measureText(nm).width+14<=w)return nm;const d=/^Move (\d+)$/.exec(nm);return d?d[1]:nm.slice(0,Math.max(1,Math.floor((w-14)/8)))}
 function initRoutineTL(){
   const cv=$('#rtlCanvas');if(!cv)return;
   RTL.tl=new TL(cv,{
     len:()=>Math.max(1,seqTotal()+(RTL.drag?0:0.5)),
-    hit:(tl,x,y)=>{const Bs=rtlBlocks();const sel=Bs.find(b=>b.x.uid===S.sel);const H=tl.c.clientHeight||120,top=20,th=H-12-top,mid=top+th/2;
+    hit:(tl,x,y)=>{
+      /* cutting a moment: its red edges, or the band itself (drags the whole band) */
+      if(RTL.cut){const xa=tl.X(RTL.cut.a),xb=tl.X(RTL.cut.b);if(Math.abs(x-xa)<16&&x<=xb)return {kind:'handle',side:'ca'};if(Math.abs(x-xb)<16)return {kind:'handle',side:'cb'};if(x>xa&&x<xb)return {kind:'handle',side:'cm'};return {kind:'bg'}}
+      const Bs=rtlBlocks();const sel=Bs.find(b=>b.x.uid===S.sel);const H=tl.c.clientHeight||120,top=20,th=H-12-top,mid=top+th/2;
       /* the trim tabs only (the white tabs on the picked move's ends), so grabbing a move doesn't trim it by mistake */
       if(sel&&Math.abs(y-mid)<30){const R=rtlRect(tl,sel);if(Math.abs(R.x0-x)<14)return {kind:'handle',side:'s',i:sel.i};if(Math.abs(R.x1-x)<14)return {kind:'handle',side:'e',i:sel.i}}
       /* a move: the one under the finger; a very short move still has a 28 px target */
       let best=null,bd=1e9;for(const b of Bs){const R=rtlRect(tl,b),c=(R.x0+R.x1)/2,hw=Math.max(14,(R.x1-R.x0)/2);const d=Math.abs(x-c);if(d<=hw&&d<bd){bd=d;best=b}}
       return best?{kind:'block',i:best.i}:{kind:'bg'}},
-    tap:(t,h)=>{if(h&&h.kind==='block'){const x=S.seq[h.i];S.sel=x.uid;if(S.playing)pause();S.useSeq=true;S.preview=null;updateTrim();seekT(Math.min(t,segStart(h.i+1,segsFor())-0.02));renderMoves()}
+    tap:(t,h)=>{if(RTL.cut){if(S.playing)pause();seekT(clamp(t,0,seqTotal()-0.01));return}
+      if(h&&h.kind==='block'){const x=S.seq[h.i];S.sel=x.uid;if(S.playing)pause();S.useSeq=true;S.preview=null;updateTrim();seekT(Math.min(t,segStart(h.i+1,segsFor())-0.02));renderMoves()}
       else{S.sel=null;renderMoves()}},
-    handleStart:h=>{rtlPush();const x=S.seq[h.i];RTL.h={s:x.s,e:x.e,start:segStart(h.i,segsFor())};if(S.playing)pause();delete x.warp},
-    handleMove:(h,t)=>{const x=S.seq[h.i],m=moveById(x.id),n=m&&srcById(m.src),r=rateOf(x),dur=n&&n.dur||x.e+5;
+    handleStart:h=>{if(h.side&&h.side[0]==='c'){RTL.cg=null;if(S.playing)pause();return}
+      rtlPush();const x=S.seq[h.i];RTL.h={s:x.s,e:x.e,start:segStart(h.i,segsFor())};if(S.playing)pause();delete x.warp},
+    handleMove:(h,t)=>{
+      if(h.side&&h.side[0]==='c'){const C=RTL.cut,T=seqTotal();if(!C)return;
+        if(h.side==='ca'){C.a=clamp(rtlSnap(t),0,C.b-0.1);seekT(C.a)}
+        else if(h.side==='cb'){C.b=clamp(rtlSnap(t),C.a+0.1,T);seekT(Math.max(0,C.b-0.03))}
+        else{if(RTL.cg==null)RTL.cg=t-C.a;const L=C.b-C.a,a=clamp(rtlSnap(t-RTL.cg),0,T-L);C.a=a;C.b=a+L;seekT(a)}
+        rtlCutUI();return}
+      const x=S.seq[h.i],m=moveById(x.id),n=m&&srcById(m.src),r=rateOf(x),dur=n&&n.dur||x.e+5;
       if(h.side==='e'){const end=rtlSnap(t);x.e=+clamp(x.s+(end-RTL.h.start)*r,x.s+RTL_MIN,dur).toFixed(3);showFrame(m.src,x.e-0.03)}
       else{/* the move's start: the block's end follows; it snaps so the move still ends on the beat when it can */
         const keepEnd=RTL.h.start+(RTL.h.e-RTL.h.s)/r, dt=t-RTL.h.start;x.s=+clamp(RTL.h.s+dt*r,0,x.e-RTL_MIN).toFixed(3);
         const end=RTL.h.start+(x.e-x.s)/r, se=rtlSnap(end);if(se!==end){x.s=+clamp(x.e-(se-RTL.h.start)*r,0,x.e-RTL_MIN).toFixed(3)}showFrame(m.src,x.s)}
       updateSeqStats();rtlInspectorLen()},
-    handleEnd:()=>{renderMoves();updateTrim();try{autosave()}catch(e){}},
+    handleEnd:h=>{if(h&&h.side&&h.side[0]==='c'){rtlCutUI();return}renderMoves();updateTrim();try{autosave()}catch(e){}},
     blockDrag:{
       /* drag straight away: the picked move, or any move when the whole routine fits (nothing to scroll) */
-      direct:(h,tl)=>!tl.zoomed()||S.seq[h.i].uid===S.sel,
+      direct:(h,tl)=>!RTL.cut&&(!tl.zoomed()||S.seq[h.i].uid===S.sel),
       start:h=>{rtlPush();RTL.drag={from:h.i,to:h.i};S.sel=S.seq[h.i].uid;if(S.playing)pause()},
       /* where it lands: between the other moves, by which of their middles the finger has passed (to = its new index) */
       move:(h,t)=>{const Bs=rtlBlocks().filter(b=>b.i!==RTL.drag.from);let to=0;for(const b of Bs)if(t>(b.a+b.b)/2)to++;RTL.drag.to=to},
@@ -395,7 +447,10 @@ function initRoutineTL(){
         const lifted=D&&D.from===b.i;c.globalAlpha=lifted?0.35:1;
         tlRound(c,X0+1,top,X1-X0-2,th,8);c.save();c.clip();if(n)tlThumbs(c,n,b.x.s,b.x.e,X0,top,X1-X0,th,px=>toSrc(b.g,tl.T(px)-b.a));
         const grd=c.createLinearGradient(0,top,0,bot);grd.addColorStop(0,'rgba(10,11,14,.65)');grd.addColorStop(0.45,'rgba(10,11,14,0)');c.fillStyle=grd;c.fillRect(X0,top,X1-X0,th);
-        c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText((b.i+1)+(X1-X0>70&&m?' '+m.name:''),X0+7,top+5);
+        c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText(rtlLabel(c,m,X1-X0),X0+7,top+5);
+        /* its own speed graph: a little line of how fast it plays (above: faster) */
+        if(curveOf(b.x)){const r0=rateOf(b.x),yb=bot-16;c.strokeStyle='#FFD43B';c.lineWidth=2;c.beginPath();let first=true;
+          for(let X=Math.max(X0+4,0);X<=Math.min(X1-4,W);X+=3){const sT=toSrc(b.g,tl.T(X)-b.a),y=yb-clamp(Math.log2(rateAt(b.g,sT)/r0),-2,2)*7;if(first){c.moveTo(X,y);first=false}else c.lineTo(X,y)}c.stroke()}
         c.fillStyle=TLC.dance;for(const h of motionIn(b.g.src,b.g.s,b.g.e)||[]){const X=X0+(toOut(b.g,h.t))*tl.pps;c.fillRect(X-1,bot-8,2,7)}
         c.restore();c.globalAlpha=1;
         c.strokeStyle=b.x.uid===S.sel?TLC.sel:'rgba(255,255,255,.18)';c.lineWidth=b.x.uid===S.sel?3:1;tlRound(c,X0+1.5,top+0.5,X1-X0-3,th-1,8);c.stroke();
@@ -404,10 +459,22 @@ function initRoutineTL(){
       if(D){const b=Bs[D.from],w=Math.max(30,tl.X(b.b)-tl.X(b.a));const gx=(tl.drag&&tl.drag.gx||0)-w/2;
         const oth=Bs.filter(q=>q.i!==D.from);const ix=oth.length?tl.X(D.to===0?oth[0].a:oth[Math.min(D.to,oth.length)-1].b):tl.X(b.a);c.fillStyle=TLC.sel;c.fillRect(ix-2,top-4,4,th+8);
         c.globalAlpha=0.9;tlRound(c,gx,top-6,w,th,8);c.fillStyle='#2A2F3B';c.fill();c.strokeStyle=TLC.sel;c.lineWidth=2;c.stroke();c.globalAlpha=1;
-        const m=moveById(b.x.id);c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText(String(D.from+1)+(m?' '+m.name:''),gx+7,top);}
+        const m=moveById(b.x.id);c.fillStyle='#F3F1EC';c.font='800 12px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='left';c.fillText(m?m.name:'',gx+7,top);}
+      /* cutting a moment: the stretch that goes, in red, with its edges */
+      if(RTL.cut){const xa=tl.X(RTL.cut.a),xb=tl.X(RTL.cut.b);c.fillStyle='rgba(255,77,94,.30)';c.fillRect(xa,top-2,xb-xa,th+4);
+        c.strokeStyle='#FF4D5E';c.lineWidth=2;c.strokeRect(xa,top-2,xb-xa,th+4);
+        c.save();c.beginPath();c.rect(xa,top,xb-xa,th);c.clip();c.strokeStyle='rgba(255,77,94,.55)';c.lineWidth=1.5;for(let X=xa-th;X<xb;X+=10){c.beginPath();c.moveTo(X,bot);c.lineTo(X+th,top);c.stroke()}c.restore();
+        for(const X of [xa,xb]){c.fillStyle='#FF4D5E';tlRound(c,X-7,top+th/2-17,14,34,7);c.fill();c.fillStyle='#F3F1EC';c.fillRect(X-2.5,top+th/2-9,1.5,18);c.fillRect(X+1,top+th/2-9,1.5,18)}
+        c.fillStyle='#FF4D5E';c.font='800 11px Figtree,system-ui,sans-serif';c.textBaseline='top';c.textAlign='center';const lab='CUT '+(RTL.cut.b-RTL.cut.a).toFixed(2)+'s',lw=c.measureText(lab).width+12,lx=clamp((xa+xb)/2,lw/2+2,W-lw/2-2);c.fillStyle='#FF4D5E';tlRound(c,lx-lw/2,bot-18,lw,16,8);c.fill();c.fillStyle='#fff';c.fillText(lab,lx,bot-16)}
       if(routineOn())tlPlayhead(c,tl.X(tPos()),H);
     }});
-  $('#rtlUndo').addEventListener('click',rtlUndo);
+  $('#rtlUndo').addEventListener('click',()=>{rtlCutEnd();rtlUndo()});
+  $('#rtlSplit').addEventListener('click',()=>{if(!routineOn())return;if(S.playing)pause();rtlPush();if(!rtlSplit(S.segIdx))RTL.undo.pop();else rtlNote('Split. Tap a part to pick it.')});
+  $('#rtlCutMode').addEventListener('click',()=>{if(RTL.cut){rtlCutEnd();rtlNote('')}else rtlCutStart()});
+  $('#rtlCutCancel').addEventListener('click',()=>{rtlCutEnd();rtlNote('')});
+  $('#rtlCutGo').addEventListener('click',()=>{const C=RTL.cut;if(!C)return;if(S.playing)pause();rtlPush();const g=rtlCutRange(C.a,C.b);rtlCutEnd();
+    if(!g){RTL.undo.pop();return}S.segIdx=0;renderMoves();updateTrim();try{seqChanged(false)}catch(e){}seekT(Math.max(0,Math.min(C.a,seqTotal()-0.05)));try{autosave()}catch(e){}
+    rtlNote('Cut '+g.toFixed(2)+'s out. Undo brings it back.')});
   $('#rtlZoomIn').addEventListener('click',()=>RTL.tl.zoom(1.6));$('#rtlZoomOut').addEventListener('click',()=>RTL.tl.zoom(1/1.6));
   const sn=$('#rtlSnap');try{RTL.snap=localStorage.getItem('rs-snap')!=='0'}catch(e){}sn.checked=RTL.snap;sn.addEventListener('change',()=>{RTL.snap=sn.checked;try{localStorage.setItem('rs-snap',RTL.snap?'1':'0')}catch(e){}});
 }
@@ -416,6 +483,6 @@ function rtlInspectorLen(){const i=S.seq.findIndex(x=>x.uid===S.sel),x=S.seq[i],
 let tlLast=0;
 function tlTick(){const now=performance.now();if(now-tlLast<66)return;tlLast=now;
   if(CUT.tl&&!$('#p-clip').hidden){if(S.playing&&CUT.tl.follow)CUT.tl.show(v.currentTime);CUT.tl.redraw()}
-  if(RTL.tl&&!$('#p-routine').hidden){if(S.playing&&routineOn()&&RTL.tl.follow)RTL.tl.show(tPos());RTL.tl.redraw()}}
+  if(RTL.tl&&!$('#p-routine').hidden){if(S.playing&&routineOn()&&RTL.tl.follow)RTL.tl.show(tPos());RTL.tl.redraw();rtlCutUI()}}
 initCut();initRoutineTL();
-window.__rsRTL={get tl(){return RTL.tl},blocks:()=>rtlBlocks(),rect:(tl,b)=>rtlRect(tl,b)};
+window.__rsRTL={get tl(){return RTL.tl},blocks:()=>rtlBlocks(),rect:(tl,b)=>rtlRect(tl,b),get cut(){return RTL.cut},cutRange:(a,b)=>rtlCutRange(a,b),spdT:()=>spdT()};

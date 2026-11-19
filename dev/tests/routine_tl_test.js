@@ -42,8 +42,8 @@ const [,,HOST,CLIP,SONG,SHOT]=process.argv;const rec=(n,s,d)=>console.log(s.toUp
  await p.click('#rtlZoomOut');await p.click('#rtlZoomOut');await p.waitForTimeout(200);s=await st();
  await p.evaluate(()=>{const R=window.__rs,S=R.S;S.useSeq=true;});
  const mid=(s.bounds[1][0]+s.bounds[1][1])/2;await place();await p.mouse.click(X(mid),Y);await p.waitForTimeout(400);
- const n0=(await st()).ids.length;await p.locator('#rtlInspect button',{hasText:'Split here'}).click();await p.waitForTimeout(300);s=await st();
- rec('Split here cuts a move in two at the playhead',s.ids.length===n0+1?'passed':'failed',`${n0} → ${s.ids.length} moves`);
+ const n0=(await st()).ids.length;await p.locator('#rtlSplit').click();await p.waitForTimeout(300);s=await st();
+ rec('✂ Split (toolbar) cuts a move in two at the playhead',s.ids.length===n0+1?'passed':'failed',`${n0} → ${s.ids.length} moves`);
  rec('The list view still has them',(await p.evaluate(()=>document.querySelectorAll('#seqList li').length))===s.ids.length?'passed':'failed','');
  await place();await p.screenshot({path:SHOT+'-after.png'});
  rec('No page errors',errs.length?'failed':'passed',JSON.stringify(errs.slice(0,3)));
