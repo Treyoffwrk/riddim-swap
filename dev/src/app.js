@@ -2920,70 +2920,147 @@ function prReplayStop(quiet){if(!PR.replay)return;PR.replay=null;try{recV.pause(
    a floor arrow when the whole body steps ---------- */
 const MC_COLS=['#E040FB','#1DE9B6','#FF5252','#7C4DFF','#FFD740','#40C4FF','#FF6E40','#69F0AE'];
 /* the pose at t (pixels of the video), averaged over ±2 frames so one odd frame doesn't show; mirrored if asked */
-function mcPose(B,t,mir){const W=B.w||1,H=B.h||1,acc=[];let n=0;
-  for(const dt of [-2,-1,0,1,2]){const P=RB.poseAt(B,t+dt/30);if(!P)continue;n++;P.forEach((q,j)=>{const a=acc[j]||(acc[j]=[0,0,0,0]);if(isFinite(q[0])&&isFinite(q[1])){a[0]+=q[0];a[1]+=q[1];a[2]+=q[2]||0;a[3]++}})}
-  if(!n||!acc.length)return null;return acc.map(a=>a[3]?[mir?(1-a[0]/a[3])*W:a[0]/a[3]*W,a[1]/a[3]*H,a[2]/a[3]]:[NaN,NaN,0])}
+/* the pose at t (pixels of the video, as tracked: no averaging, so a sharp move stays sharp); mirrored if asked */
+function mcPose(B,t,mir){const P=RB.poseAt(B,t);if(!P)return null;const W=B.w||1,H=B.h||1;return P.map(q=>isFinite(q[0])&&isFinite(q[1])?[mir?(1-q[0])*W:q[0]*W,q[1]*H,q[2]||0]:[NaN,NaN,0])}
 const mcMid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
-/* a card: the pose at t, and where the hands and feet go until t2 (same clip) */
-function mcCard(B,t,t2,mir){const Q=mcPose(B,t,mir);if(!Q)return null;const hip=mcMid(Q[23],Q[24]),sh=mcMid(Q[11],Q[12]),torso=Math.hypot(sh[0]-hip[0],sh[1]-hip[1]);
-  if(!(torso>1))return null;const steps=8,P=[];for(let k=0;k<=steps;k++){const q=k?mcPose(B,t+(t2-t)*k/steps,mir):Q;P.push(q)}
-  const movers=[];for(const [j,nm] of [[15,'left hand'],[16,'right hand'],[27,'left foot'],[28,'right foot']]){const pts=P.map(q=>q&&q[j]).filter(q=>q&&isFinite(q[0]));if(pts.length<3)continue;
-    const d=Math.hypot(pts[pts.length-1][0]-pts[0][0],pts[pts.length-1][1]-pts[0][1]);if(d>0.45*torso)movers.push({j,nm,pts,d})}
-  movers.sort((a,b)=>b.d-a.d);const last=P[P.length-1];const h2=last?mcMid(last[23],last[24]):hip;
-  return {Q,torso,hip,movers:movers.slice(0,2),travel:h2[0]-hip[0]}}
+const mcTorso=Q=>{const h=mcMid(Q[23],Q[24]),s=mcMid(Q[11],Q[12]);return Math.hypot(s[0]-h[0],s[1]-h[1])};
+/* how fast the arms and legs are moving at t (in torsos per frame): low = a held pose */
+function mcSpeed(B,t){const A=mcPose(B,t-1/30),Z=mcPose(B,t+1/30),C=mcPose(B,t);if(!A||!Z||!C)return 1e9;const T=mcTorso(C);if(!(T>1))return 1e9;let s=0,n=0;
+  for(const j of [13,14,15,16,25,26,27,28]){const d=Math.hypot(Z[j][0]-A[j][0],Z[j][1]-A[j][1]);if(isFinite(d)){s+=d/T;n++}}return n?s/n:1e9}
+/* the shape of a path (relative to the body): straight / curve, a circle, back and forth (how many times), or a shake */
+function mcShape(pts,T){let L=0;for(let k=1;k<pts.length;k++)L+=Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]);
+  const a=pts[0],z=pts[pts.length-1],D=Math.hypot(z[0]-a[0],z[1]-a[1]);
+  /* main direction of travel, and how often it turns back along it */
+  let cx=0,cy=0;for(const p of pts){cx+=p[0];cy+=p[1]}cx/=pts.length;cy/=pts.length;let sxx=0,syy=0,sxy=0;for(const p of pts){const dx=p[0]-cx,dy=p[1]-cy;sxx+=dx*dx;syy+=dy*dy;sxy+=dx*dy}
+  const ang=0.5*Math.atan2(2*sxy,sxx-syy),ux=Math.cos(ang),uy=Math.sin(ang);const pr=pts.map(p=>(p[0]-cx)*ux+(p[1]-cy)*uy);
+  let rev=0,dir=0,acc=0;for(let k=1;k<pr.length;k++){const d=pr[k]-pr[k-1];acc+=d;if(Math.abs(acc)<0.06*T)continue;const sg=Math.sign(acc);if(dir&&sg!==dir)rev++;dir=sg;acc=0}
+  const span=Math.max(...pr)-Math.min(...pr);
+  /* how far round it goes */
+  let sweep=0;for(let k=1;k<pts.length;k++){const a1=Math.atan2(pts[k-1][1]-cy,pts[k-1][0]-cx),a2=Math.atan2(pts[k][1]-cy,pts[k][0]-cx);let d=a2-a1;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;sweep+=d}
+  if(Math.abs(sweep)>4.2&&L>1.6*D&&L>0.9*T)return {type:'circle',L,D,sweep,c:[cx,cy],r:Math.max(0.12*T,L/(2*Math.PI))};
+  if(rev>=4&&span<0.5*T)return {type:'shake',L,D,axis:[ux,uy],span,c:[cx,cy]};
+  if(rev>=2&&L>2.2*D)return {type:'back',L,D,axis:[ux,uy],span,c:[cx,cy],n:Math.max(2,Math.round((rev+1)/2))};
+  return {type:'line',L,D}}
+/* a card: the pose at the moment near t where it's held, and what the hands and feet (measured against the body) and the
+   hips do until the next card (no more than a beat). opt: {beat, lo, hi (the window it may move in), mirror} */
+function mcCard(B,t,t2,mir,opt){opt=opt||{};const beat=Math.max(0.25,Math.min(1.2,opt.beat||(t2-t)||0.6));
+  const lo=Math.max(opt.lo!=null?opt.lo:-1e9,t-0.22*beat),hi=Math.min(opt.hi!=null?opt.hi:1e9,t+0.22*beat);
+  let tc=t,best=1e9;for(let u=lo;u<=hi+1e-6;u+=1/30){const sp=mcSpeed(B,u);if(sp>=1e8)continue;const c=sp*(1+0.8*((u-t)/(0.22*beat))**2);if(c<best){best=c;tc=u}}
+  const Q=mcPose(B,tc,mir);if(!Q)return null;const T=mcTorso(Q);if(!(T>1))return null;const hip=mcMid(Q[23],Q[24]);
+  const te=Math.max(tc+0.1,Math.min(t2!=null&&t2>tc?t2:tc+beat,tc+beat*1.05,opt.hi2!=null?opt.hi2:1e9));
+  const N=12,P=[];for(let k=0;k<=N;k++){const q=k?mcPose(B,tc+(te-tc)*k/N,mir):Q;P.push(q&&mcTorso(q)>1?q:null)}
+  const S0=mcMid(Q[11],Q[12]),H0=hip;
+  const movers=[];
+  for(const [j,nm,ref,thr] of [[15,'left hand','s',0.35],[16,'right hand','s',0.35]]){
+    const rel=[],abs=[];for(const q of P){if(!q||!isFinite(q[j][0]))continue;const R=ref==='s'?mcMid(q[11],q[12]):mcMid(q[23],q[24]),R0=ref==='s'?S0:H0;
+      rel.push([q[j][0]-R[0]+R0[0],q[j][1]-R[1]+R0[1]]);abs.push([q[j][0],q[j][1]])}
+    if(rel.length<4)continue;const sh=mcShape(rel,T);
+    const score=sh.type==='line'?sh.D/(thr*T):sh.L/(2.2*T);if(score<1)continue;
+    movers.push({j,nm,pts:rel,abs,shape:sh,type:sh.type,score,faint:(Q[j][2]||0)<0.5})}
+  movers.sort((a,b)=>b.score-a.score);
+  /* the feet, read on their own (the hands would always win otherwise): the stance opening or closing (the gap between
+     the feet), else a knee lift (a foot rising against the hips) */
+  let feet=null;{const ok=q=>q&&isFinite(q[27][0])&&isFinite(q[28][0]);const Pf=P.filter(ok);if(Pf.length>3){const g0=Math.abs(Pf[0][27][0]-Pf[0][28][0]),g1=Math.abs(Pf[Pf.length-1][27][0]-Pf[Pf.length-1][28][0]);
+    if(Math.abs(g1-g0)>0.3*T)feet={type:'stance',open:g1>g0,from:[Pf[0][27],Pf[0][28]]};
+    else{let bj=null,bl=0,bpath=null;for(const j of [27,28]){const rel=Pf.map(q=>{const h=mcMid(q[23],q[24]);return [q[j][0]-h[0]+H0[0],q[j][1]-h[1]+H0[1]]});let k=0,mn=0;rel.forEach((r,i)=>{const d=r[1]-rel[0][1];if(d<mn){mn=d;k=i}});if(-mn>bl){bl=-mn;bj=j;bpath=rel.slice(0,Math.max(2,k+1))}}
+      if(bl>0.3*T)feet={type:'lift',j:bj,nm:bj===27?'left foot':'right foot',pts:bpath,shape:{type:'line'}}}}}
+  /* the whole body: a step (hips across), and a hip roll (hips round, against the feet) */
+  const last=P.filter(Boolean).pop()||Q,travel=mcMid(last[23],last[24])[0]-hip[0];
+  const hp=[];for(const q of P){if(!q)continue;const h=mcMid(q[23],q[24]),f=mcMid(q[27],q[28]);if(isFinite(h[0])&&isFinite(f[0]))hp.push([h[0]-f[0],h[1]-f[1]])}
+  /* a roll: the hips go most of the way round against the feet, by a fair amount, with the feet staying put */
+  let roll=null;if(hp.length>6&&!(Math.abs(travel)>0.2*T)){const sh=mcShape(hp,T);const fm=(()=>{const a=P.find(Boolean),z=last;return Math.hypot(mcMid(z[27],z[28])[0]-mcMid(a[27],a[28])[0],mcMid(z[27],z[28])[1]-mcMid(a[27],a[28])[1])})();
+    if(sh.type==='circle'&&Math.abs(sh.sweep)>5.6&&sh.L>1.0*T&&fm<0.3*T)roll={dir:Math.sign(sh.sweep)}}
+  /* which side is turned away from the camera (from the tracker's depth): drawn darker */
+  let far=null;try{const W3=B.world;if(W3&&B.n){let a=0,b=B.n-1;while(b-a>1){const m=(a+b)>>1;if(B.data[m*RB.STRIDE]<tc)a=m;else b=m}
+    const o=b*24,zl=W3[o+2],zr=W3[o+5];if(isFinite(zl)&&isFinite(zr)&&Math.abs(zl-zr)>0.08){const leftFar=zl>zr;far=mir?(leftFar?'right':'left'):(leftFar?'left':'right')}}}catch(e){}
+  const mv=movers.slice(0,2);if(feet&&feet.type==='lift')mv.push({j:feet.j,nm:feet.nm,pts:feet.pts,shape:feet.shape,type:'line',score:1,lift:true});
+  return {Q,torso:T,hip,t:tc,te,movers:mv,stance:feet&&feet.type==='stance'?feet:null,travel:Math.abs(travel)>0.2*T?travel:0,roll,far}}
 /* one clean stroke: start, end, and a curve through where the path bends most (if it does) */
 function mcSimplify(pts){const A=pts[0],B=pts[pts.length-1];let far=null,fd=0;const L=Math.hypot(B[0]-A[0],B[1]-A[1])||1;
   for(const p of pts){const d=Math.abs((B[0]-A[0])*(A[1]-p[1])-(A[0]-p[0])*(B[1]-A[1]))/L;if(d>fd){fd=d;far=p}}
   const C=fd>0.22*L&&far?[2*far[0]-(A[0]+B[0])/2,2*far[1]-(A[1]+B[1])/2]:[(A[0]+B[0])/2,(A[1]+B[1])/2];
   const out=[];for(let k=0;k<=16;k++){const u=k/16,v=1-u;out.push([v*v*A[0]+2*u*v*C[0]+u*u*B[0],v*v*A[1]+2*u*v*C[1]+u*u*B[1]])}return out}
-/* draw a card into the box (bx,by,bw,bh): torso fills about a fifth of the height, hips a little below the middle */
-function mcDraw(c,K,bx,by,bw,bh,col,opt){opt=opt||{};const u=bh/320;   /* sizes as on a 320 px tall card */
+/* arrows: one stroke with a head; back and forth with two heads and ×n; a circle; a shake */
+function mcHead(c,a,b,R,col,u){const ang=Math.atan2(a[1]-b[1],a[0]-b[0]);c.beginPath();c.moveTo(a[0]+Math.cos(ang)*R*0.75,a[1]+Math.sin(ang)*R*0.75);
+  c.lineTo(a[0]+Math.cos(ang+2.4)*R,a[1]+Math.sin(ang+2.4)*R);c.lineTo(a[0]+Math.cos(ang-2.4)*R,a[1]+Math.sin(ang-2.4)*R);c.closePath();c.lineWidth=3*u;c.strokeStyle='#fff';c.stroke();c.fillStyle=col;c.fill()}
+function mcStroke(c,pts,col,u,heads){if(pts.length<2)return;c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.lineWidth=9*u;c.strokeStyle='#fff';c.stroke();c.lineWidth=5.5*u;c.strokeStyle=col;c.stroke();
+  const R=12*u;mcHead(c,pts[pts.length-1],pts[Math.max(0,pts.length-3)],R,col,u);if(heads===2)mcHead(c,pts[0],pts[Math.min(pts.length-1,2)],R,col,u)}
+/* draw one mover's arrow, given a map from video pixels to the drawing */
+function mcArrow(c,m,M,s,u,col){const sh=m.shape;
+  if(m.type==='circle'){const C=M(sh.c),r=Math.max(10*u,sh.r*s),dir=sh.sweep>0?1:-1,pts=[];for(let k=0;k<=24;k++){const a=-Math.PI/2+dir*k/24*Math.PI*1.65;pts.push([C[0]+Math.cos(a)*r,C[1]+Math.sin(a)*r*0.8])}mcStroke(c,pts,col,u);return}
+  if(m.type==='back'||m.type==='shake'){const C=M(sh.c),h=Math.max(12*u,sh.span*s/2),ax=sh.axis;
+    if(m.type==='shake'){const pts=[];for(let k=0;k<=8;k++){const off=(k%2?1:-1)*6*u,d=(k/8-0.5)*2*h;pts.push([C[0]+ax[0]*d-ax[1]*off,C[1]+ax[1]*d+ax[0]*off])}c.beginPath();pts.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.lineWidth=8*u;c.strokeStyle='#fff';c.stroke();c.lineWidth=4.5*u;c.strokeStyle=col;c.stroke();return}
+    mcStroke(c,[[C[0]-ax[0]*h,C[1]-ax[1]*h],[C[0],C[1]],[C[0]+ax[0]*h,C[1]+ax[1]*h]],col,u,2);
+    c.font=`900 ${Math.round(15*u)}px Figtree,system-ui,sans-serif`;c.textAlign='center';c.textBaseline='middle';c.lineWidth=4*u;c.strokeStyle='#000';const tx=C[0]-ax[1]*16*u,ty=C[1]+ax[0]*16*u;c.strokeText('×'+sh.n,tx,ty);c.fillStyle='#fff';c.fillText('×'+sh.n,tx,ty);return}
+  /* from the limb as drawn: its path against the body, moved to start at the limb */
+  const st=M(m.pts[0]);const p=mcSimplify(m.pts.map(M)).map(q=>[q[0]-M(m.pts[0])[0]+st[0],q[1]-M(m.pts[0])[1]+st[1]]);mcStroke(c,p.slice(3),col,u)}
+/* draw a card into the box (bx,by,bw,bh): torso a quarter of the height, hips a little above the middle */
+function mcDraw(c,K,bx,by,bw,bh,col,opt){opt=opt||{};const u=bh/320;
   const s=bh*(opt.fill||0.24)/K.torso,ox=bx+bw/2-K.hip[0]*s,oy=by+bh*0.53-K.hip[1]*s,M=q=>[ox+q[0]*s,oy+q[1]*s],Q=K.Q,ok=j=>Q[j]&&isFinite(Q[j][0]);
   c.save();c.beginPath();c.rect(bx,by,bw,bh);c.clip();c.lineCap='round';c.lineJoin='round';
+  /* the side turned away is drawn darker and first (behind); limbs the tracker isn't sure of are faint */
+  const side=j=>[11,13,15,23,25,27].includes(j)?'left':'right',faint=(a,b)=>Math.min(Q[a][2]||0,Q[b][2]||0)<0.5;
+  const limbs=[[23,25,15],[25,27,13],[24,26,15],[26,28,13],[11,13,12],[13,15,11],[12,14,12],[14,16,11]];
+  const order=limbs.slice().sort((x,y)=>(side(x[0])===K.far?0:1)-(side(y[0])===K.far?0:1));
   const limb=(a,b,w)=>{if(!ok(a)||!ok(b))return;const A=M(Q[a]),B=M(Q[b]);c.beginPath();c.moveTo(A[0],A[1]);c.lineTo(B[0],B[1]);c.lineWidth=w;c.stroke()};
-  const fig=(stroke,extra)=>{c.strokeStyle=stroke;c.fillStyle=stroke;
-    for(const [a,b,w] of [[23,25,15],[25,27,13],[24,26,15],[26,28,13],[11,13,12],[13,15,11],[12,14,12],[14,16,11]])limb(a,b,(w+extra)*u);
-    if([11,12,23,24].every(ok)){const T=[M(Q[11]),M(Q[12]),M(Q[24]),M(Q[23])];c.beginPath();T.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.lineWidth=(12+extra)*u;c.stroke();c.fill()}
-    if(ok(0)){const hd=M(Q[0]);c.beginPath();c.arc(hd[0],hd[1]-2*u,K.torso*s*0.22+extra*u/2,0,7);c.fill()}};
-  c.shadowColor=col;c.shadowBlur=opt.glow===false?0:14*u;fig('#ffffff',5);c.shadowBlur=0;fig(col,0);
-  const arrow=(pts,colr)=>{const sp=pts.slice(3);if(sp.length<3)return;c.beginPath();sp.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));
-    c.lineWidth=9*u;c.strokeStyle='#fff';c.stroke();c.lineWidth=5.5*u;c.strokeStyle=colr;c.stroke();
-    const a=sp[sp.length-1],b=sp[sp.length-3],ang=Math.atan2(a[1]-b[1],a[0]-b[0]),R=12*u;c.beginPath();c.moveTo(a[0]+Math.cos(ang)*R*0.75,a[1]+Math.sin(ang)*R*0.75);
-    c.lineTo(a[0]+Math.cos(ang+2.4)*R,a[1]+Math.sin(ang+2.4)*R);c.lineTo(a[0]+Math.cos(ang-2.4)*R,a[1]+Math.sin(ang-2.4)*R);c.closePath();c.lineWidth=3*u;c.strokeStyle='#fff';c.stroke();c.fillStyle=colr;c.fill()};
-  for(const m of K.movers)arrow(mcSimplify(m.pts.map(M)),opt.arrow||'#FFD740');
-  if(Math.abs(K.travel)>0.35*K.torso){const fy=Math.max(ok(27)?M(Q[27])[1]:0,ok(28)?M(Q[28])[1]:0)+10*u,x0=bx+bw/2,x1=x0+Math.sign(K.travel)*Math.min(bw*0.38,Math.abs(K.travel)*s+20*u);
-    arrow([[x0,fy],[x0,fy],[x0,fy],[(x0+x1)/2,fy],[x1,fy]],'#40C4FF')}
+  const shade=(hex,f)=>{const n=parseInt(hex.slice(1),16),r=n>>16&255,g=n>>8&255,b2=n&255;return `rgb(${Math.round(r*f)},${Math.round(g*f)},${Math.round(b2*f)})`};
+  const fig=(outline)=>{for(const [a,b,w] of order){c.globalAlpha=faint(a,b)?0.35:1;const back=K.far&&side(a)===K.far;c.strokeStyle=outline?'#ffffff':(back?shade(col,0.55):col);limb(a,b,(w+(outline?5:0))*u)}
+    c.globalAlpha=1;c.strokeStyle=c.fillStyle=outline?'#ffffff':col;
+    if([11,12,23,24].every(ok)){const T=[M(Q[11]),M(Q[12]),M(Q[24]),M(Q[23])];c.beginPath();T.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.lineWidth=(12+(outline?5:0))*u;c.stroke();c.fill()}
+    if(ok(0)){const hd=M(Q[0]);c.beginPath();c.arc(hd[0],hd[1]-2*u,K.torso*s*0.22+(outline?2.5*u:0),0,7);c.fill()}};
+  c.shadowColor=col;c.shadowBlur=opt.glow===false?0:14*u;fig(true);c.shadowBlur=0;fig(false);
+  for(const m of K.movers)mcArrow(c,m,M,s,u,m.j>=27?'#FF8AD8':(opt.arrow||'#FFD740'));
+  /* the feet opening (arrows out from each foot) or closing (arrows in) */
+  if(K.stance&&ok(27)&&ok(28)){const a=M(Q[27]),b=M(Q[28]),cx=(a[0]+b[0])/2,L=Math.max(14*u,K.torso*s*0.28);for(const f of [a,b]){const sg=Math.sign(f[0]-cx)||1,d=K.stance.open?sg:-sg,y=f[1]+8*u;
+    const x0=K.stance.open?f[0]:f[0]+sg*L*0.2,x1=x0+d*L;mcStroke(c,[[x0,y],[(x0+x1)/2,y],[x1,y]],'#FF8AD8',u)}}
+  if(K.roll&&ok(23)&&ok(24)){const C=M(K.hip),r=K.torso*s*0.42,pts=[];for(let k=0;k<=24;k++){const a=Math.PI*0.15+K.roll.dir*k/24*Math.PI*1.7;pts.push([C[0]+Math.cos(a)*r,C[1]+Math.sin(a)*r*0.45])}mcStroke(c,pts,'#7CFFB2',u)}
+  if(K.travel){const fy=Math.max(ok(27)?M(Q[27])[1]:0,ok(28)?M(Q[28])[1]:0)+12*u,x0=bx+bw/2,x1=x0+Math.sign(K.travel)*Math.min(bw*0.38,Math.abs(K.travel)*s+20*u);mcStroke(c,[[x0,fy],[(x0+x1)/2,fy],[x1,fy]],'#40C4FF',u)}
   c.restore()}
 /* ---------- the move strip under the player: one card per beat (or 2 beats, or a bar) of whatever plays ---------- */
-const CARDS={on:false,step:1,key:'',list:[],touch:0,cur:-1};
-try{const o=JSON.parse(localStorage.getItem('rs-cards')||'{}');CARDS.on=!!o.on;if([1,2,4].includes(o.step))CARDS.step=o.step}catch(e){}
-function cardsSave(){try{localStorage.setItem('rs-cards',JSON.stringify({on:CARDS.on,step:CARDS.step}))}catch(e){}}
-/* the card moments, in playback time: the song's beats (clip or routine song), every `step` of them; without a song every 0.75 s */
-function cardTimes(){const L=segs();if(!L.length)return {T:[],beat:false};let tot=0;for(const g of L)tot+=segLen(g);
+const CARDS={on:false,step:1,key:'',list:[],touch:0,cur:-1,track:true,dancer:false};
+try{const o=JSON.parse(localStorage.getItem('rs-cards')||'{}');CARDS.on=!!o.on;if([1,2,4].includes(o.step))CARDS.step=o.step;if(o.track!=null)CARDS.track=!!o.track;CARDS.dancer=!!o.dancer}catch(e){}
+function cardsSave(){try{localStorage.setItem('rs-cards',JSON.stringify({on:CARDS.on,step:CARDS.step,track:CARDS.track,dancer:CARDS.dancer}))}catch(e){}}
+/* beats in the clip's own sound, for when no song is loaded (25 Nov: the user plays the video's own sound): found once
+   per clip with the same beat finder as songs */
+const SGRID=new Map();
+function clipSoundGrid(n){if(!n||!n.url)return null;const g=SGRID.get(n.id);if(g==='busy')return null;if(g!==undefined)return g;SGRID.set(n.id,'busy');
+  (async()=>{let r=null;try{const ab=await (await fetch(n.url)).arrayBuffer();const buf=await decodeAudioSafe(ab);const an=RA.analyzeSong(songChans(buf),buf.sampleRate,{});
+    if(an&&an.beats&&an.beats.length>4)r={beats:an.beats,down:an.downbeats||[],bpm:an.bpm}}catch(e){r=null}SGRID.set(n.id,r);CARDS.key=''})();return null}
+/* the card moments, in playback time: the song's beats (clip or routine song); else the beats in each clip's own sound;
+   else the dancer's held poses; every `step` of them */
+function cardTimes(){const L=segs();if(!L.length)return {T:[],beat:false,src:''};let tot=0;for(const g of L)tot+=segLen(g);
+  const pick=(B,src)=>{const T=[];let cnt=0;for(const b of B){if(b.down)cnt=0;if(b.o<-0.01||b.o>tot-0.05){cnt++;continue}if(cnt%CARDS.step===0)T.push({o:Math.max(0,b.o),n:cnt%8+1});cnt++}return T.length>1?{T,beat:true,src}:null};
   let B=null;if(routineOn()){const R=rtlBeatsOut();if(R)B=R}else{const G=liveGrid();if(G&&G.beats.length>1)B=G.beats.map(b=>({o:(b-S.offset)/S.ar,down:(G.down||[]).some(d=>Math.abs(d-b)<0.02)}))}
-  const T=[];if(B&&B.length>2){let first=B.findIndex(b=>b.o>=-0.01);if(first<0)first=0;
-    /* count from the bar's 1 */let cnt=0;for(let k=first;k<B.length;k++){const b=B[k];if(b.down)cnt=0;if(b.o>tot-0.05)break;if(cnt%CARDS.step===0)T.push({o:Math.max(0,b.o),n:cnt%8+1});cnt++}
-    if(T.length>1)return {T,beat:true}}
-  const st=0.75*CARDS.step;for(let o=0;o<tot-0.05;o+=st)T.push({o,n:0});return {T,beat:false}}
+  if(B&&B.length>2){const r=pick(B,'song');if(r)return r}
+  /* the clip's own sound, part by part */
+  {const out=[];let a=0,ok=true;for(const g of L){const n=srcById(g.src||S.cur),G=clipSoundGrid(n),len=segLen(g);if(!G){ok=false;a+=len;continue}
+    for(const bt of G.beats){if(bt<g.s-1e-3||bt>g.e)continue;out.push({o:a+toOut(g,bt),down:G.down.some(d=>Math.abs(d-bt)<0.02)})}a+=len}
+    if(out.length>2){const r=pick(out,'clip');if(r)return r}}
+  /* no beat: the dancer's held poses (the arms and legs at their stillest, at least 0.35 s apart) */
+  {const T=[];let a=0;for(const g of L){const n=srcById(g.src||S.cur),Bd=n&&n.body,len=segLen(g);if(!Bd){a+=len;continue}
+    const st=1/15,xs=[],sp=[];for(let u=g.s;u<=g.e;u+=st){xs.push(u);sp.push(Math.min(5,mcSpeed(Bd,u)))}const med=sp.slice().sort((x,y)=>x-y)[sp.length>>1]||0;
+    let last=-1e9;for(let k=2;k<sp.length-2;k++){if(sp[k]<=sp[k-1]&&sp[k]<=sp[k+1]&&sp[k]<=sp[k-2]&&sp[k]<=sp[k+2]&&sp[k]<0.8*med&&xs[k]-last>=0.35){T.push({o:a+toOut(g,xs[k]),n:0});last=xs[k]}}a+=len}
+    if(T.length>2)return {T:T.filter((_,i)=>i%CARDS.step===0),beat:false,src:'poses'}}
+  const T=[],st=0.75*CARDS.step;for(let o=0;o<tot-0.05;o+=st)T.push({o,n:0});return {T,beat:false,src:'time'}}
 /* playback time -> which part plays and where in its clip */
 function cardAt(o){const L=segs();let a=0;for(let i=0;i<L.length;i++){const g=L[i],len=segLen(g);if(o<a+len-1e-6||i===L.length-1)return {i,g,a,len,src:g.src||S.cur,t:toSrc(g,Math.min(len,Math.max(0,o-a)))};a+=len}return null}
 function cardsKey(){const L=segs();return [CARDS.step,S.mirror?1:0,S.cur,routineOn()?1:0,JSON.stringify(L.map(g=>[g.src,+g.s.toFixed(3),+g.e.toFixed(3),+(g.r||1).toFixed(3),g.k?g.k.length:0])),S.offset,S.ar,S.rt.offset,S.rt.ar,
-  L.map(g=>{const n=srcById(g.src||S.cur);return n&&n.body?n.body.n:0}).join(','),(liveGrid()||{}).beats?liveGrid().beats.length:0].join('|')}
+  L.map(g=>{const n=srcById(g.src||S.cur);const G=n&&SGRID.get(n.id);return (n&&n.body?n.body.n:0)+':'+(G&&G!=='busy'?G.beats.length:G===null?'x':'-')}).join(','),(liveGrid()||{}).beats?liveGrid().beats.length:0].join('|')}
 function cardsBuild(){const row=$('#cardRow');if(!row)return;CARDS.key=cardsKey();row.textContent='';CARDS.list=[];CARDS.cur=-1;
-  const {T,beat}=cardTimes();let made=0,untracked=0;const dpr=Math.min(2,window.devicePixelRatio||1);
+  const {T,beat,src}=cardTimes();let made=0,untracked=0,nopose=0;const dpr=Math.min(2,window.devicePixelRatio||1);
   T.forEach((cd,i)=>{const P=cardAt(cd.o);if(!P)return;const next=i+1<T.length?T[i+1].o:cd.o+0.75*CARDS.step;
     const n=srcById(P.src),B=n&&n.body;const t2=toSrc(P.g,Math.min(P.len,Math.max(0,next-P.a)));
     const btn=el('button','mcard');btn.type='button';btn.setAttribute('role','listitem');
     const cv=document.createElement('canvas');cv.width=Math.round(72*dpr);cv.height=Math.round(120*dpr);btn.append(cv);
     const col=MC_COLS[(cd.n?cd.n-1:i)%MC_COLS.length];
-    const K=B?mcCard(B,P.t,Math.max(P.t+0.05,t2),S.mirror):null;const lab=el('span','mcn',beat?String(cd.n):fmt(cd.o));btn.append(lab);
+    const K=B?mcCard(B,P.t,Math.max(P.t+0.05,t2),S.mirror,{beat:Math.max(0.25,t2-P.t),lo:P.g.s,hi:P.g.e,hi2:P.g.e}):null;const lab=el('span','mcn',beat?String(cd.n):fmt(cd.o));btn.append(lab);
     const c=cv.getContext('2d');c.fillStyle='#14171f';c.fillRect(0,0,cv.width,cv.height);
     if(K){mcDraw(c,K,0,0,cv.width,cv.height,col);made++;btn.setAttribute('aria-label',(beat?'Count '+cd.n:fmt(cd.o))+(K.movers.length?': '+K.movers.map(m=>m.nm).join(' and ')+' move':': hold'));}
-    else{untracked++;c.fillStyle='#596074';c.font=`700 ${Math.round(11*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText(B?'—':'not tracked',cv.width/2,cv.height/2);btn.setAttribute('aria-label','No pose here')}
+    else{if(B)nopose++;else untracked++;c.fillStyle='#596074';c.font=`700 ${Math.round(11*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText(B?'—':'not tracked',cv.width/2,cv.height/2);btn.setAttribute('aria-label','No pose here')}
     btn.addEventListener('click',()=>{CARDS.touch=performance.now();const was=S.playing;try{seekT(cd.o)}catch(e){}if(!was){try{drawBody()}catch(e){}}cardsTick(true)});
-    row.append(btn);CARDS.list.push({o:cd.o,btn,K})});
-  const info=$('#cardInfo');if(info)info.textContent=T.length?(beat?({1:'a card every beat',2:'a card every 2 beats',4:'a card every bar'})[CARDS.step]||'':'every '+(0.75*CARDS.step).toFixed(2)+' s (no song beat)'):'';
-  const h=$('#cardHint');if(h){h.textContent=!T.length?'':untracked&&!made?'Track the body (Body) to see the moves as cards.':untracked?'Parts not tracked yet show no card.':'Arrows show where the hands and feet go before the next card; a blue arrow under the feet is a step. Tap a card to go there.';}
+    row.append(btn);CARDS.list.push({o:cd.o,btn,K,col})});
+  const info=$('#cardInfo');if(info)info.textContent=T.length?(beat?(({1:'a card every beat',2:'a card every 2 beats',4:'a card every bar'})[CARDS.step]||'')+(src==='clip'?' (from the clip\'s sound)':''):src==='poses'?'at the dancer\'s held poses (no beat found)':'every '+(0.75*CARDS.step).toFixed(2)+' s (no beat found)'):'';
+  const h=$('#cardHint');if(h){h.textContent=!T.length?'':untracked&&!made?'Track the body (Body) to see the moves as cards.':untracked?'Parts not tracked yet show no card.':'Yellow arrows: where the hands go before the next card (×2: back and forth); pink: the feet (a knee lift, or the feet opening or closing); blue under the feet: a step; green round the hips: a roll.'+(nopose?' A dash: the tracker lost the dancer there.':'')+' Tap a card to go there.';}
   cardsTick(true)}
 function cardsTick(force){const bar=$('#cardBar');if(!bar||bar.hidden||!CARDS.list.length)return;const o=tPos();let i=-1;for(let k=0;k<CARDS.list.length;k++){if(CARDS.list[k].o<=o+0.02)i=k;else break}
   if(i===CARDS.cur&&!force)return;if(CARDS.cur>=0&&CARDS.list[CARDS.cur])CARDS.list[CARDS.cur].btn.classList.remove('on');CARDS.cur=i;if(i<0)return;const b=CARDS.list[i].btn;b.classList.add('on');
@@ -2991,11 +3068,68 @@ function cardsTick(force){const bar=$('#cardBar');if(!bar||bar.hidden||!CARDS.li
   if(performance.now()-CARDS.touch>2500||force){const row=$('#cardRow');const want=b.offsetLeft-row.clientWidth*0.25;if(Math.abs(row.scrollLeft-want)>4)row.scrollTo({left:Math.max(0,want),behavior:S.playing?'smooth':'auto'})}}
 function cardsUI(){const bar=$('#cardBar'),btn=$('#dkCards');if(!bar)return;const can=S.hasV;bar.hidden=!(CARDS.on&&can);if(btn)btn.setAttribute('aria-pressed',String(CARDS.on));
   document.querySelectorAll('#cardStep button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.cs===CARDS.step)));
-  if(!bar.hidden&&cardsKey()!==CARDS.key)cardsBuild()}
-window.__rsCards={get on(){return CARDS.on},get step(){return CARDS.step},list:()=>CARDS.list.map(c=>({o:c.o,on:c.btn.classList.contains('on'),movers:c.K?c.K.movers.map(m=>m.j):null,travel:c.K?c.K.travel/c.K.torso:null,hipX:c.K?c.K.hip[0]:null,label:c.btn.getAttribute('aria-label'),n:c.btn.querySelector('.mcn').textContent})),cardAt:o=>{const P=cardAt(o);return P&&{i:P.i,src:P.src,t:P.t}},mcCard:(B,t,t2,m)=>mcCard(B,t,t2,m),build:()=>cardsBuild()};
+  $('#cardTrack')&&$('#cardTrack').setAttribute('aria-pressed',String(CARDS.track));$('#cardDancer')&&$('#cardDancer').setAttribute('aria-pressed',String(CARDS.dancer));
+  $('#pracArrows')&&$('#pracArrows').setAttribute('aria-pressed',String(CARDS.dancer));
+  if(can&&(CARDS.on||CARDS.dancer)&&cardsKey()!==CARDS.key)cardsBuild()}
+/* ---- the cards with the video (25 Nov, user: "they shouldn't be shown independently but simultaneously with the clip
+   videos ... overlayed or as cards at the bottom of playback"): a track along the bottom of the video, cards sliding to a
+   now line; and the next move's arrows on the dancer himself, just before it comes, riding with his body ---- */
+function cardCv(){let c=$('#cardCv');if(!c){c=document.createElement('canvas');c.id='cardCv';c.className='cardcv';c.setAttribute('aria-hidden','true');$('#stage').append(c)}return c}
+function cardsOverlay(){const show=S.hasV&&((CARDS.on&&CARDS.track&&!(PR.on&&PR.mode==='ghost'))||(CARDS.dancer&&(!PR.on||PR.mode!=='ghost')));const c=$('#cardCv');
+  if(!show||!CARDS.list.length){if(c&&c.width){c.width=0;c.height=0}return}
+  const cv=cardCv(),st=$('#stage').getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1),w=Math.round(st.width*dpr),h=Math.round(st.height*dpr);
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}const x=cv.getContext('2d');x.clearRect(0,0,w,h);const o=tPos(),L=CARDS.list;
+  /* the card playing now, and the next */
+  let i=-1;for(let k=0;k<L.length;k++){if(L[k].o<=o+0.02)i=k;else break}
+  if(CARDS.dancer)cardsOnDancer(x,w,h,dpr,o,L,i);
+  if(CARDS.on&&CARDS.track&&!(PR.on&&PR.mode==='ghost'))cardsTrack(x,w,h,dpr,o,L,i)}
+function cardsTrack(x,w,h,dpr,o,L,i){
+  /* where there's room beside the picture (a portrait clip on a wide player), the cards run down that side so they never
+     cover the dancer; otherwise along the bottom, above the buttons */
+  const st=$('#stage').getBoundingClientRect(),vr=v.getBoundingClientRect(),R=RB.containRect(vr.width,vr.height,v.videoWidth||9,v.videoHeight||16);
+  const right=(st.right-(vr.left+R.x+R.w))*dpr,dock=$('#dock'),dockH=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
+  const side=right>=64*dpr,span=3.2;
+  const card=(c,k,now,bx,by,cw,ch)=>{x.fillStyle='rgba(14,16,20,.85)';x.strokeStyle=now?'#FFD740':'rgba(255,255,255,.3)';x.lineWidth=(now?2.5:1.2)*dpr;
+    x.beginPath();if(x.roundRect)x.roundRect(bx,by,cw,ch,8*dpr);else x.rect(bx,by,cw,ch);x.fill();x.stroke();mcDraw(x,c.K,bx+2*dpr,by+2*dpr,cw-4*dpr,ch-4*dpr,c.col||'#E040FB',{glow:now})};
+  x.save();
+  if(side){const top=62*dpr,bot=h-dockH,avail=bot-top-6*dpr,ch=Math.min(avail,(right-12*dpr)/0.62,140*dpr),cw=ch*0.62,cx=w-right/2,y0=top;
+    if(ch<40*dpr){x.restore();return}
+    /* the card playing now at the top; the next slides up from below, a card's height per card */
+    x.beginPath();x.rect(cx-cw/2-8*dpr,y0-6*dpr,cw+16*dpr,bot-y0+6*dpr);x.clip();
+    x.strokeStyle='rgba(255,255,255,.8)';x.lineWidth=2*dpr;x.beginPath();x.moveTo(cx-cw/2-6*dpr,y0-4*dpr);x.lineTo(cx+cw/2+6*dpr,y0-4*dpr);x.stroke();
+    const step=ch*1.06,pos=k=>{/* where card k sits: how many cards it is from now (fractional) */const c=L[k],a=L[i]||L[0],b=L[i+1];if(!b)return k-i;const f=Math.max(0,Math.min(1,(o-a.o)/Math.max(0.05,b.o-a.o)));return k-i-f*0.0-(k===i?0:0)};
+    for(let k=Math.max(0,i);k<Math.min(L.length,i+3);k++){const c=L[k];if(!c.K)continue;let d=k-i;if(k>i){const a=L[i],b=L[i+1];const f=a&&b?Math.max(0,Math.min(1,(o-a.o)/Math.max(0.05,b.o-a.o))):0;d=k-i-Math.max(0,f-0.6)/0.4}
+      const y=y0+Math.max(0,d)*step;if(y>bot)continue;card(c,k,k===i,cx-cw/2,y,cw,ch)}}
+  else{const ch=Math.min(h*0.3,110*dpr),cw=ch*0.62,y1=h-dockH,y0=y1-ch,x0=12*dpr+cw*0.5,X1=w-10*dpr-cw*0.5;
+    x.fillStyle='rgba(8,9,12,.38)';x.fillRect(0,y0-4*dpr,w,ch+8*dpr);x.strokeStyle='rgba(255,255,255,.8)';x.lineWidth=2*dpr;x.beginPath();x.moveTo(x0,y0-6*dpr);x.lineTo(x0,y1+6*dpr);x.stroke();
+    for(let k=0;k<L.length;k++){const c=L[k];if(!c.K)continue;const dt=c.o-o;if(dt>span||dt<-0.7)continue;const now=k===i,cx=x0+Math.max(-0.25,dt)/span*(X1-x0);
+      x.globalAlpha=dt<0&&!now?Math.max(0,1+dt/0.7):1;card(c,k,now,cx-cw/2,y0,cw,ch);
+      const nx=L[k+1],len=nx?Math.min(span,nx.o-c.o):0.6;x.fillStyle=now?'#FFD740':'rgba(255,255,255,.35)';x.fillRect(cx-cw/2,y1+3*dpr,Math.max(4*dpr,len/span*(X1-x0)-4*dpr),3*dpr)}}
+  x.restore();CARDS.trackMode=side?'side':'bottom'}
+/* the next move's arrows on the dancer: from the card about to come (or the one playing), drawn where his hands and feet
+   are now, fading in half a beat ahead and out as the move ends */
+function cardsOnDancer(x,w,h,dpr,o,L,i){const P=cardAt(o);if(!P)return;const n=srcById(P.src),B=n&&n.body;if(!B)return;
+  let c=null,al=0;const nx=L[i+1],cur=L[i];
+  if(nx&&nx.K&&nx.o-o<0.45){c=nx;al=1-Math.max(0,nx.o-o-0.15)/0.3}else if(cur&&cur.K){const end=nx?nx.o:cur.o+0.8,f=(o-cur.o)/Math.max(0.2,end-cur.o);if(f<0.85){c=cur;al=f<0.6?1:1-(f-0.6)/0.25}}
+  if(!c||al<=0.02)return;const K=c.K,Qn=mcPose(B,v.currentTime,S.mirror);if(!Qn||!(mcTorso(Qn)>1))return;
+  /* the video's picture on the screen */
+  const st=$('#stage').getBoundingClientRect(),vr=v.getBoundingClientRect(),R=RB.containRect(vr.width,vr.height,B.w||v.videoWidth,B.h||v.videoHeight);
+  const ox=(vr.left-st.left+R.x)*dpr,oy=(vr.top-st.top+R.y)*dpr,sc=R.w/(B.w||1)*dpr;
+  const S0=mcMid(K.Q[11],K.Q[12]),H0=K.hip,Sn=mcMid(Qn[11],Qn[12]),Hn=mcMid(Qn[23],Qn[24]);
+  x.save();x.globalAlpha=Math.min(1,al);x.lineCap='round';x.lineJoin='round';const u=Math.max(0.8,Math.min(1.6,mcTorso(Qn)*sc/90));
+  for(const m of K.movers){const ref=m.j>=27?[Hn[0]-H0[0],Hn[1]-H0[1]]:[Sn[0]-S0[0],Sn[1]-S0[1]];const M=q=>[ox+(q[0]+ref[0])*sc,oy+(q[1]+ref[1])*sc];
+    mcArrow(x,m,M,sc,u,m.j>=27?'#FF8AD8':'#FFD740')}
+  const M0=q=>[ox+q[0]*sc,oy+q[1]*sc];
+  if(K.stance){for(const j of [27,28]){const f=M0(Qn[j]),o2=M0(Qn[j===27?28:27]),sg=Math.sign(f[0]-o2[0])||1,d=K.stance.open?sg:-sg,Lw=mcTorso(Qn)*sc*0.3;mcStroke(x,[[f[0],f[1]+6*u],[f[0]+d*Lw/2,f[1]+6*u],[f[0]+d*Lw,f[1]+6*u]],'#FF8AD8',u)}}
+  if(K.travel){const f=M0(mcMid(Qn[27],Qn[28])),Lw=Math.min(w*0.3,Math.abs(K.travel)*sc+20*u),d=Math.sign(K.travel);mcStroke(x,[[f[0],f[1]+14*u],[f[0]+d*Lw/2,f[1]+14*u],[f[0]+d*Lw,f[1]+14*u]],'#40C4FF',u)}
+  if(K.roll){const C=M0(Hn),r=mcTorso(Qn)*sc*0.45,pts=[];for(let k=0;k<=24;k++){const a=Math.PI*0.15+K.roll.dir*k/24*Math.PI*1.7;pts.push([C[0]+Math.cos(a)*r,C[1]+Math.sin(a)*r*0.45])}mcStroke(x,pts,'#7CFFB2',u)}
+  x.restore()}
+window.__rsCards={get on(){return CARDS.on},rolls:()=>CARDS.list.filter(c=>c.K&&c.K.roll).length,full:()=>CARDS.list.map(c=>c.K&&{t:c.K.t,te:c.K.te,movers:c.K.movers.map(m=>[m.j,m.type]),stance:c.K.stance?(c.K.stance.open?'open':'close'):null,travel:c.K.travel,roll:!!c.K.roll,far:c.K.far}),get step(){return CARDS.step},list:()=>CARDS.list.map(c=>({o:c.o,on:c.btn.classList.contains('on'),movers:c.K?c.K.movers.map(m=>m.j):null,travel:c.K?c.K.travel/c.K.torso:null,hipX:c.K?c.K.hip[0]:null,label:c.btn.getAttribute('aria-label'),n:c.btn.querySelector('.mcn').textContent})),cardAt:o=>{const P=cardAt(o);return P&&{i:P.i,src:P.src,t:P.t}},mcCard:(B,t,t2,m)=>mcCard(B,t,t2,m),cardFor:(B,t,t2,o)=>mcCard(B,t,t2,false,o),cardTimes:()=>cardTimes(),build:()=>cardsBuild()};
 function initCards(){const btn=$('#dkCards');if(btn)btn.addEventListener('click',()=>{CARDS.on=!CARDS.on;cardsSave();cardsUI();if(CARDS.on)setTimeout(()=>{const bar=$('#cardBar');if(bar&&!bar.hidden)bar.scrollIntoView({block:'nearest',behavior:'smooth'})},50)});
   $('#cardClose')&&$('#cardClose').addEventListener('click',()=>{CARDS.on=false;cardsSave();cardsUI()});
   document.querySelectorAll('#cardStep button').forEach(b=>b.addEventListener('click',()=>{CARDS.step=+b.dataset.cs;cardsSave();cardsUI()}));
+  $('#cardTrack')&&$('#cardTrack').addEventListener('click',()=>{CARDS.track=!CARDS.track;cardsSave();cardsUI()});
+  for(const id of ['#cardDancer','#pracArrows'])$(id)&&$(id).addEventListener('click',()=>{CARDS.dancer=!CARDS.dancer;cardsSave();cardsUI()});
   const row=$('#cardRow');if(row)['touchstart','wheel','pointerdown'].forEach(ev=>row.addEventListener(ev,()=>{CARDS.touch=performance.now()},{passive:true}));
   setInterval(()=>{try{cardsUI();cardsTick()}catch(e){}},250)}
 function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
@@ -3013,7 +3147,7 @@ function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
     c.fillStyle='rgba(14,16,20,.82)';c.strokeStyle=res?prCol(res):inLead?'#FFB347':'rgba(255,255,255,.35)';c.lineWidth=(res||inLead?2.5:1.2)*dpr;
     const bx=x-cw/2;c.beginPath();if(c.roundRect)c.roundRect(bx,y0,cw,ch,8*dpr);else c.rect(bx,y0,cw,ch);c.fill();c.stroke();
     /* the move as a bold figure, with arrows for where the hands and feet go before the next key move */
-    {const nx=hits.find(q=>q>H+0.05),t2=nx!=null&&nx-H<1.6*rate?nx:H+0.6*rate;const K=mcCard(B,H,t2,PR.flip);
+    {const nx=hits.find(q=>q>H+0.05),bp=(typeof beatPer==='function'&&beatPer())||0.6,t2=nx!=null&&nx-H<1.6*rate?nx:H+bp*rate;const K=mcCard(B,H,t2,PR.flip,{beat:bp*rate,lo:H-0.08,hi:H+0.08});
       if(K)mcDraw(c,K,bx+2*dpr,y0+2*dpr,cw-4*dpr,ch-4*dpr,res?prCol(res):inLead?'#FFB347':'#E040FB',{glow:!!(res||inLead)})}
     if(res){c.fillStyle=prCol(res);c.font=`800 ${Math.round(10*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='bottom';c.fillText(res.toUpperCase(),x,y0-2*dpr)}
   }
@@ -4555,6 +4689,7 @@ let lastSeg=-1;
 function beat(pos,anchor,bpm){const bp=(pos-(anchor??0))*bpm/60, fl=Math.floor(bp);return {idx:((fl%4)+4)%4,pulse:(bp-fl)<0.14}}
 function tick(){
   if(S.hasV&&CARDS.on&&S.playing){try{cardsTick()}catch(e){}}   /* the lit move card changes on the beat */
+  if(CARDS.on||CARDS.dancer||$('#cardCv')){try{cardsOverlay()}catch(e){}}
   if(S.hasV){
     const ro=routineOn(), sm=segMode();
     if(document.activeElement!==$('#scrub'))$('#scrub').value=sm?tPos():v.currentTime;

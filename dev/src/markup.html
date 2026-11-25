@@ -207,6 +207,7 @@
             <button type="button" class="pchip" id="pracTargets" aria-pressed="true" title="Ghost: show each hit coming, then how well you hit it">Hit targets</button>
             <button type="button" class="pchip" id="pracFlip" aria-pressed="false" title="Ghost: same side as the dancer instead of mirror image">Flip ghost</button>
             <button type="button" class="pchip" id="pracCount" title="Before the clip starts: time to step back into place">Countdown: 3 s</button>
+            <button type="button" class="pchip" id="pracArrows" aria-pressed="false" title="The next move's arrows drawn on the dancer, just before it comes">Arrows on dancer</button>
             <button type="button" class="pchip" id="pracVoice" aria-pressed="true" title="Says the countdown and what to fix after a move">Voice</button>
             <button type="button" class="pchip" id="pracHands" aria-pressed="true" title="Raise both hands above your head to play; hold them up longer to pause">Hands up to play</button>
             <button type="button" class="pchip" id="pracStep" aria-pressed="false" title="Ghost: the clip waits on each key move until you match it">Step mode</button>
@@ -265,6 +266,10 @@
         <div class="lnhead"><b>Move cards</b><span class="lnloop" id="cardInfo"></span>
           <div class="seg cardstep" id="cardStep" role="group" aria-label="A card every"><button type="button" data-cs="1">Beat</button><button type="button" data-cs="2">2 beats</button><button type="button" data-cs="4">Bar</button></div>
           <button type="button" class="btn sm ghost" id="cardClose" aria-label="Close move cards">✕</button></div>
+        <div class="cardshow" role="group" aria-label="Show the cards">
+          <button type="button" class="pchip" id="cardTrack" aria-pressed="true">Cards on the video</button>
+          <button type="button" class="pchip" id="cardDancer" aria-pressed="false">Arrows on the dancer</button>
+        </div>
         <div class="cardrow" id="cardRow" role="list" aria-label="The moves, one card each"></div>
         <p class="hint" id="cardHint"></p>
       </div>
