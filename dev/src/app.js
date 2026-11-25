@@ -2914,6 +2914,90 @@ async function prSaveRun(){const L=PR.last;if(!L||S.rec)return;const b=$('#prSav
   recMsg('Making your video: you and the dancer side by side · '+fmt(segStart(segs().length,segs())))}
 function prReplayStop(quiet){if(!PR.replay)return;PR.replay=null;try{recV.pause()}catch(e){}PR.Praw=null;PR.P=null;prReset();PR.xf=null;
   if(!quiet){pause();prResShow()}pracUI()}
+/* ---------- move cards (25 Nov, user: Just Dance's "still frames of a skeleton/stickman with directional arrows to show
+   the movement ... moves are given a temporal thumbnail"): the pose at a moment as a bold figure, with an arrow for each of
+   the one or two hands/feet that travel furthest before the next card (a single clean stroke along their real path), and
+   a floor arrow when the whole body steps ---------- */
+const MC_COLS=['#E040FB','#1DE9B6','#FF5252','#7C4DFF','#FFD740','#40C4FF','#FF6E40','#69F0AE'];
+/* the pose at t (pixels of the video), averaged over ±2 frames so one odd frame doesn't show; mirrored if asked */
+function mcPose(B,t,mir){const W=B.w||1,H=B.h||1,acc=[];let n=0;
+  for(const dt of [-2,-1,0,1,2]){const P=RB.poseAt(B,t+dt/30);if(!P)continue;n++;P.forEach((q,j)=>{const a=acc[j]||(acc[j]=[0,0,0,0]);if(isFinite(q[0])&&isFinite(q[1])){a[0]+=q[0];a[1]+=q[1];a[2]+=q[2]||0;a[3]++}})}
+  if(!n||!acc.length)return null;return acc.map(a=>a[3]?[mir?(1-a[0]/a[3])*W:a[0]/a[3]*W,a[1]/a[3]*H,a[2]/a[3]]:[NaN,NaN,0])}
+const mcMid=(a,b)=>[(a[0]+b[0])/2,(a[1]+b[1])/2];
+/* a card: the pose at t, and where the hands and feet go until t2 (same clip) */
+function mcCard(B,t,t2,mir){const Q=mcPose(B,t,mir);if(!Q)return null;const hip=mcMid(Q[23],Q[24]),sh=mcMid(Q[11],Q[12]),torso=Math.hypot(sh[0]-hip[0],sh[1]-hip[1]);
+  if(!(torso>1))return null;const steps=8,P=[];for(let k=0;k<=steps;k++){const q=k?mcPose(B,t+(t2-t)*k/steps,mir):Q;P.push(q)}
+  const movers=[];for(const [j,nm] of [[15,'left hand'],[16,'right hand'],[27,'left foot'],[28,'right foot']]){const pts=P.map(q=>q&&q[j]).filter(q=>q&&isFinite(q[0]));if(pts.length<3)continue;
+    const d=Math.hypot(pts[pts.length-1][0]-pts[0][0],pts[pts.length-1][1]-pts[0][1]);if(d>0.45*torso)movers.push({j,nm,pts,d})}
+  movers.sort((a,b)=>b.d-a.d);const last=P[P.length-1];const h2=last?mcMid(last[23],last[24]):hip;
+  return {Q,torso,hip,movers:movers.slice(0,2),travel:h2[0]-hip[0]}}
+/* one clean stroke: start, end, and a curve through where the path bends most (if it does) */
+function mcSimplify(pts){const A=pts[0],B=pts[pts.length-1];let far=null,fd=0;const L=Math.hypot(B[0]-A[0],B[1]-A[1])||1;
+  for(const p of pts){const d=Math.abs((B[0]-A[0])*(A[1]-p[1])-(A[0]-p[0])*(B[1]-A[1]))/L;if(d>fd){fd=d;far=p}}
+  const C=fd>0.22*L&&far?[2*far[0]-(A[0]+B[0])/2,2*far[1]-(A[1]+B[1])/2]:[(A[0]+B[0])/2,(A[1]+B[1])/2];
+  const out=[];for(let k=0;k<=16;k++){const u=k/16,v=1-u;out.push([v*v*A[0]+2*u*v*C[0]+u*u*B[0],v*v*A[1]+2*u*v*C[1]+u*u*B[1]])}return out}
+/* draw a card into the box (bx,by,bw,bh): torso fills about a fifth of the height, hips a little below the middle */
+function mcDraw(c,K,bx,by,bw,bh,col,opt){opt=opt||{};const u=bh/320;   /* sizes as on a 320 px tall card */
+  const s=bh*(opt.fill||0.24)/K.torso,ox=bx+bw/2-K.hip[0]*s,oy=by+bh*0.53-K.hip[1]*s,M=q=>[ox+q[0]*s,oy+q[1]*s],Q=K.Q,ok=j=>Q[j]&&isFinite(Q[j][0]);
+  c.save();c.beginPath();c.rect(bx,by,bw,bh);c.clip();c.lineCap='round';c.lineJoin='round';
+  const limb=(a,b,w)=>{if(!ok(a)||!ok(b))return;const A=M(Q[a]),B=M(Q[b]);c.beginPath();c.moveTo(A[0],A[1]);c.lineTo(B[0],B[1]);c.lineWidth=w;c.stroke()};
+  const fig=(stroke,extra)=>{c.strokeStyle=stroke;c.fillStyle=stroke;
+    for(const [a,b,w] of [[23,25,15],[25,27,13],[24,26,15],[26,28,13],[11,13,12],[13,15,11],[12,14,12],[14,16,11]])limb(a,b,(w+extra)*u);
+    if([11,12,23,24].every(ok)){const T=[M(Q[11]),M(Q[12]),M(Q[24]),M(Q[23])];c.beginPath();T.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath();c.lineWidth=(12+extra)*u;c.stroke();c.fill()}
+    if(ok(0)){const hd=M(Q[0]);c.beginPath();c.arc(hd[0],hd[1]-2*u,K.torso*s*0.22+extra*u/2,0,7);c.fill()}};
+  c.shadowColor=col;c.shadowBlur=opt.glow===false?0:14*u;fig('#ffffff',5);c.shadowBlur=0;fig(col,0);
+  const arrow=(pts,colr)=>{const sp=pts.slice(3);if(sp.length<3)return;c.beginPath();sp.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));
+    c.lineWidth=9*u;c.strokeStyle='#fff';c.stroke();c.lineWidth=5.5*u;c.strokeStyle=colr;c.stroke();
+    const a=sp[sp.length-1],b=sp[sp.length-3],ang=Math.atan2(a[1]-b[1],a[0]-b[0]),R=12*u;c.beginPath();c.moveTo(a[0]+Math.cos(ang)*R*0.75,a[1]+Math.sin(ang)*R*0.75);
+    c.lineTo(a[0]+Math.cos(ang+2.4)*R,a[1]+Math.sin(ang+2.4)*R);c.lineTo(a[0]+Math.cos(ang-2.4)*R,a[1]+Math.sin(ang-2.4)*R);c.closePath();c.lineWidth=3*u;c.strokeStyle='#fff';c.stroke();c.fillStyle=colr;c.fill()};
+  for(const m of K.movers)arrow(mcSimplify(m.pts.map(M)),opt.arrow||'#FFD740');
+  if(Math.abs(K.travel)>0.35*K.torso){const fy=Math.max(ok(27)?M(Q[27])[1]:0,ok(28)?M(Q[28])[1]:0)+10*u,x0=bx+bw/2,x1=x0+Math.sign(K.travel)*Math.min(bw*0.38,Math.abs(K.travel)*s+20*u);
+    arrow([[x0,fy],[x0,fy],[x0,fy],[(x0+x1)/2,fy],[x1,fy]],'#40C4FF')}
+  c.restore()}
+/* ---------- the move strip under the player: one card per beat (or 2 beats, or a bar) of whatever plays ---------- */
+const CARDS={on:false,step:1,key:'',list:[],touch:0,cur:-1};
+try{const o=JSON.parse(localStorage.getItem('rs-cards')||'{}');CARDS.on=!!o.on;if([1,2,4].includes(o.step))CARDS.step=o.step}catch(e){}
+function cardsSave(){try{localStorage.setItem('rs-cards',JSON.stringify({on:CARDS.on,step:CARDS.step}))}catch(e){}}
+/* the card moments, in playback time: the song's beats (clip or routine song), every `step` of them; without a song every 0.75 s */
+function cardTimes(){const L=segs();if(!L.length)return {T:[],beat:false};let tot=0;for(const g of L)tot+=segLen(g);
+  let B=null;if(routineOn()){const R=rtlBeatsOut();if(R)B=R}else{const G=liveGrid();if(G&&G.beats.length>1)B=G.beats.map(b=>({o:(b-S.offset)/S.ar,down:(G.down||[]).some(d=>Math.abs(d-b)<0.02)}))}
+  const T=[];if(B&&B.length>2){let first=B.findIndex(b=>b.o>=-0.01);if(first<0)first=0;
+    /* count from the bar's 1 */let cnt=0;for(let k=first;k<B.length;k++){const b=B[k];if(b.down)cnt=0;if(b.o>tot-0.05)break;if(cnt%CARDS.step===0)T.push({o:Math.max(0,b.o),n:cnt%8+1});cnt++}
+    if(T.length>1)return {T,beat:true}}
+  const st=0.75*CARDS.step;for(let o=0;o<tot-0.05;o+=st)T.push({o,n:0});return {T,beat:false}}
+/* playback time -> which part plays and where in its clip */
+function cardAt(o){const L=segs();let a=0;for(let i=0;i<L.length;i++){const g=L[i],len=segLen(g);if(o<a+len-1e-6||i===L.length-1)return {i,g,a,len,src:g.src||S.cur,t:toSrc(g,Math.min(len,Math.max(0,o-a)))};a+=len}return null}
+function cardsKey(){const L=segs();return [CARDS.step,S.mirror?1:0,S.cur,routineOn()?1:0,JSON.stringify(L.map(g=>[g.src,+g.s.toFixed(3),+g.e.toFixed(3),+(g.r||1).toFixed(3),g.k?g.k.length:0])),S.offset,S.ar,S.rt.offset,S.rt.ar,
+  L.map(g=>{const n=srcById(g.src||S.cur);return n&&n.body?n.body.n:0}).join(','),(liveGrid()||{}).beats?liveGrid().beats.length:0].join('|')}
+function cardsBuild(){const row=$('#cardRow');if(!row)return;CARDS.key=cardsKey();row.textContent='';CARDS.list=[];CARDS.cur=-1;
+  const {T,beat}=cardTimes();let made=0,untracked=0;const dpr=Math.min(2,window.devicePixelRatio||1);
+  T.forEach((cd,i)=>{const P=cardAt(cd.o);if(!P)return;const next=i+1<T.length?T[i+1].o:cd.o+0.75*CARDS.step;
+    const n=srcById(P.src),B=n&&n.body;const t2=toSrc(P.g,Math.min(P.len,Math.max(0,next-P.a)));
+    const btn=el('button','mcard');btn.type='button';btn.setAttribute('role','listitem');
+    const cv=document.createElement('canvas');cv.width=Math.round(72*dpr);cv.height=Math.round(120*dpr);btn.append(cv);
+    const col=MC_COLS[(cd.n?cd.n-1:i)%MC_COLS.length];
+    const K=B?mcCard(B,P.t,Math.max(P.t+0.05,t2),S.mirror):null;const lab=el('span','mcn',beat?String(cd.n):fmt(cd.o));btn.append(lab);
+    const c=cv.getContext('2d');c.fillStyle='#14171f';c.fillRect(0,0,cv.width,cv.height);
+    if(K){mcDraw(c,K,0,0,cv.width,cv.height,col);made++;btn.setAttribute('aria-label',(beat?'Count '+cd.n:fmt(cd.o))+(K.movers.length?': '+K.movers.map(m=>m.nm).join(' and ')+' move':': hold'));}
+    else{untracked++;c.fillStyle='#596074';c.font=`700 ${Math.round(11*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText(B?'—':'not tracked',cv.width/2,cv.height/2);btn.setAttribute('aria-label','No pose here')}
+    btn.addEventListener('click',()=>{CARDS.touch=performance.now();const was=S.playing;try{seekT(cd.o)}catch(e){}if(!was){try{drawBody()}catch(e){}}cardsTick(true)});
+    row.append(btn);CARDS.list.push({o:cd.o,btn,K})});
+  const info=$('#cardInfo');if(info)info.textContent=T.length?(beat?({1:'a card every beat',2:'a card every 2 beats',4:'a card every bar'})[CARDS.step]||'':'every '+(0.75*CARDS.step).toFixed(2)+' s (no song beat)'):'';
+  const h=$('#cardHint');if(h){h.textContent=!T.length?'':untracked&&!made?'Track the body (Body) to see the moves as cards.':untracked?'Parts not tracked yet show no card.':'Arrows show where the hands and feet go before the next card; a blue arrow under the feet is a step. Tap a card to go there.';}
+  cardsTick(true)}
+function cardsTick(force){const bar=$('#cardBar');if(!bar||bar.hidden||!CARDS.list.length)return;const o=tPos();let i=-1;for(let k=0;k<CARDS.list.length;k++){if(CARDS.list[k].o<=o+0.02)i=k;else break}
+  if(i===CARDS.cur&&!force)return;if(CARDS.cur>=0&&CARDS.list[CARDS.cur])CARDS.list[CARDS.cur].btn.classList.remove('on');CARDS.cur=i;if(i<0)return;const b=CARDS.list[i].btn;b.classList.add('on');
+  /* keep the card playing now near the left, unless you've just scrolled the strip yourself */
+  if(performance.now()-CARDS.touch>2500||force){const row=$('#cardRow');const want=b.offsetLeft-row.clientWidth*0.25;if(Math.abs(row.scrollLeft-want)>4)row.scrollTo({left:Math.max(0,want),behavior:S.playing?'smooth':'auto'})}}
+function cardsUI(){const bar=$('#cardBar'),btn=$('#dkCards');if(!bar)return;const can=S.hasV;bar.hidden=!(CARDS.on&&can);if(btn)btn.setAttribute('aria-pressed',String(CARDS.on));
+  document.querySelectorAll('#cardStep button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.cs===CARDS.step)));
+  if(!bar.hidden&&cardsKey()!==CARDS.key)cardsBuild()}
+window.__rsCards={get on(){return CARDS.on},get step(){return CARDS.step},list:()=>CARDS.list.map(c=>({o:c.o,on:c.btn.classList.contains('on'),movers:c.K?c.K.movers.map(m=>m.j):null,travel:c.K?c.K.travel/c.K.torso:null,hipX:c.K?c.K.hip[0]:null,label:c.btn.getAttribute('aria-label'),n:c.btn.querySelector('.mcn').textContent})),cardAt:o=>{const P=cardAt(o);return P&&{i:P.i,src:P.src,t:P.t}},mcCard:(B,t,t2,m)=>mcCard(B,t,t2,m),build:()=>cardsBuild()};
+function initCards(){const btn=$('#dkCards');if(btn)btn.addEventListener('click',()=>{CARDS.on=!CARDS.on;cardsSave();cardsUI();if(CARDS.on)setTimeout(()=>{const bar=$('#cardBar');if(bar&&!bar.hidden)bar.scrollIntoView({block:'nearest',behavior:'smooth'})},50)});
+  $('#cardClose')&&$('#cardClose').addEventListener('click',()=>{CARDS.on=false;cardsSave();cardsUI()});
+  document.querySelectorAll('#cardStep button').forEach(b=>b.addEventListener('click',()=>{CARDS.step=+b.dataset.cs;cardsSave();cardsUI()}));
+  const row=$('#cardRow');if(row)['touchstart','wheel','pointerdown'].forEach(ev=>row.addEventListener(ev,()=>{CARDS.touch=performance.now()},{passive:true}));
+  setInterval(()=>{try{cardsUI();cardsTick()}catch(e){}},250)}
 function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
   const dock=$('#dock'),resB=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
   const ch=Math.min(h*0.17,92*dpr),cw=ch*0.66,y1=h-resB,y0=y1-ch,x0=12*dpr+cw*0.5,span=Math.max(3,lead*2.5),X1=w-10*dpr-cw*0.5;
@@ -2928,11 +3012,9 @@ function prCards(c,B,hits,vt,rate,w,h,dpr,lead){
     const fade=dt<0?Math.max(0,1+dt/0.6):1;c.globalAlpha=fade;
     c.fillStyle='rgba(14,16,20,.82)';c.strokeStyle=res?prCol(res):inLead?'#FFB347':'rgba(255,255,255,.35)';c.lineWidth=(res||inLead?2.5:1.2)*dpr;
     const bx=x-cw/2;c.beginPath();if(c.roundRect)c.roundRect(bx,y0,cw,ch,8*dpr);else c.rect(bx,y0,cw,ch);c.fill();c.stroke();
-    /* the move's shape, fitted into the card */
-    const Q=prRef(B,H);if(Q){const vis=Q.filter(q=>q[2]>=0.45);if(vis.length>6){let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;for(const q of vis){a0=Math.min(a0,q[0]);a1=Math.max(a1,q[0]);b0=Math.min(b0,q[1]);b1=Math.max(b1,q[1])}
-      const pad=5*dpr,s=Math.min((cw-2*pad)/Math.max(1,a1-a0),(ch-2*pad)/Math.max(1,b1-b0)),ox=bx+(cw-(a1-a0)*s)/2-a0*s,oy=y0+(ch-(b1-b0)*s)/2-b0*s;
-      const M=Q.map(q=>[ox+q[0]*s,oy+q[1]*s,q[2]]);prDraw(c,M,res?prCol(res):'#F3F1EC',Math.max(1.5,2*dpr),0.95);
-      c.fillStyle='#FFB347';for(const j of prMovers(B,H,rate)){if(!prVis(M,j))continue;c.beginPath();c.arc(M[j][0],M[j][1],3.2*dpr,0,7);c.fill()}}}
+    /* the move as a bold figure, with arrows for where the hands and feet go before the next key move */
+    {const nx=hits.find(q=>q>H+0.05),t2=nx!=null&&nx-H<1.6*rate?nx:H+0.6*rate;const K=mcCard(B,H,t2,PR.flip);
+      if(K)mcDraw(c,K,bx+2*dpr,y0+2*dpr,cw-4*dpr,ch-4*dpr,res?prCol(res):inLead?'#FFB347':'#E040FB',{glow:!!(res||inLead)})}
     if(res){c.fillStyle=prCol(res);c.font=`800 ${Math.round(10*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.textBaseline='bottom';c.fillText(res.toUpperCase(),x,y0-2*dpr)}
   }
   c.restore();
@@ -3960,7 +4042,7 @@ function panelIn(p,dir,from){
   $('#stage').addEventListener('click',e=>{if(!pin.classList.contains('fs')||e.target.closest('button,label,input'))return;if(pin.classList.contains('idle')){wake();return}$('#play').click();wake()});
   pin.addEventListener('pointermove',()=>{if(pin.classList.contains('fs'))wake()});
   pin.addEventListener('touchstart',()=>{if(pin.classList.contains('fs'))setTimeout(wake,0)},{passive:true});
-  setInterval(()=>{btn.hidden=!S.hasV;$('#mirBtn').hidden=!S.hasV;if(pin.classList.contains('fs')){if(!S.playing)pin.classList.remove('idle');else if(!pin.classList.contains('idle')&&!idleT)wake()}},400);
+  setInterval(()=>{btn.hidden=!S.hasV;$('#mirBtn').hidden=!S.hasV;$('#dkCards').hidden=!S.hasV;if(pin.classList.contains('fs')){if(!S.playing)pin.classList.remove('idle');else if(!pin.classList.contains('idle')&&!idleT)wake()}},400);
   $('#play').addEventListener('click',()=>{if(pin.classList.contains('fs'))setTimeout(wake,0)});
 })();
 
@@ -4472,6 +4554,7 @@ const dLights=$$('#dBeats i'), sLights=$$('#sBeats i'), stage=$('#stage'), dBeat
 let lastSeg=-1;
 function beat(pos,anchor,bpm){const bp=(pos-(anchor??0))*bpm/60, fl=Math.floor(bp);return {idx:((fl%4)+4)%4,pulse:(bp-fl)<0.14}}
 function tick(){
+  if(S.hasV&&CARDS.on&&S.playing){try{cardsTick()}catch(e){}}   /* the lit move card changes on the beat */
   if(S.hasV){
     const ro=routineOn(), sm=segMode();
     if(document.activeElement!==$('#scrub'))$('#scrub').value=sm?tPos():v.currentTime;

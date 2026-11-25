@@ -484,5 +484,5 @@ let tlLast=0;
 function tlTick(){const now=performance.now();if(now-tlLast<66)return;tlLast=now;
   if(CUT.tl&&!$('#p-clip').hidden){if(S.playing&&CUT.tl.follow)CUT.tl.show(v.currentTime);CUT.tl.redraw()}
   if(RTL.tl&&!$('#p-routine').hidden){if(S.playing&&routineOn()&&RTL.tl.follow)RTL.tl.show(tPos());RTL.tl.redraw();rtlCutUI()}}
-initCut();initRoutineTL();
+initCut();initRoutineTL();try{initCards()}catch(e){console.error(e)}
 window.__rsRTL={get tl(){return RTL.tl},blocks:()=>rtlBlocks(),rect:(tl,b)=>rtlRect(tl,b),get cut(){return RTL.cut},cutRange:(a,b)=>rtlCutRange(a,b),spdT:()=>spdT()};
