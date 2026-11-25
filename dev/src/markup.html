@@ -141,6 +141,7 @@
           <div class="studytag" id="studyTag" hidden>Study · ½ speed · looping</div>
           <div class="studytag learntag" id="learnTag" hidden>Learn</div>
         </div>
+        <canvas class="cardlane" id="cardLane" hidden aria-label="Move cards: the next moves slide in from the right; tap one to go there"></canvas>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
             <button class="playbtn" id="play" aria-label="Play" disabled>
@@ -267,7 +268,7 @@
           <div class="seg cardstep" id="cardStep" role="group" aria-label="A card every"><button type="button" data-cs="1">Beat</button><button type="button" data-cs="2">2 beats</button><button type="button" data-cs="4">Bar</button></div>
           <button type="button" class="btn sm ghost" id="cardClose" aria-label="Close move cards">✕</button></div>
         <div class="cardshow" role="group" aria-label="Show the cards">
-          <button type="button" class="pchip" id="cardTrack" aria-pressed="true">Cards on the video</button>
+          <button type="button" class="pchip" id="cardTrack" aria-pressed="true">Lane under the video</button>
           <button type="button" class="pchip" id="cardDancer" aria-pressed="false">Arrows on the dancer</button>
         </div>
         <div class="cardrow" id="cardRow" role="list" aria-label="The moves, one card each"></div>

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-1f0d4ba91c'</script>
+<script>window.RS_BUILD='rs-d3645a801c'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -804,6 +804,7 @@ details.more .field{margin-top:8px}
 .cardsbtn{right:112px}.cardsbtn[aria-pressed="true"]{background:#FFD740;color:#0E1014;border-color:#FFD740}
 .cardcv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
 .cardshow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
+.cardlane{display:block;width:100%;height:108px;margin:6px 0 2px;border-radius:12px;background:rgba(255,255,255,.03);cursor:pointer;touch-action:manipulation}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -961,6 +962,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="studytag" id="studyTag" hidden>Study · ½ speed · looping</div>
           <div class="studytag learntag" id="learnTag" hidden>Learn</div>
         </div>
+        <canvas class="cardlane" id="cardLane" hidden aria-label="Move cards: the next moves slide in from the right; tap one to go there"></canvas>
         <div class="transport">
           <div class="row" style="flex-wrap:nowrap">
             <button class="playbtn" id="play" aria-label="Play" disabled>
@@ -1087,7 +1089,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area
           <div class="seg cardstep" id="cardStep" role="group" aria-label="A card every"><button type="button" data-cs="1">Beat</button><button type="button" data-cs="2">2 beats</button><button type="button" data-cs="4">Bar</button></div>
           <button type="button" class="btn sm ghost" id="cardClose" aria-label="Close move cards">✕</button></div>
         <div class="cardshow" role="group" aria-label="Show the cards">
-          <button type="button" class="pchip" id="cardTrack" aria-pressed="true">Cards on the video</button>
+          <button type="button" class="pchip" id="cardTrack" aria-pressed="true">Lane under the video</button>
           <button type="button" class="pchip" id="cardDancer" aria-pressed="false">Arrows on the dancer</button>
         </div>
         <div class="cardrow" id="cardRow" role="list" aria-label="The moves, one card each"></div>
@@ -6110,8 +6112,31 @@ function cardsSave(){try{localStorage.setItem('rs-cards',JSON.stringify({on:CARD
    per clip with the same beat finder as songs */
 const SGRID=new Map();
 function clipSoundGrid(n){if(!n||!n.url)return null;const g=SGRID.get(n.id);if(g==='busy')return null;if(g!==undefined)return g;SGRID.set(n.id,'busy');
-  (async()=>{let r=null;try{const ab=await (await fetch(n.url)).arrayBuffer();const buf=await decodeAudioSafe(ab);const an=RA.analyzeSong(songChans(buf),buf.sampleRate,{});
-    if(an&&an.beats&&an.beats.length>4)r={beats:an.beats,down:an.downbeats||[],bpm:an.bpm}}catch(e){r=null}SGRID.set(n.id,r);CARDS.key=''})();return null}
+  (async()=>{let r=null,why='';try{const ab=await (await fetch(n.url)).arrayBuffer();let buf=null;
+    /* iPhone (Safari) won't always decode the sound straight out of a video file: then pull the AAC track out ourselves */
+    try{if(window.RS_FAIL_VIDEO_DECODE)throw new Error('test: as on a phone that won\'t decode a video file');buf=await decodeAudioSafe(ab.slice(0))}catch(e){why='video';const adts=mp4Adts(ab);if(adts){try{buf=await decodeAudioSafe(adts.buffer);S.clipAacUsed=(S.clipAacUsed||0)+1}catch(e2){why='aac'}}}
+    if(buf){const an=RA.analyzeSong(songChans(buf),buf.sampleRate,{});if(an&&an.beats&&an.beats.length>4)r={beats:an.beats,down:an.downbeats||[],bpm:an.bpm};else why='nobeat'}}catch(e){why=why||'read'}
+    SGRID.set(n.id,r);if(!r)SGRID_WHY.set(n.id,why);CARDS.key=''})();return null}
+const SGRID_WHY=new Map();
+/* the AAC sound of an MP4 / MOV as an ADTS stream (each AAC frame with a 7-byte header), which decodeAudioData reads on
+   its own when it won't read the video file; null when there's no AAC track (or the file is fragmented) */
+function mp4Adts(ab){try{const d=new DataView(ab),u8=new Uint8Array(ab),N=ab.byteLength;const tag=o=>String.fromCharCode(u8[o],u8[o+1],u8[o+2],u8[o+3]);
+  const kids=(s,e)=>{const out=[];let o=s;while(o+8<=e){let sz=d.getUint32(o),hd=8;if(sz===1){sz=Number(d.getBigUint64(o+8));hd=16}else if(sz===0)sz=e-o;if(sz<8||o+sz>e)break;out.push({t:tag(o+4),s:o+hd,e:o+sz});o+=sz}return out};
+  const find=(s,e,t)=>kids(s,e).find(b=>b.t===t);const moov=find(0,N,'moov');if(!moov)return null;
+  for(const trak of kids(moov.s,moov.e).filter(b=>b.t==='trak')){const mdia=find(trak.s,trak.e,'mdia');if(!mdia)continue;const hdlr=find(mdia.s,mdia.e,'hdlr');if(!hdlr||tag(hdlr.s+8)!=='soun')continue;
+    const minf=find(mdia.s,mdia.e,'minf'),stbl=minf&&find(minf.s,minf.e,'stbl');if(!stbl)continue;const stsd=find(stbl.s,stbl.e,'stsd');if(!stsd)continue;
+    /* the AAC set-up (AudioSpecificConfig), from the esds anywhere in the sample description (QuickTime nests it) */
+    let asc=null;for(let o=stsd.s;o<stsd.e-8;o++){if(u8[o]===0x65&&u8[o+1]===0x73&&u8[o+2]===0x64&&u8[o+3]===0x73){for(let q=o+8;q<stsd.e-2;q++){if(u8[q]!==0x05)continue;let L=0,k=q+1;for(let z=0;z<4;z++){const b=u8[k++];L=(L<<7)|(b&0x7f);if(!(b&0x80))break}if(L>=2&&L<64){asc=[u8[k],u8[k+1]];break}}break}}
+    if(!asc)continue;let ot=asc[0]>>3,fi=((asc[0]&7)<<1)|(asc[1]>>7),ch=(asc[1]>>3)&15;if(ot>4)ot=2;if(fi>12||!ch)continue;
+    const stsz=find(stbl.s,stbl.e,'stsz'),stsc=find(stbl.s,stbl.e,'stsc'),stco=find(stbl.s,stbl.e,'stco')||find(stbl.s,stbl.e,'co64');if(!stsz||!stsc||!stco)continue;
+    const fixed=d.getUint32(stsz.s+4),cnt=d.getUint32(stsz.s+8),size=i=>fixed||d.getUint32(stsz.s+12+i*4);
+    const nch=d.getUint32(stco.s+4),c64=tag(stco.s-4)==='co64',off=i=>c64?Number(d.getBigUint64(stco.s+8+i*8)):d.getUint32(stco.s+8+i*4);
+    const ns=d.getUint32(stsc.s+4),runs=[];for(let i=0;i<ns;i++)runs.push([d.getUint32(stsc.s+8+i*12),d.getUint32(stsc.s+12+i*12)]);
+    const parts=[];let total=0,si=0;for(let c=0;c<nch&&si<cnt;c++){let per=runs[0][1];for(const [first,n] of runs)if(c+1>=first)per=n;let o=off(c);for(let k=0;k<per&&si<cnt;k++,si++){const L=size(si);if(o+L>N)break;parts.push([o,L]);total+=L+7;o+=L}}
+    if(!parts.length)continue;const out=new Uint8Array(total);let w=0;
+    for(const [o,L] of parts){const fl=L+7;out.set([0xFF,0xF1,((ot-1)<<6)|(fi<<2)|(ch>>2),((ch&3)<<6)|(fl>>11),(fl>>3)&0xFF,((fl&7)<<5)|0x1F,0xFC],w);out.set(u8.subarray(o,o+L),w+7);w+=fl}
+    return out}
+  return null}catch(e){return null}}
 /* the card moments, in playback time: the song's beats (clip or routine song); else the beats in each clip's own sound;
    else the dancer's held poses; every `step` of them */
 function cardTimes(){const L=segs();if(!L.length)return {T:[],beat:false,src:''};let tot=0;for(const g of L)tot+=segLen(g);
@@ -6133,7 +6158,7 @@ function cardAt(o){const L=segs();let a=0;for(let i=0;i<L.length;i++){const g=L[
 function cardsKey(){const L=segs();return [CARDS.step,S.mirror?1:0,S.cur,routineOn()?1:0,JSON.stringify(L.map(g=>[g.src,+g.s.toFixed(3),+g.e.toFixed(3),+(g.r||1).toFixed(3),g.k?g.k.length:0])),S.offset,S.ar,S.rt.offset,S.rt.ar,
   L.map(g=>{const n=srcById(g.src||S.cur);const G=n&&SGRID.get(n.id);return (n&&n.body?n.body.n:0)+':'+(G&&G!=='busy'?G.beats.length:G===null?'x':'-')}).join(','),(liveGrid()||{}).beats?liveGrid().beats.length:0].join('|')}
 function cardsBuild(){const row=$('#cardRow');if(!row)return;CARDS.key=cardsKey();row.textContent='';CARDS.list=[];CARDS.cur=-1;
-  const {T,beat,src}=cardTimes();let made=0,untracked=0,nopose=0;const dpr=Math.min(2,window.devicePixelRatio||1);
+  const {T,beat,src}=cardTimes();const L=segs();let made=0,untracked=0,nopose=0;const dpr=Math.min(2,window.devicePixelRatio||1);
   T.forEach((cd,i)=>{const P=cardAt(cd.o);if(!P)return;const next=i+1<T.length?T[i+1].o:cd.o+0.75*CARDS.step;
     const n=srcById(P.src),B=n&&n.body;const t2=toSrc(P.g,Math.min(P.len,Math.max(0,next-P.a)));
     const btn=el('button','mcard');btn.type='button';btn.setAttribute('role','listitem');
@@ -6145,8 +6170,9 @@ function cardsBuild(){const row=$('#cardRow');if(!row)return;CARDS.key=cardsKey(
     else{if(B)nopose++;else untracked++;c.fillStyle='#596074';c.font=`700 ${Math.round(11*dpr)}px Figtree,sans-serif`;c.textAlign='center';c.fillText(B?'—':'not tracked',cv.width/2,cv.height/2);btn.setAttribute('aria-label','No pose here')}
     btn.addEventListener('click',()=>{CARDS.touch=performance.now();const was=S.playing;try{seekT(cd.o)}catch(e){}if(!was){try{drawBody()}catch(e){}}cardsTick(true)});
     row.append(btn);CARDS.list.push({o:cd.o,btn,K,col})});
-  const info=$('#cardInfo');if(info)info.textContent=T.length?(beat?(({1:'a card every beat',2:'a card every 2 beats',4:'a card every bar'})[CARDS.step]||'')+(src==='clip'?' (from the clip\'s sound)':''):src==='poses'?'at the dancer\'s held poses (no beat found)':'every '+(0.75*CARDS.step).toFixed(2)+' s (no beat found)'):'';
-  const h=$('#cardHint');if(h){h.textContent=!T.length?'':untracked&&!made?'Track the body (Body) to see the moves as cards.':untracked?'Parts not tracked yet show no card.':'Yellow arrows: where the hands go before the next card (×2: back and forth); pink: the feet (a knee lift, or the feet opening or closing); blue under the feet: a step; green round the hips: a roll.'+(nopose?' A dash: the tracker lost the dancer there.':'')+' Tap a card to go there.';}
+  const busy=L.some(g=>SGRID.get((srcById(g.src||S.cur)||{}).id)==='busy');
+  const info=$('#cardInfo');if(info)info.textContent=busy&&!beat?'reading the clip\'s sound…':T.length?(beat?(({1:'a card every beat',2:'a card every 2 beats',4:'a card every bar'})[CARDS.step]||'')+(src==='clip'?' (from the clip\'s sound)':''):src==='poses'?'at the dancer\'s held poses (no beat found)':'every '+(0.75*CARDS.step).toFixed(2)+' s (no beat found)'):'';
+  const h=$('#cardHint');if(h){h.textContent=!T.length?'':untracked&&!made?'Track the body (Body) to see the moves as cards.':untracked?'Parts not tracked yet show no card.':(src==='poses'&&L.some(g=>SGRID_WHY.get((srcById(g.src||S.cur)||{}).id))?({video:'(This phone couldn\'t read the clip\'s sound.) ',aac:'(This phone couldn\'t read the clip\'s sound.) ',noaac:'(No sound found in the clip.) ',nobeat:'(No steady beat in the clip\'s sound.) ',read:'(Couldn\'t read the clip.) '})[SGRID_WHY.get((srcById(L[0].src||S.cur)||{}).id)]||'':'')+'Yellow arrows: where the hands go before the next card (×2: back and forth); pink: the feet (a knee lift, or the feet opening or closing); blue under the feet: a step; green round the hips: a roll.'+(nopose?' A dash: the tracker lost the dancer there.':'')+' Tap a card to go there.';}
   cardsTick(true)}
 function cardsTick(force){const bar=$('#cardBar');if(!bar||bar.hidden||!CARDS.list.length)return;const o=tPos();let i=-1;for(let k=0;k<CARDS.list.length;k++){if(CARDS.list[k].o<=o+0.02)i=k;else break}
   if(i===CARDS.cur&&!force)return;if(CARDS.cur>=0&&CARDS.list[CARDS.cur])CARDS.list[CARDS.cur].btn.classList.remove('on');CARDS.cur=i;if(i<0)return;const b=CARDS.list[i].btn;b.classList.add('on');
@@ -6161,37 +6187,36 @@ function cardsUI(){const bar=$('#cardBar'),btn=$('#dkCards');if(!bar)return;cons
    videos ... overlayed or as cards at the bottom of playback"): a track along the bottom of the video, cards sliding to a
    now line; and the next move's arrows on the dancer himself, just before it comes, riding with his body ---- */
 function cardCv(){let c=$('#cardCv');if(!c){c=document.createElement('canvas');c.id='cardCv';c.className='cardcv';c.setAttribute('aria-hidden','true');$('#stage').append(c)}return c}
-function cardsOverlay(){const show=S.hasV&&((CARDS.on&&CARDS.track&&!(PR.on&&PR.mode==='ghost'))||(CARDS.dancer&&(!PR.on||PR.mode!=='ghost')));const c=$('#cardCv');
+function cardsOverlay(){try{cardsLane()}catch(e){}const show=S.hasV&&CARDS.dancer&&(!PR.on||PR.mode!=='ghost');const c=$('#cardCv');
   if(!show||!CARDS.list.length){if(c&&c.width){c.width=0;c.height=0}return}
   const cv=cardCv(),st=$('#stage').getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1),w=Math.round(st.width*dpr),h=Math.round(st.height*dpr);
   if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}const x=cv.getContext('2d');x.clearRect(0,0,w,h);const o=tPos(),L=CARDS.list;
   /* the card playing now, and the next */
   let i=-1;for(let k=0;k<L.length;k++){if(L[k].o<=o+0.02)i=k;else break}
-  if(CARDS.dancer)cardsOnDancer(x,w,h,dpr,o,L,i);
-  if(CARDS.on&&CARDS.track&&!(PR.on&&PR.mode==='ghost'))cardsTrack(x,w,h,dpr,o,L,i)}
-function cardsTrack(x,w,h,dpr,o,L,i){
-  /* where there's room beside the picture (a portrait clip on a wide player), the cards run down that side so they never
-     cover the dancer; otherwise along the bottom, above the buttons */
-  const st=$('#stage').getBoundingClientRect(),vr=v.getBoundingClientRect(),R=RB.containRect(vr.width,vr.height,v.videoWidth||9,v.videoHeight||16);
-  const right=(st.right-(vr.left+R.x+R.w))*dpr,dock=$('#dock'),dockH=(dock&&!dock.hidden?dock.getBoundingClientRect().height+14:8)*dpr;
-  const side=right>=64*dpr,span=3.2;
-  const card=(c,k,now,bx,by,cw,ch)=>{x.fillStyle='rgba(14,16,20,.85)';x.strokeStyle=now?'#FFD740':'rgba(255,255,255,.3)';x.lineWidth=(now?2.5:1.2)*dpr;
-    x.beginPath();if(x.roundRect)x.roundRect(bx,by,cw,ch,8*dpr);else x.rect(bx,by,cw,ch);x.fill();x.stroke();mcDraw(x,c.K,bx+2*dpr,by+2*dpr,cw-4*dpr,ch-4*dpr,c.col||'#E040FB',{glow:now})};
-  x.save();
-  if(side){const top=62*dpr,bot=h-dockH,avail=bot-top-6*dpr,ch=Math.min(avail,(right-12*dpr)/0.62,140*dpr),cw=ch*0.62,cx=w-right/2,y0=top;
-    if(ch<40*dpr){x.restore();return}
-    /* the card playing now at the top; the next slides up from below, a card's height per card */
-    x.beginPath();x.rect(cx-cw/2-8*dpr,y0-6*dpr,cw+16*dpr,bot-y0+6*dpr);x.clip();
-    x.strokeStyle='rgba(255,255,255,.8)';x.lineWidth=2*dpr;x.beginPath();x.moveTo(cx-cw/2-6*dpr,y0-4*dpr);x.lineTo(cx+cw/2+6*dpr,y0-4*dpr);x.stroke();
-    const step=ch*1.06,pos=k=>{/* where card k sits: how many cards it is from now (fractional) */const c=L[k],a=L[i]||L[0],b=L[i+1];if(!b)return k-i;const f=Math.max(0,Math.min(1,(o-a.o)/Math.max(0.05,b.o-a.o)));return k-i-f*0.0-(k===i?0:0)};
-    for(let k=Math.max(0,i);k<Math.min(L.length,i+3);k++){const c=L[k];if(!c.K)continue;let d=k-i;if(k>i){const a=L[i],b=L[i+1];const f=a&&b?Math.max(0,Math.min(1,(o-a.o)/Math.max(0.05,b.o-a.o))):0;d=k-i-Math.max(0,f-0.6)/0.4}
-      const y=y0+Math.max(0,d)*step;if(y>bot)continue;card(c,k,k===i,cx-cw/2,y,cw,ch)}}
-  else{const ch=Math.min(h*0.3,110*dpr),cw=ch*0.62,y1=h-dockH,y0=y1-ch,x0=12*dpr+cw*0.5,X1=w-10*dpr-cw*0.5;
-    x.fillStyle='rgba(8,9,12,.38)';x.fillRect(0,y0-4*dpr,w,ch+8*dpr);x.strokeStyle='rgba(255,255,255,.8)';x.lineWidth=2*dpr;x.beginPath();x.moveTo(x0,y0-6*dpr);x.lineTo(x0,y1+6*dpr);x.stroke();
-    for(let k=0;k<L.length;k++){const c=L[k];if(!c.K)continue;const dt=c.o-o;if(dt>span||dt<-0.7)continue;const now=k===i,cx=x0+Math.max(-0.25,dt)/span*(X1-x0);
-      x.globalAlpha=dt<0&&!now?Math.max(0,1+dt/0.7):1;card(c,k,now,cx-cw/2,y0,cw,ch);
-      const nx=L[k+1],len=nx?Math.min(span,nx.o-c.o):0.6;x.fillStyle=now?'#FFD740':'rgba(255,255,255,.35)';x.fillRect(cx-cw/2,y1+3*dpr,Math.max(4*dpr,len/span*(X1-x0)-4*dpr),3*dpr)}}
-  x.restore();CARDS.trackMode=side?'side':'bottom'}
+  if(CARDS.dancer)cardsOnDancer(x,w,h,dpr,o,L,i)}
+/* the card lane: a band under the video like a play bar; the next moves slide in from the right to the now line, spaced
+   by time (never overlapping), with a bar under each for how long the move lasts; tap a card to go there */
+function laneOn(){return S.hasV&&CARDS.on&&CARDS.track&&!(PR.on&&PR.mode==='ghost')}
+function cardsLane(){const cv=$('#cardLane');if(!cv)return;const on=laneOn()&&CARDS.list.length>0;if(cv.hidden===on)cv.hidden=!on;if(!on)return;
+  const dpr=Math.min(2,window.devicePixelRatio||1),r=cv.getBoundingClientRect(),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(!w||!h)return;
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}const x=cv.getContext('2d');x.clearRect(0,0,w,h);
+  const L=CARDS.list,o=tPos();let i=-1;for(let k=0;k<L.length;k++){if(L[k].o<=o+0.02)i=k;else break}
+  const ch=h-14*dpr,cw=Math.round(ch*0.66),x0=Math.round(1.5*cw+14*dpr);   /* far enough in that the card playing now stays in full view for its whole beat */
+  /* seconds to pixels: the closest two cards just clear each other (gaps under 0.25 s count as 0.25); at least 3.5 s across */
+  const gaps=L.slice(1).map((c,k)=>c.o-L[k].o).filter(g=>g>0.05),gmin=gaps.length?Math.max(0.25,Math.min(...gaps)):0.6;
+  const pps=Math.max((cw+6*dpr)/gmin,(w-x0)/3.5);CARDS.lanePps=pps/dpr;
+  x.save();x.strokeStyle='rgba(255,255,255,.85)';x.lineWidth=2*dpr;x.beginPath();x.moveTo(x0-cw/2-5*dpr,2*dpr);x.lineTo(x0-cw/2-5*dpr,h-2*dpr);x.stroke();
+  const pos=[];
+  /* every card slides at the same speed (the one playing passes the now line as it plays), so the gaps stay true */
+  for(let k=Math.max(0,i-2);k<L.length;k++){const c=L[k],dt=c.o-o;const cx=x0+dt*pps;if(cx-cw/2>w)break;if(cx+cw/2<0)continue;
+    const now=k===i,bx=cx-cw/2,by=4*dpr;x.globalAlpha=k<i?Math.max(0.15,1+(cx-x0)/(cw*1.5)):1;
+    x.fillStyle='rgba(14,16,20,.92)';x.strokeStyle=now?'#FFD740':'rgba(255,255,255,.28)';x.lineWidth=(now?2.5:1.2)*dpr;x.beginPath();if(x.roundRect)x.roundRect(bx,by,cw,ch,8*dpr);else x.rect(bx,by,cw,ch);x.fill();x.stroke();
+    if(c.K)mcDraw(x,c.K,bx+2*dpr,by+2*dpr,cw-4*dpr,ch-4*dpr,c.col||'#E040FB',{glow:now});else{x.fillStyle='#596074';x.font=`700 ${Math.round(14*dpr)}px Figtree,sans-serif`;x.textAlign='center';x.fillText('—',cx,by+ch/2)}
+    const lab=c.btn&&c.btn.querySelector('.mcn');if(lab){x.font=`800 ${Math.round(11*dpr)}px Figtree,system-ui,sans-serif`;x.textAlign='left';x.textBaseline='top';x.fillStyle='#cfd3dc';x.fillText(lab.textContent,bx+5*dpr,by+4*dpr)}
+    /* how long the move lasts */
+    const nx=L[k+1],len=nx?nx.o-c.o:0.6;x.fillStyle=now?'#FFD740':'rgba(255,255,255,.35)';const bw=now?Math.max(4*dpr,(1-Math.min(1,(o-c.o)/Math.max(0.05,len)))*len*pps):len*pps;
+    x.fillRect(bx,h-7*dpr,Math.max(4*dpr,Math.min(bw-4*dpr,w)),4*dpr);pos.push({k,x0:bx/dpr,x1:(bx+cw)/dpr})}
+  x.restore();CARDS.lanePos=pos}
 /* the next move's arrows on the dancer: from the card about to come (or the one playing), drawn where his hands and feet
    are now, fading in half a beat ahead and out as the move ends */
 function cardsOnDancer(x,w,h,dpr,o,L,i){const P=cardAt(o);if(!P)return;const n=srcById(P.src),B=n&&n.body;if(!B)return;
@@ -6210,11 +6235,13 @@ function cardsOnDancer(x,w,h,dpr,o,L,i){const P=cardAt(o);if(!P)return;const n=s
   if(K.travel){const f=M0(mcMid(Qn[27],Qn[28])),Lw=Math.min(w*0.3,Math.abs(K.travel)*sc+20*u),d=Math.sign(K.travel);mcStroke(x,[[f[0],f[1]+14*u],[f[0]+d*Lw/2,f[1]+14*u],[f[0]+d*Lw,f[1]+14*u]],'#40C4FF',u)}
   if(K.roll){const C=M0(Hn),r=mcTorso(Qn)*sc*0.45,pts=[];for(let k=0;k<=24;k++){const a=Math.PI*0.15+K.roll.dir*k/24*Math.PI*1.7;pts.push([C[0]+Math.cos(a)*r,C[1]+Math.sin(a)*r*0.45])}mcStroke(x,pts,'#7CFFB2',u)}
   x.restore()}
-window.__rsCards={get on(){return CARDS.on},rolls:()=>CARDS.list.filter(c=>c.K&&c.K.roll).length,full:()=>CARDS.list.map(c=>c.K&&{t:c.K.t,te:c.K.te,movers:c.K.movers.map(m=>[m.j,m.type]),stance:c.K.stance?(c.K.stance.open?'open':'close'):null,travel:c.K.travel,roll:!!c.K.roll,far:c.K.far}),get step(){return CARDS.step},list:()=>CARDS.list.map(c=>({o:c.o,on:c.btn.classList.contains('on'),movers:c.K?c.K.movers.map(m=>m.j):null,travel:c.K?c.K.travel/c.K.torso:null,hipX:c.K?c.K.hip[0]:null,label:c.btn.getAttribute('aria-label'),n:c.btn.querySelector('.mcn').textContent})),cardAt:o=>{const P=cardAt(o);return P&&{i:P.i,src:P.src,t:P.t}},mcCard:(B,t,t2,m)=>mcCard(B,t,t2,m),cardFor:(B,t,t2,o)=>mcCard(B,t,t2,false,o),cardTimes:()=>cardTimes(),build:()=>cardsBuild()};
+window.__rsCards={get on(){return CARDS.on},resetSound:()=>{SGRID.clear();SGRID_WHY.clear();CARDS.key=""},get lanePos(){return CARDS.lanePos},mp4Adts:ab=>mp4Adts(ab),sgWhy:id=>SGRID_WHY.get(id),rolls:()=>CARDS.list.filter(c=>c.K&&c.K.roll).length,full:()=>CARDS.list.map(c=>c.K&&{t:c.K.t,te:c.K.te,movers:c.K.movers.map(m=>[m.j,m.type]),stance:c.K.stance?(c.K.stance.open?'open':'close'):null,travel:c.K.travel,roll:!!c.K.roll,far:c.K.far}),get step(){return CARDS.step},list:()=>CARDS.list.map(c=>({o:c.o,on:c.btn.classList.contains('on'),movers:c.K?c.K.movers.map(m=>m.j):null,travel:c.K?c.K.travel/c.K.torso:null,hipX:c.K?c.K.hip[0]:null,label:c.btn.getAttribute('aria-label'),n:c.btn.querySelector('.mcn').textContent})),cardAt:o=>{const P=cardAt(o);return P&&{i:P.i,src:P.src,t:P.t}},mcCard:(B,t,t2,m)=>mcCard(B,t,t2,m),cardFor:(B,t,t2,o)=>mcCard(B,t,t2,false,o),cardTimes:()=>cardTimes(),build:()=>cardsBuild()};
 function initCards(){const btn=$('#dkCards');if(btn)btn.addEventListener('click',()=>{CARDS.on=!CARDS.on;cardsSave();cardsUI();if(CARDS.on)setTimeout(()=>{const bar=$('#cardBar');if(bar&&!bar.hidden)bar.scrollIntoView({block:'nearest',behavior:'smooth'})},50)});
   $('#cardClose')&&$('#cardClose').addEventListener('click',()=>{CARDS.on=false;cardsSave();cardsUI()});
   document.querySelectorAll('#cardStep button').forEach(b=>b.addEventListener('click',()=>{CARDS.step=+b.dataset.cs;cardsSave();cardsUI()}));
   $('#cardTrack')&&$('#cardTrack').addEventListener('click',()=>{CARDS.track=!CARDS.track;cardsSave();cardsUI()});
+  $('#cardLane')&&$('#cardLane').addEventListener('click',e=>{const r=e.currentTarget.getBoundingClientRect(),X=e.clientX-r.left,hit=(CARDS.lanePos||[]).find(q=>X>=q.x0-3&&X<=q.x1+3);
+    if(hit){const c=CARDS.list[hit.k];CARDS.touch=performance.now();try{seekT(c.o)}catch(e2){}if(!S.playing)try{drawBody()}catch(e2){}}});
   for(const id of ['#cardDancer','#pracArrows'])$(id)&&$(id).addEventListener('click',()=>{CARDS.dancer=!CARDS.dancer;cardsSave();cardsUI()});
   const row=$('#cardRow');if(row)['touchstart','wheel','pointerdown'].forEach(ev=>row.addEventListener(ev,()=>{CARDS.touch=performance.now()},{passive:true}));
   setInterval(()=>{try{cardsUI();cardsTick()}catch(e){}},250)}
@@ -7539,7 +7566,7 @@ async function phoneCheck(){
   else add('Tracking','no video tracked in this project');
   add('Sound',soundReport()||'no play measured yet');
   try{const so=S.liveSong,R=so&&so.an&&so.an.riddim;add('Cues',`${S.beatView==='ball'?'Ball':S.beatView==='calm'?'Count':'Off'} · sound delay ${Math.round((S.sndDelay||0)*1000)} ms · riddim ${R?(R.sure?R.events.length+' hits, '+R.perBar.toFixed(1)+' a bar':'no clear drums'):'not found yet'}${so&&so.an?' · beat sure '+(songSure()?'yes':'no')+' (phase '+(so.an.phaseConf??1).toFixed(2)+')':''}`)}catch(e){}
-  try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`+(S.decodeSlow?` · slow song decode ${S.decodeSlow}×`:'')+(S.songHealN?` · song player restarted ${S.songHealN}×`:''))}catch(e){}
+  try{const sb=(S.mainSong&&S.mainSong.buf)||buf;add('Audio',`song decoded at ${(sb&&sb.sampleRate)||'?'} Hz · live sound engine ${ctx?'open ('+ctx.state+', '+ctx.sampleRate+' Hz)':'closed'}`+(S.decodeSlow?` · slow song decode ${S.decodeSlow}×`:'')+(S.songHealN?` · song player restarted ${S.songHealN}×`:'')+(()=>{const ok=[...SGRID.values()].filter(g=>g&&g!=='busy').length,bad=[...SGRID_WHY.values()];return ok||bad.length||S.clipAacUsed?` · clip sound beats: ${ok} read`+(S.clipAacUsed?` (${S.clipAacUsed} via the AAC track)`:'')+(bad.length?`, ${bad.length} not (${bad.join(', ')})`:''):''})())}catch(e){}
   try{const r=await storageScan();const t=r.total!=null?Math.max(r.total,r.media+r.body+r.unused+r.projects):null;
     add('Storage',`${fmtMB(t)} in use${r.quota?' of '+fmtMB(r.quota):''} · media ${fmtMB(r.media)} · tracking ${fmtMB(r.body)} · unused ${fmtMB(r.unused)} · ${r.projectsN} project${r.projectsN===1?'':'s'} · ${r.persisted?'kept safe':'may be cleared by the browser'}`)}catch(e){add('Storage','couldn’t read')}
   add('Errors',ERRS.length?'\n  '+ERRS.join('\n  '):'none this session');
@@ -8807,7 +8834,7 @@ let lastSeg=-1;
 function beat(pos,anchor,bpm){const bp=(pos-(anchor??0))*bpm/60, fl=Math.floor(bp);return {idx:((fl%4)+4)%4,pulse:(bp-fl)<0.14}}
 function tick(){
   if(S.hasV&&CARDS.on&&S.playing){try{cardsTick()}catch(e){}}   /* the lit move card changes on the beat */
-  if(CARDS.on||CARDS.dancer||$('#cardCv')){try{cardsOverlay()}catch(e){}}
+  if(CARDS.on||CARDS.dancer||$('#cardCv')||!$('#cardLane').hidden){try{cardsOverlay()}catch(e){}}
   if(S.hasV){
     const ro=routineOn(), sm=segMode();
     if(document.activeElement!==$('#scrub'))$('#scrub').value=sm?tPos():v.currentTime;

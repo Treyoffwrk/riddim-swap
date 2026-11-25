@@ -782,3 +782,4 @@ details.more .field{margin-top:8px}
 .cardsbtn{right:112px}.cardsbtn[aria-pressed="true"]{background:#FFD740;color:#0E1014;border-color:#FFD740}
 .cardcv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
 .cardshow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
+.cardlane{display:block;width:100%;height:108px;margin:6px 0 2px;border-radius:12px;background:rgba(255,255,255,.03);cursor:pointer;touch-action:manipulation}
