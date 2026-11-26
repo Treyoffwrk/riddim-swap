@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<script>window.RS_BUILD='rs-d3645a801c'</script>
+<script>window.RS_BUILD='rs-4bf37a1965'</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Riddim Swap</title>
@@ -805,6 +805,10 @@ details.more .field{margin-top:8px}
 .cardcv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
 .cardshow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
 .cardlane{display:block;width:100%;height:108px;margin:6px 0 2px;border-radius:12px;background:rgba(255,255,255,.03);cursor:pointer;touch-action:manipulation}
+/* on the player (Worldline beside the clip; full screen above the play bar) */
+.cardlane.ov{position:absolute;margin:0;z-index:6;background:rgba(14,16,20,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.cardlane.ovfs{z-index:8;transition:top .35s var(--spring,ease-out)}
+.cardlane[hidden]{display:none}
 </style>
 <style>
 /* standalone app: what the artifact viewer used to provide */
@@ -6197,7 +6201,28 @@ function cardsOverlay(){try{cardsLane()}catch(e){}const show=S.hasV&&CARDS.dance
 /* the card lane: a band under the video like a play bar; the next moves slide in from the right to the now line, spaced
    by time (never overlapping), with a bar under each for how long the move lasts; tap a card to go there */
 function laneOn(){return S.hasV&&CARDS.on&&CARDS.track&&!(PR.on&&PR.mode==='ghost')}
-function cardsLane(){const cv=$('#cardLane');if(!cv)return;const on=laneOn()&&CARDS.list.length>0;if(cv.hidden===on)cv.hidden=!on;if(!on)return;
+/* where the lane goes, so it's always next to the clip:
+   - normal: in the page, straight under the video;
+   - Worldline (the clip is small in the corner): on the player, beside the clip, its bottom level with the clip's;
+   - full screen: on the player just above the play bar (down to the bottom edge when the controls hide), the
+     dock lifted above it */
+function lanePlace(cv,on){const st=$('#stage'),dock=$('#dock'),tr=document.querySelector('.transport');if(!st)return;
+  const pin=st.closest('.pin'),fs=!!(pin&&pin.classList.contains('fs')),wl=PR.on&&PR.mode==='world';
+  const mode=!on?'flow':wl?'world':fs?'fs':'flow';
+  if(mode!==CARDS.laneMode){CARDS.laneMode=mode;if(mode==='flow'){if(cv.parentNode!==st.parentNode||cv.previousElementSibling!==st)st.after(cv)}else if(cv.parentNode!==st)st.appendChild(cv);
+    cv.classList.toggle('ov',mode!=='flow');cv.classList.toggle('ovfs',mode==='fs');for(const k of ['left','top','width','height'])cv.style[k]=''}
+  if(dock){const want=mode==='fs'&&!pin.classList.contains('idle');if(!want&&dock.style.bottom)dock.style.bottom=''}
+  if(mode==='flow')return;
+  const s=st.getBoundingClientRect();if(!s.width)return;let L,T,W,H;
+  if(mode==='world'){const b=v.getBoundingClientRect(),R=RB.containRect(b.width,b.height,v.videoWidth||9,v.videoHeight||16);
+    const pr=b.left-s.left+R.x+R.w,pb=b.top-s.top+R.y+R.h;let btn=8;
+    for(const e of st.querySelectorAll('.fsbtn')){if(e.hidden)continue;const r=e.getBoundingClientRect();if(r.width&&r.right-s.left>pr)btn=Math.max(btn,r.bottom-s.top)}
+    L=Math.round(pr+8);W=Math.round(s.width-8-L);T=Math.round(Math.max(btn+6,pb-108));H=Math.round(Math.max(100,pb-T))}
+  else{const idle=pin.classList.contains('idle'),tt=tr?tr.getBoundingClientRect().top-s.top:s.height;H=Math.round(Math.min(108,Math.max(92,s.height*0.14)));
+    L=10;W=Math.round(s.width-20);T=Math.round((idle?s.height-10:Math.min(s.height-10,tt+18))-H);
+    if(dock&&!idle)dock.style.bottom=Math.round(s.height-T+6)+'px'}
+  const px=n=>n+'px';if(cv.style.left!==px(L))cv.style.left=px(L);if(cv.style.top!==px(T))cv.style.top=px(T);if(cv.style.width!==px(W))cv.style.width=px(W);if(cv.style.height!==px(H))cv.style.height=px(H)}
+function cardsLane(){const cv=$('#cardLane');if(!cv)return;const on=laneOn()&&CARDS.list.length>0;if(cv.hidden===on)cv.hidden=!on;lanePlace(cv,on);if(!on)return;
   const dpr=Math.min(2,window.devicePixelRatio||1),r=cv.getBoundingClientRect(),w=Math.round(r.width*dpr),h=Math.round(r.height*dpr);if(!w||!h)return;
   if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}const x=cv.getContext('2d');x.clearRect(0,0,w,h);
   const L=CARDS.list,o=tPos();let i=-1;for(let k=0;k<L.length;k++){if(L[k].o<=o+0.02)i=k;else break}
@@ -6240,7 +6265,7 @@ function initCards(){const btn=$('#dkCards');if(btn)btn.addEventListener('click'
   $('#cardClose')&&$('#cardClose').addEventListener('click',()=>{CARDS.on=false;cardsSave();cardsUI()});
   document.querySelectorAll('#cardStep button').forEach(b=>b.addEventListener('click',()=>{CARDS.step=+b.dataset.cs;cardsSave();cardsUI()}));
   $('#cardTrack')&&$('#cardTrack').addEventListener('click',()=>{CARDS.track=!CARDS.track;cardsSave();cardsUI()});
-  $('#cardLane')&&$('#cardLane').addEventListener('click',e=>{const r=e.currentTarget.getBoundingClientRect(),X=e.clientX-r.left,hit=(CARDS.lanePos||[]).find(q=>X>=q.x0-3&&X<=q.x1+3);
+  $('#cardLane')&&$('#cardLane').addEventListener('click',e=>{e.stopPropagation();const r=e.currentTarget.getBoundingClientRect(),X=e.clientX-r.left,hit=(CARDS.lanePos||[]).find(q=>X>=q.x0-3&&X<=q.x1+3);
     if(hit){const c=CARDS.list[hit.k];CARDS.touch=performance.now();try{seekT(c.o)}catch(e2){}if(!S.playing)try{drawBody()}catch(e2){}}});
   for(const id of ['#cardDancer','#pracArrows'])$(id)&&$(id).addEventListener('click',()=>{CARDS.dancer=!CARDS.dancer;cardsSave();cardsUI()});
   const row=$('#cardRow');if(row)['touchstart','wheel','pointerdown'].forEach(ev=>row.addEventListener(ev,()=>{CARDS.touch=performance.now()},{passive:true}));

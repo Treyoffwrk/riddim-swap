@@ -783,3 +783,7 @@ details.more .field{margin-top:8px}
 .cardcv{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
 .cardshow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
 .cardlane{display:block;width:100%;height:108px;margin:6px 0 2px;border-radius:12px;background:rgba(255,255,255,.03);cursor:pointer;touch-action:manipulation}
+/* on the player (Worldline beside the clip; full screen above the play bar) */
+.cardlane.ov{position:absolute;margin:0;z-index:6;background:rgba(14,16,20,.72);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.cardlane.ovfs{z-index:8;transition:top .35s var(--spring,ease-out)}
+.cardlane[hidden]{display:none}

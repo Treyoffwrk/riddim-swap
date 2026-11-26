@@ -112,13 +112,40 @@ const [,,HOST,CLIP,SONG,CLIPA,CLIPMP4,SHOT]=process.argv;const rec=(n,s,d)=>cons
  let on=null;for(const t of [2.0,3.4,5.6,8.4,10.6]){await p.evaluate(t=>window.__rs.seekT(t),t);await p.waitForTimeout(600);const q=await px();if(!on||q.yellow>on.yellow)on=q}
  rec('Arrows on the dancer: the next move\'s arrows are drawn on the dancer in the video',on.yellow>40?'passed':'failed',JSON.stringify(on));
  if(SHOT){await p.evaluate(()=>document.getElementById('stage').scrollIntoView({block:'start'}));await p.screenshot({path:SHOT+'-lane.png'})}
- /* in Body's Worldline (a taller player) the lane is under it too, and the page still fits the phone */
+ /* in Body's Worldline the clip is small in the corner: the lane sits on the player right beside it, its bottom level
+    with the clip's, clear of the round buttons; cards still legible */
  await p.evaluate(()=>{document.getElementById('cardDancer').click();document.getElementById('t-body').click()});await p.waitForTimeout(900);
  await p.evaluate(()=>{const b=document.querySelector('[data-pm="world"]');b&&b.click()});await p.waitForTimeout(1200);
- const wl=await p.evaluate(()=>{const c=document.getElementById('cardLane'),r=c.getBoundingClientRect(),st=document.getElementById('stage').getBoundingClientRect(),tr=document.querySelector('.transport').getBoundingClientRect(),tabs=document.querySelector('.tabs,nav,[role=tablist]');
-   return {shown:!c.hidden,top:Math.round(r.top-st.bottom),playbar:Math.round(tr.bottom),screen:window.innerHeight,wide:document.documentElement.scrollWidth-window.innerWidth}});
- if(SHOT){await p.screenshot({path:SHOT+'-world.png'})}
- rec('Body → Worldline: the lane is under the taller player too, and the play bar is still on screen',wl.shown&&wl.top>=0&&wl.top<=16&&wl.playbar<=wl.screen-60&&wl.wide<=0?'passed':'failed',JSON.stringify(wl));
+ const geo=()=>p.evaluate(()=>{const c=document.getElementById('cardLane'),r=c.getBoundingClientRect(),st=document.getElementById('stage'),s=st.getBoundingClientRect(),v=document.getElementById('vid'),b=v.getBoundingClientRect(),
+     R=RB.containRect(b.width,b.height,v.videoWidth,v.videoHeight),P=window.__rsCards.lanePos||[],tr=document.querySelector('.transport').getBoundingClientRect(),pl=document.getElementById('play').getBoundingClientRect(),dk=document.getElementById('dock').getBoundingClientRect();
+   let btn=0;for(const e of st.querySelectorAll('.fsbtn')){if(e.hidden)continue;const q=e.getBoundingClientRect();const ox=Math.min(q.right,r.right)-Math.max(q.left,r.left),oy=Math.min(q.bottom,r.bottom)-Math.max(q.top,r.top);if(ox>0&&oy>0)btn++}
+   let overlap=0;for(let k=1;k<P.length;k++)if(P[k].x0<P[k-1].x1-0.5)overlap++;
+   return {shown:!c.hidden,inPlayer:c.parentNode===st,gapX:Math.round(r.left-(b.left+R.x+R.w)),bottomVsClip:Math.round(r.bottom-(b.top+R.y+R.h)),clipH:Math.round(R.h),h:Math.round(r.height),cards:P.length,w:P.length?Math.round(P[0].x1-P[0].x0):0,overlap,btn,
+     inside:r.left>=s.left-1&&r.right<=s.right+1&&r.top>=s.top-1&&r.bottom<=s.bottom+1,playTop:Math.round(pl.top-r.bottom),dockGap:document.getElementById('dock').hidden?99:Math.round(r.top-dk.bottom),playbar:Math.round(tr.bottom),screen:window.innerHeight,wide:document.documentElement.scrollWidth-window.innerWidth}});
+ const wl=await geo();
+ if(SHOT){await p.evaluate(()=>document.getElementById('stage').scrollIntoView({block:'start'}));await p.waitForTimeout(300);await p.screenshot({path:SHOT+'-world.png'})}
+ rec('Body → Worldline: the lane is on the player right beside the clip (bottom level with the clip\'s), clear of the round buttons, cards legible',wl.shown&&wl.inPlayer&&wl.inside&&wl.gapX>=0&&wl.gapX<=40&&Math.abs(wl.bottomVsClip)<=12&&wl.btn===0&&wl.cards>=2&&wl.w>=50&&wl.overlap===0&&wl.wide<=0?'passed':'failed',JSON.stringify(wl));
+ /* tapping a card there still goes to it (and doesn't turn the 3D view) */
+ const lw=await p.evaluate(()=>{const P=window.__rsCards.lanePos,q=P[Math.min(P.length-1,1)],r=document.getElementById('cardLane').getBoundingClientRect();return {x:r.left+(q.x0+q.x1)/2,y:r.top+r.height/2,o:window.__rsCards.list()[q.k].o}});
+ await p.touchscreen.tap(lw.x,lw.y);await p.waitForTimeout(500);const atW=await p.evaluate(()=>window.__rs.tPos());
+ rec('Worldline: tap a card beside the clip and the video goes to it',Math.abs(atW-lw.o)<0.05?'passed':'failed',JSON.stringify({card:+lw.o.toFixed(3),now:+atW.toFixed(3)}));
+ /* full screen (normal player): the lane sits on the player just above the play bar, the dock lifted above it, nothing
+    overlapping; it stays on screen when the controls hide while playing */
+ /* full screen in Worldline (the user's screenshot: the lane was hidden behind the play bar): beside the clip, above the play bar */
+ await p.evaluate(()=>window.rsFullscreen.enter());await p.waitForTimeout(900);
+ const fw=await geo();
+ if(SHOT){await p.screenshot({path:SHOT+'-fs-world.png'})}
+ rec('Full screen in Worldline: the lane is beside the clip, well clear of the play bar',fw.shown&&fw.inPlayer&&fw.inside&&Math.abs(fw.bottomVsClip)<=12&&fw.btn===0&&fw.playTop>=0&&fw.cards>=3?'passed':'failed',JSON.stringify(fw));
+ await p.evaluate(()=>{window.rsFullscreen.exit();document.getElementById('pracStop').click();document.getElementById('t-clip').click()});await p.waitForTimeout(900);
+ await p.evaluate(()=>window.rsFullscreen.enter());await p.waitForTimeout(900);
+ const fs=await geo();
+ if(SHOT){await p.screenshot({path:SHOT+'-fs.png'})}
+ await p.evaluate(()=>document.getElementById('play').click());await p.waitForTimeout(3600);
+ const fsIdle=await p.evaluate(()=>{const c=document.getElementById('cardLane'),r=c.getBoundingClientRect(),s=document.getElementById('stage').getBoundingClientRect();return {idle:document.querySelector('.pin').classList.contains('idle'),shown:!c.hidden,bottomGap:Math.round(s.bottom-r.bottom)}});
+ if(SHOT){await p.screenshot({path:SHOT+'-fs-idle.png'})}
+ await p.evaluate(()=>{if(window.__rs.S.playing)document.getElementById('play').click();window.rsFullscreen.exit()});await p.waitForTimeout(600);
+ const back=await p.evaluate(()=>{const c=document.getElementById('cardLane');return {after:c.previousElementSibling&&c.previousElementSibling.id,dock:document.getElementById('dock').style.bottom}});
+ rec('Full screen: the lane is on the player just above the play bar, the dock above it, nothing overlapping; it stays on screen as the controls hide; back out it\'s under the video again',fs.shown&&fs.inPlayer&&fs.inside&&fs.playTop>=0&&fs.dockGap>=0&&fs.cards>=3&&fs.overlap===0&&fsIdle.shown&&fsIdle.bottomGap<=16&&back.after==='stage'&&!back.dock?'passed':'failed',JSON.stringify({fs,fsIdle,back}));
  await p.evaluate(()=>{document.getElementById('t-clip').click()});await p.waitForTimeout(600);
  /* the same switch is in the Body options */
  const chip=await p.evaluate(()=>{const c=document.getElementById('pracArrows');const a=c.getAttribute('aria-pressed');c.click();const b2=c.getAttribute('aria-pressed');const d=document.getElementById('cardDancer').getAttribute('aria-pressed');c.click();return {a,b:b2,d}});
